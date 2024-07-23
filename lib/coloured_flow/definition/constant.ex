@@ -22,6 +22,8 @@ defmodule ColouredFlow.Definition.Constant do
   @type name() :: atom()
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :name, name()
     field :colour_set, ColourSet.name()
 

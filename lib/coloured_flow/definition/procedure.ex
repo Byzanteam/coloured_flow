@@ -12,6 +12,8 @@ defmodule ColouredFlow.Definition.Procedure do
   @type name() :: atom()
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :name, name()
     field :parameters, [ColourSet.name()], default: []
     field :expression, Expression.t()

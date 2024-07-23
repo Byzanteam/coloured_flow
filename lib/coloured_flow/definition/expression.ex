@@ -6,6 +6,8 @@ defmodule ColouredFlow.Definition.Expression do
   use TypedStructor
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :expr, Macro.t(), doc: "a quoted expression"
   end
 end

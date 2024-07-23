@@ -12,6 +12,8 @@ defmodule ColouredFlow.Definition.Action do
   alias ColouredFlow.Definition.Variable
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :inputs, [Variable.name()],
       doc: """
       The available variables includes the variables in the in-going places,

@@ -8,6 +8,8 @@ defmodule ColouredFlow.Enactment.Occurrence do
   alias ColouredFlow.Enactment.BindingElement
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :step, pos_integer(),
       doc: "The step number of the occurrence, it is used to order the occurrences."
 

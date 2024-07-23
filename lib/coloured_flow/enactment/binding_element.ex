@@ -16,6 +16,8 @@ defmodule ColouredFlow.Enactment.BindingElement do
   alias ColouredFlow.Definition.Variable
 
   typed_structor enfore: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :transition, Transition.name()
 
     field :bound_assignments, {Variable.name(), ColourSet.value()},

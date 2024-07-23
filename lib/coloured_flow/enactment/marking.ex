@@ -10,6 +10,8 @@ defmodule ColouredFlow.Enactment.PlaceMarking do
   alias ColouredFlow.MultiSet
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :place, Place.name()
     field :tokens, MultiSet.t(ColourSet.value())
   end

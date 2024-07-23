@@ -22,6 +22,8 @@ defmodule ColouredFlow.MultiSet do
   @type t() :: t(term())
 
   typed_structor do
+    plugin TypedStructor.Plugins.DocFields
+
     parameter :value
 
     field :map, internal(value), default: %{}

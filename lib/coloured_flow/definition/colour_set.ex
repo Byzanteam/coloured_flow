@@ -24,6 +24,8 @@ defmodule ColouredFlow.Definition.ColourSet do
   @type value() :: Macro.t()
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :name, name()
 
     field :type, Macro.t(),

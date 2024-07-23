@@ -11,6 +11,8 @@ defmodule ColouredFlow.Definition.Place do
   @type name() :: binary()
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :name, name()
 
     field :colour_set, ColourSet.name(),

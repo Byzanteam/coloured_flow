@@ -10,6 +10,8 @@ defmodule ColouredFlow.Definition.Arc do
   @type name() :: binary()
 
   typed_structor enforce: true do
+    plugin TypedStructor.Plugins.DocFields
+
     field :name, name()
 
     field :orientation, :t_to_p | :p_to_t,
