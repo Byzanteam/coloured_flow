@@ -34,7 +34,9 @@ defmodule ColouredFlow.MultiSet do
 
   ## Examples
 
-      iex> ColouredFlow.MultiSet.new()
+      iex> multi_set = ColouredFlow.MultiSet.new()
+      ColouredFlow.MultiSet.from_list([])
+      iex> ColouredFlow.MultiSet.new(multi_set)
       ColouredFlow.MultiSet.from_list([])
   """
   @spec new() :: t()
@@ -91,6 +93,9 @@ defmodule ColouredFlow.MultiSet do
 
       iex> ColouredFlow.MultiSet.duplicate("a", 3)
       ColouredFlow.MultiSet.from_list([{"a", 3}])
+
+      iex> ColouredFlow.MultiSet.duplicate("a", 0)
+      ColouredFlow.MultiSet.from_list([])
   """
   @spec duplicate(value(), coefficient()) :: t()
   def duplicate(_value, 0) do
@@ -165,6 +170,8 @@ defmodule ColouredFlow.MultiSet do
       ColouredFlow.MultiSet.from_list([{"a", 2}, {"b", 2}, {"c", 1}])
       iex> multi_set = ColouredFlow.MultiSet.delete(multi_set, "a")
       ColouredFlow.MultiSet.from_list([{"a", 1}, {"b", 2}, {"c", 1}])
+      iex> multi_set = ColouredFlow.MultiSet.delete(multi_set, "a")
+      ColouredFlow.MultiSet.from_list([{"b", 2}, {"c", 1}])
       iex> ColouredFlow.MultiSet.delete(multi_set, "a")
       ColouredFlow.MultiSet.from_list([{"b", 2}, {"c", 1}])
   """
@@ -322,8 +329,6 @@ defmodule ColouredFlow.MultiSet do
             """,
             stacktrace
           )
-
-          quoted
         end
     end
   end

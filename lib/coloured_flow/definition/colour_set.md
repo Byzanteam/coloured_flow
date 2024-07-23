@@ -203,16 +203,16 @@ colset ack()      :: integer()
 colset packet()   :: {:data, data()} | {:ack, ack()}
 
 # variable
-var p     :: user();
-var users :: user_list();
+var p     :: user()
+var users :: user_list()
 
 # constant
 val all_users   :: user_list() = [
   %{name: "Alice", age: 20},
   %{name: "Bob", age: 30}
-];
+]
 val all_packets :: list(packet()) = [
   {:data, "Hello"},
-  {1:ack, 1}
-];
+  {:ack, 1}
+]
 ```
