@@ -30,7 +30,7 @@ defmodule ColouredFlow.MixProject do
 
   defp aliases do
     [
-      check: ["format", "credo --strict", "dialyzer"]
+      check: ["format", "deps.unlock --check-unused", "credo --strict", "dialyzer"]
     ]
   end
 
