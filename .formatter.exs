@@ -1,4 +1,4 @@
-locals_without_parens = [colset: 1]
+locals_without_parens = [colset: 1, var: 1]
 
 [
   inputs: ["{mix,.formatter}.exs", "{config,lib,test}/**/*.{ex,exs}"],
