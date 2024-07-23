@@ -39,4 +39,19 @@ defmodule ColouredFlow.Notation do
       ColouredFlow.Notation.Var.var(unquote(declaration))
     end
   end
+
+  @doc """
+  Declare a constant value(`ColouredFlow.Definition.Constant`).
+
+  ## Examples
+
+      iex> val name :: string() = "Alice"
+      %ColouredFlow.Definition.Constant{name: :name, colour_set: :string, value: "Alice"}
+  """
+  defmacro val(declaration) do
+    quote do
+      require ColouredFlow.Notation.Val
+      ColouredFlow.Notation.Val.val(unquote(declaration))
+    end
+  end
 end
