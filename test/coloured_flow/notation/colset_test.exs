@@ -167,5 +167,47 @@ defmodule ColouredFlow.Notation.ColsetTest do
         )
       end
     end
+
+    test "complex" do
+      alias ColouredFlow.Definition.ColourSet.Descr
+
+      colour_set =
+        colset complex() ::
+                 {:integer, integer()}
+                 | {:unit, {}}
+                 | {:list, list(list(integer()))}
+                 | {:map,
+                    %{
+                      name: binary(),
+                      age: integer(),
+                      list: list(integer()),
+                      enum: :female | :male
+                    }}
+
+      assert match?(
+               %ColourSet{
+                 name: :complex,
+                 type:
+                   {:union,
+                    %{
+                      integer: {:integer, []},
+                      unit: {:unit, []},
+                      list: {:list, {:list, {:integer, []}}},
+                      map: {
+                        :map,
+                        %{
+                          name: {:binary, []},
+                          age: {:integer, []},
+                          list: {:list, {:integer, []}},
+                          enum: {:enum, [:female, :male]}
+                        }
+                      }
+                    }}
+               },
+               colour_set
+             )
+
+      assert Descr.valid?(colour_set.type)
+    end
   end
 end
