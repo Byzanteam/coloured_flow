@@ -1,8 +1,8 @@
 defmodule ColouredFlow.MultiSet do
   @moduledoc """
-  A [`multi_set`(aka `bag`](https://en.wikipedia.org/wiki/Multiset) is a set that allows multiple occurrences of its elements.
+  A [`multi_set`](https://en.wikipedia.org/wiki/Multiset)(aka `bag`) is a set that allows multiple occurrences of its elements.
 
-  A `multi_set` can be constructed using `new/0` or `new/1` functions: The `new/0`
+  A `multi_set` can be constructed using `new/0` or `new/1` functions:
 
       iex> ColouredFlow.MultiSet.new()
       ColouredFlow.MultiSet.from_list([])
