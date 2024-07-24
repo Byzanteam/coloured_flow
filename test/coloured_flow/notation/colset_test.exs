@@ -207,7 +207,7 @@ defmodule ColouredFlow.Notation.ColsetTest do
                colour_set
              )
 
-      assert Descr.valid?(colour_set.type)
+      assert {:ok, _descr} = Descr.of_descr(colour_set.type)
     end
   end
 end

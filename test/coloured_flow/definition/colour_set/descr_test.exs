@@ -2,60 +2,68 @@ defmodule ColouredFlow.Definition.ColourSet.DescrTest do
   use ExUnit.Case
   alias ColouredFlow.Definition.ColourSet.Descr
 
-  describe "valid?/1" do
+  describe "of_descr/1" do
     test "works" do
-      assert Descr.valid?({:unit, []})
+      assert_of_descr({:unit, []})
     end
 
     test "tuple" do
-      assert Descr.valid?({:tuple, [{:integer, []}, {:integer, []}]})
-      assert Descr.valid?({:tuple, [{:integer, []}, {:integer, []}, {:integer, []}]})
-      refute Descr.valid?({:tuple, [{:integer, []}]})
-      refute Descr.valid?({:tuple, []})
+      assert_of_descr({:tuple, [{:integer, []}, {:integer, []}]})
+      assert_of_descr({:tuple, [{:integer, []}, {:integer, []}, {:integer, []}]})
+      refute_of_descr({:tuple, [{:integer, []}]})
+      refute_of_descr({:tuple, []})
     end
 
     test "map" do
-      assert Descr.valid?({:map, %{name: {:binary, []}}})
-      assert Descr.valid?({:map, %{name: {:binary, []}, age: {:integer, []}}})
-      refute Descr.valid?({:map, %{}})
+      assert_of_descr({:map, %{name: {:binary, []}}})
+      assert_of_descr({:map, %{name: {:binary, []}, age: {:integer, []}}})
+      refute_of_descr({:map, %{}})
     end
 
     test "enum" do
-      assert Descr.valid?({:enum, [:female, :male]})
-      refute Descr.valid?({:enum, [:female]})
-      refute Descr.valid?({:enum, []})
+      assert_of_descr({:enum, [:female, :male]})
+      refute_of_descr({:enum, [:female]})
+      refute_of_descr({:enum, []})
     end
 
     test "union" do
-      assert Descr.valid?({:union, %{integer: {:integer, []}, unit: {:unit, []}}})
-      refute Descr.valid?({:union, %{integer: {:integer, []}}})
-      refute Descr.valid?({:union, %{}})
+      assert_of_descr({:union, %{integer: {:integer, []}, unit: {:unit, []}}})
+      refute_of_descr({:union, %{integer: {:integer, []}}})
+      refute_of_descr({:union, %{}})
     end
 
     test "list" do
-      assert Descr.valid?({:list, {:integer, []}})
-      assert Descr.valid?({:list, {:list, {:integer, []}}})
-      refute Descr.valid?({:list, {}})
+      assert_of_descr({:list, {:integer, []}})
+      assert_of_descr({:list, {:list, {:integer, []}}})
+      refute_of_descr({:list, {}})
     end
 
     test "complex" do
-      assert Descr.valid?(
-               {:union,
-                %{
-                  integer: {:integer, []},
-                  unit: {:unit, []},
-                  list: {:list, {:list, {:integer, []}}},
-                  map: {
-                    :map,
-                    %{
-                      name: {:binary, []},
-                      age: {:integer, []},
-                      list: {:list, {:integer, []}},
-                      enum: {:enum, [:female, :male]}
-                    }
-                  }
-                }}
-             )
+      assert_of_descr(
+        {:union,
+         %{
+           integer: {:integer, []},
+           unit: {:unit, []},
+           list: {:list, {:list, {:integer, []}}},
+           map: {
+             :map,
+             %{
+               name: {:binary, []},
+               age: {:integer, []},
+               list: {:list, {:integer, []}},
+               enum: {:enum, [:female, :male]}
+             }
+           }
+         }}
+      )
     end
+  end
+
+  defp assert_of_descr(descr) do
+    assert {:ok, descr} == Descr.of_descr(descr)
+  end
+
+  defp refute_of_descr(descr) do
+    assert :error == Descr.of_descr(descr)
   end
 end
