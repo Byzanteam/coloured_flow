@@ -1,6 +1,8 @@
 defmodule ColouredFlow.ExpressionTest do
   use ExUnit.Case, async: true
 
+  doctest ColouredFlow.Expression, import: true
+
   alias ColouredFlow.Expression
 
   describe "string_to_quoted/1" do
@@ -279,6 +281,6 @@ defmodule ColouredFlow.ExpressionTest do
 
   defp get_free_variables(code) do
     assert {:ok, _ast, variables} = Expression.string_to_quoted(code)
-    variables
+    MapSet.new(variables, &elem(&1, 0))
   end
 end

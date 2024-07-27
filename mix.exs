@@ -60,7 +60,8 @@ defmodule ColouredFlow.MixProject do
       nest_modules_by_prefix: [
         ColouredFlow.Definition,
         ColouredFlow.Enactment,
-        ColouredFlow.Notation
+        ColouredFlow.Notation,
+        ColouredFlow.Expression
       ]
     ]
   end

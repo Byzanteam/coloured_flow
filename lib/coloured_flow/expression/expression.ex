@@ -3,39 +3,32 @@ defmodule ColouredFlow.Expression do
   An Elixir expression.
   """
 
-  alias ColouredFlow.Definition.Variable
-
   alias ColouredFlow.Expression.Scope
 
   @doc """
-  Converts a string to a quoted expression and returns its ast and the free variables.
+  Converts a string to a quoted expression and returns its ast and the unbound variables.
 
   ## Examples
 
-      iex> string_to_quoted("a + b")
-      {
-        :ok,
-        {
-          :+,
-          [line: 1, column: 3],
-          [
-            {:a, [line: 1, column: 1], nil},
-            {:b, [line: 1, column: 5], nil}
-          ]
-        },
-        MapSet.new([:a, :b])
-      }
+      iex> {:ok, _quoted, unbound_vars} = string_to_quoted("a + b")
+      iex> %{a: [[line: 1, column: 1]], b: [[line: 1, column: 5]]} = unbound_vars
+
+      iex> {:ok, _quoted, unbound_vars} = string_to_quoted(\"""
+      ...> fun = fn a -> a + b end
+      ...> fun.(a)
+      ...> \""")
+      iex> %{a: [[line: 2, column: 6]], b: [[line: 1, column: 19]]} =  unbound_vars
   """
 
   @spec string_to_quoted(string :: binary(), env :: Macro.Env.t()) ::
-          {:ok, Macro.t(), MapSet.t(Variable.name())}
+          {:ok, Macro.t(), Scope.vars()}
           | {:error, reason :: term()}
   # credo:disable-for-previous-line JetCredo.Checks.ExplicitAnyType
   def string_to_quoted(string, env \\ __ENV__) when is_binary(string) do
     with({:ok, quoted} <- Code.string_to_quoted(string, columns: true)) do
       scope = analyse_node(quoted, Scope.new(env))
 
-      {:ok, quoted, MapSet.union(scope.free_vars, scope.pinned_vars)}
+      {:ok, quoted, Scope.merge_vars(scope.free_vars, scope.pinned_vars)}
     end
   end
 
@@ -43,13 +36,13 @@ defmodule ColouredFlow.Expression do
   defp analyse_node(quoted, scope)
 
   # {form, meta, args} when is_atom(form)
-  defp analyse_node({name, _meta, context}, scope) when is_atom(name) and is_atom(context) do
-    if MapSet.member?(scope.bound_vars, name) do
+  defp analyse_node({name, meta, context}, scope) when is_atom(name) and is_atom(context) do
+    if Scope.has_var?(scope.bound_vars, name) do
       scope
     else
       %Scope{
         scope
-        | free_vars: MapSet.put(scope.free_vars, name)
+        | free_vars: Scope.put_var(scope.free_vars, name, meta)
       }
     end
   end
@@ -63,10 +56,10 @@ defmodule ColouredFlow.Expression do
 
     pinned_vars =
       pin_scope.free_vars
-      |> MapSet.union(pin_scope.pinned_vars)
-      |> MapSet.difference(scope.bound_vars)
+      |> Scope.merge_vars(pin_scope.pinned_vars)
+      |> Scope.drop_vars(scope.bound_vars)
 
-    %{scope | pinned_vars: pinned_vars}
+    %Scope{scope | pinned_vars: pinned_vars}
   end
 
   defp analyse_node({op, _meta, [left, right]}, scope) when op in [:=, :<-] do
@@ -75,9 +68,9 @@ defmodule ColouredFlow.Expression do
 
     %Scope{
       scope
-      | bound_vars: MapSet.union(scope.bound_vars, left_analysis.free_vars),
-        free_vars: MapSet.union(scope.free_vars, right_analysis.free_vars),
-        pinned_vars: MapSet.union(left_analysis.pinned_vars, right_analysis.pinned_vars)
+      | bound_vars: Scope.merge_vars(scope.bound_vars, left_analysis.free_vars),
+        free_vars: Scope.merge_vars(scope.free_vars, right_analysis.free_vars),
+        pinned_vars: Scope.merge_vars(left_analysis.pinned_vars, right_analysis.pinned_vars)
     }
   end
 
@@ -85,7 +78,7 @@ defmodule ColouredFlow.Expression do
     {args, when_args} = split_last(when_args)
 
     args_analysis = analyse_node(args, Scope.new(scope, bound_vars: scope.bound_vars))
-    bound_vars = MapSet.union(scope.bound_vars, args_analysis.free_vars)
+    bound_vars = Scope.merge_vars(scope.bound_vars, args_analysis.free_vars)
 
     new_scope = Scope.new(scope, bound_vars: bound_vars)
     when_args_analysis = analyse_node(when_args, new_scope)
@@ -93,20 +86,20 @@ defmodule ColouredFlow.Expression do
 
     %Scope{
       scope
-      | free_vars: MapSet.union(scope.free_vars, final_analysis.free_vars),
-        pinned_vars: MapSet.union(args_analysis.pinned_vars, final_analysis.pinned_vars)
+      | free_vars: Scope.merge_vars(scope.free_vars, final_analysis.free_vars),
+        pinned_vars: Scope.merge_vars(args_analysis.pinned_vars, final_analysis.pinned_vars)
     }
   end
 
   defp analyse_node({:->, _meta, [args, body]}, scope) do
     args_analysis = analyse_node(args, Scope.new(scope, bound_vars: scope.bound_vars))
-    bound_vars = MapSet.union(scope.bound_vars, args_analysis.free_vars)
+    bound_vars = Scope.merge_vars(scope.bound_vars, args_analysis.free_vars)
     body_analysis = analyse_node(body, Scope.new(scope, bound_vars: bound_vars))
 
     %Scope{
       scope
-      | free_vars: MapSet.union(scope.free_vars, body_analysis.free_vars),
-        pinned_vars: MapSet.union(args_analysis.pinned_vars, body_analysis.pinned_vars)
+      | free_vars: Scope.merge_vars(scope.free_vars, body_analysis.free_vars),
+        pinned_vars: Scope.merge_vars(args_analysis.pinned_vars, body_analysis.pinned_vars)
     }
   end
 
@@ -118,10 +111,10 @@ defmodule ColouredFlow.Expression do
     new_scope = Scope.new(scope, bound_vars: scope.bound_vars)
     new_scope = analyse_node(args, new_scope)
 
-    %{
+    %Scope{
       scope
-      | free_vars: MapSet.union(scope.free_vars, new_scope.free_vars),
-        pinned_vars: MapSet.union(scope.pinned_vars, new_scope.pinned_vars)
+      | free_vars: Scope.merge_vars(scope.free_vars, new_scope.free_vars),
+        pinned_vars: Scope.merge_vars(scope.pinned_vars, new_scope.pinned_vars)
     }
   end
 
@@ -145,12 +138,12 @@ defmodule ColouredFlow.Expression do
       scope
       | free_vars:
           scope.free_vars
-          |> MapSet.union(do_analysis.free_vars)
-          |> MapSet.union(blocks_analysisi.free_vars),
+          |> Scope.merge_vars(do_analysis.free_vars)
+          |> Scope.merge_vars(blocks_analysisi.free_vars),
         pinned_vars:
           scope.pinned_vars
-          |> MapSet.union(do_analysis.pinned_vars)
-          |> MapSet.union(blocks_analysisi.pinned_vars)
+          |> Scope.merge_vars(do_analysis.pinned_vars)
+          |> Scope.merge_vars(blocks_analysisi.pinned_vars)
     }
   end
 
@@ -176,10 +169,10 @@ defmodule ColouredFlow.Expression do
     new_scope = Scope.new(scope, bound_vars: scope.bound_vars)
     new_scope = analyse_node(value, new_scope)
 
-    %{
+    %Scope{
       scope
-      | free_vars: MapSet.union(scope.free_vars, new_scope.free_vars),
-        pinned_vars: MapSet.union(scope.pinned_vars, new_scope.pinned_vars)
+      | free_vars: Scope.merge_vars(scope.free_vars, new_scope.free_vars),
+        pinned_vars: Scope.merge_vars(scope.pinned_vars, new_scope.pinned_vars)
     }
   end
 
