@@ -20,10 +20,23 @@ defmodule ColouredFlow.Expression do
       iex> %{a: [[line: 2, column: 6]], b: [[line: 1, column: 19]]} =  unbound_vars
   """
 
+  @typedoc """
+  The error that is returned when the string can't be converted to a quoted expression.
+
+  ## Examples
+
+      iex> {:error, reason} = string_to_quoted("a + b +")
+      {:error, {[line: 1, column: 7], "syntax error before: ", ""}}
+  """
+  @type string_to_quoted_error() ::
+          {
+            meta :: keyword(),
+            message_info :: binary() | {binary(), binary()},
+            token :: binary()
+          }
   @spec string_to_quoted(string :: binary(), env :: Macro.Env.t()) ::
           {:ok, Macro.t(), Scope.vars()}
-          | {:error, reason :: term()}
-  # credo:disable-for-previous-line JetCredo.Checks.ExplicitAnyType
+          | {:error, string_to_quoted_error()}
   def string_to_quoted(string, env \\ __ENV__) when is_binary(string) do
     with({:ok, quoted} <- Code.string_to_quoted(string, columns: true)) do
       scope = analyse_node(quoted, Scope.new(env))
