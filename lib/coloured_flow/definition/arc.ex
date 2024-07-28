@@ -6,6 +6,8 @@ defmodule ColouredFlow.Definition.Arc do
   use TypedStructor
 
   alias ColouredFlow.Definition.Expression
+  alias ColouredFlow.Definition.Place
+  alias ColouredFlow.Definition.Transition
 
   @type name() :: binary()
 
@@ -22,6 +24,9 @@ defmodule ColouredFlow.Definition.Arc do
       - `:t_to_p`: from a transition to a place
       - `:p_to_t`: from a place to a transition
       """
+
+    field :transition, Transition.name()
+    field :place, Place.name()
 
     field :expression, Expression.t(),
       doc: """

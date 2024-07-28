@@ -1,6 +1,6 @@
-defmodule ColouredFlow.Enactment.PlaceMarking do
+defmodule ColouredFlow.Enactment.Marking do
   @moduledoc """
-  A place marking is a multi_set of tokens that hold by a place.
+  A (place) marking is a multi_set of tokens that hold by a place.
   """
 
   use TypedStructor
