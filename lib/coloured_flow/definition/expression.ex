@@ -25,11 +25,11 @@ defmodule ColouredFlow.Definition.Expression do
 
   @spec build(binary() | nil) ::
           {:ok, t()}
-          | {:error, ColouredFlow.Expression.string_to_quoted_error()}
+          | {:error, ColouredFlow.Expression.compile_error()}
   def build(expr) when is_nil(expr) when expr === "", do: {:ok, %__MODULE__{}}
 
   def build(expr) when is_binary(expr) do
-    case ColouredFlow.Expression.string_to_quoted(expr, __ENV__) do
+    case ColouredFlow.Expression.compile(expr, __ENV__) do
       {:ok, quoted, vars} ->
         {:ok, %__MODULE__{expr: quoted, vars: Map.keys(vars)}}
 

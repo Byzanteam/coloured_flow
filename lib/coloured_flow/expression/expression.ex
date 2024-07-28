@@ -10,10 +10,10 @@ defmodule ColouredFlow.Expression do
 
   ## Examples
 
-      iex> {:ok, _quoted, unbound_vars} = string_to_quoted("a + b")
+      iex> {:ok, _quoted, unbound_vars} = compile("a + b")
       iex> %{a: [[line: 1, column: 1]], b: [[line: 1, column: 5]]} = unbound_vars
 
-      iex> {:ok, _quoted, unbound_vars} = string_to_quoted(\"""
+      iex> {:ok, _quoted, unbound_vars} = compile(\"""
       ...> fun = fn a -> a + b end
       ...> fun.(a)
       ...> \""")
@@ -25,19 +25,20 @@ defmodule ColouredFlow.Expression do
 
   ## Examples
 
-      iex> {:error, reason} = string_to_quoted("a + b +")
+      iex> {:error, _reason} = compile("a + b +")
       {:error, {[line: 1, column: 7], "syntax error before: ", ""}}
   """
-  @type string_to_quoted_error() ::
+  @type compile_error() ::
           {
             meta :: keyword(),
             message_info :: binary() | {binary(), binary()},
             token :: binary()
           }
-  @spec string_to_quoted(string :: binary(), env :: Macro.Env.t()) ::
+
+  @spec compile(string :: binary(), env :: Macro.Env.t()) ::
           {:ok, Macro.t(), Scope.vars()}
-          | {:error, string_to_quoted_error()}
-  def string_to_quoted(string, env \\ __ENV__) when is_binary(string) do
+          | {:error, compile_error()}
+  def compile(string, env \\ __ENV__) when is_binary(string) do
     with({:ok, quoted} <- Code.string_to_quoted(string, columns: true)) do
       scope = analyse_node(quoted, Scope.new(env))
 

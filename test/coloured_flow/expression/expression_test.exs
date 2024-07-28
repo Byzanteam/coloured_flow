@@ -5,7 +5,7 @@ defmodule ColouredFlow.ExpressionTest do
 
   alias ColouredFlow.Expression
 
-  describe "string_to_quoted/1" do
+  describe "compile/2" do
     test "get free variables" do
       assert MapSet.new([]) === get_free_variables("1 + 2")
       assert MapSet.new([:a]) === get_free_variables("a + 2")
@@ -280,7 +280,7 @@ defmodule ColouredFlow.ExpressionTest do
   end
 
   defp get_free_variables(code) do
-    assert {:ok, _ast, variables} = Expression.string_to_quoted(code)
+    assert {:ok, _ast, variables} = Expression.compile(code)
     MapSet.new(variables, &elem(&1, 0))
   end
 end
