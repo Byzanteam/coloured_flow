@@ -282,6 +282,33 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
+  Check if `multi_set2` is included in `multi_set1`.
+
+  ## Examples
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["a", "b", "c"])
+      iex> ColouredFlow.MultiSet.include?(multi_set1, multi_set2)
+      true
+      iex> ColouredFlow.MultiSet.include?(multi_set2, multi_set1)
+      false
+      iex> multi_set3 = multi_set1
+      iex> ColouredFlow.MultiSet.include?(multi_set1, multi_set3)
+      true
+      iex> ColouredFlow.MultiSet.include?(multi_set3, multi_set1)
+      true
+
+      iex> ColouredFlow.MultiSet.include?(ColouredFlow.MultiSet.new(), ColouredFlow.MultiSet.new())
+      true
+  """
+  @spec include?(t(), t()) :: boolean()
+  def include?(%__MODULE__{} = multi_set1, %__MODULE__{} = multi_set2) do
+    Enum.all?(multi_set2.map, fn {value, coefficient} ->
+      coefficient <= Map.get(multi_set1.map, value, 0)
+    end)
+  end
+
+  @doc """
   Handles the sigil `~b`(short for `bag`, aka `multi_set`).
 
   It returns a `multi_set` split by whitespace.
