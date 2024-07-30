@@ -32,7 +32,7 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
 
   # map
   defp valid?({:map, types}) when is_map(types) and map_size(types) >= 1 do
-    Enum.all?(types, fn {_, type} -> valid?(type) end)
+    Enum.all?(types, fn {key, type} when is_atom(key) -> valid?(type) end)
   end
 
   # enum
@@ -42,7 +42,7 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
 
   # union
   defp valid?({:union, types}) when is_map(types) and map_size(types) >= 2 do
-    Enum.all?(types, fn {_, type} -> valid?(type) end)
+    Enum.all?(types, fn {tag, type} when is_atom(tag) -> valid?(type) end)
   end
 
   # list
