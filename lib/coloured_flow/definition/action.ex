@@ -16,7 +16,7 @@ defmodule ColouredFlow.Definition.Action do
 
     field :inputs, [Variable.name()],
       doc: """
-      The available variables includes the variables in the in-going places,
+      The available variables includes the variables in the in-coming places,
       and the constants. The variables in the out-going isn't available.
       """
 

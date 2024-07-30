@@ -27,8 +27,8 @@ defmodule ColouredFlow.Definition.Arc do
       doc: """
       The expression that is used to evaluate the arc.
 
-      When a transition is fired, the tokens in the in-going places are matched
-      with the in-going arcs will be consumed, and the tokens in the out-going places
+      When a transition is fired, the tokens in the in-coming places are matched
+      with the in-coming arcs will be consumed, and the tokens in the out-going places
       are updated with the out-going arcs.
 
       Note that the in-going arcs can't refer to an unbound variable,
