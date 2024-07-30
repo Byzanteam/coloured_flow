@@ -214,4 +214,17 @@ defmodule ColouredFlow.Expression do
     {left, [right]} = Enum.split(args, -1)
     {left, right}
   end
+
+  @spec eval(quoted :: Macro.t(), binding :: Code.binding(), env :: Macro.Env.t()) ::
+          {:ok, term()} | {:error, Exception.t()}
+  # credo:disable-for-previous-line JetCredo.Checks.ExplicitAnyType
+  def eval(quoted, binding, env \\ __ENV__) when is_list(binding) do
+    # TODO: refactor this to use `Task.Supervisor.async_nolink/3`
+    {result, _binding, _env} =
+      Code.eval_quoted_with_env(quoted, binding, env, prune_binding: true)
+
+    {:ok, result}
+  rescue
+    error -> {:error, error}
+  end
 end

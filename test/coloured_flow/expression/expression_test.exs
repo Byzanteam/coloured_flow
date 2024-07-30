@@ -1,6 +1,5 @@
 defmodule ColouredFlow.ExpressionTest do
   use ExUnit.Case, async: true
-
   doctest ColouredFlow.Expression, import: true
 
   alias ColouredFlow.Expression
@@ -279,8 +278,32 @@ defmodule ColouredFlow.ExpressionTest do
     end
   end
 
+  describe "eval/3" do
+    test "works" do
+      assert {:ok, 3} === Expression.eval(compile!("1 + 2"), [])
+      assert {:ok, 3} === Expression.eval(compile!("a + b"), a: 1, b: 2)
+    end
+
+    test "errors" do
+      assert match?(
+               {:error, exception} when is_exception(exception, ArithmeticError),
+               Expression.eval(compile!("a / 0"), a: 1)
+             )
+
+      assert match?(
+               {:error, exception} when is_exception(exception, CompileError),
+               Expression.eval(compile!("a + b"), a: 1)
+             )
+    end
+  end
+
   defp get_free_variables(code) do
     assert {:ok, _ast, variables} = Expression.compile(code)
     MapSet.new(variables, &elem(&1, 0))
+  end
+
+  defp compile!(code) do
+    assert {:ok, quoted, _variables} = Expression.compile(code)
+    quoted
   end
 end
