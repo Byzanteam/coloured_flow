@@ -97,7 +97,7 @@ exclude_test_files = {:files, %{excluded: ["test/", "apps/*/test/"]}}
           #
           ## Readability Checks
           #
-          {Credo.Check.Readability.AliasOrder, []},
+          {Credo.Check.Readability.AliasOrder, [sort_method: :ascii]},
           {Credo.Check.Readability.FunctionNames, []},
           {Credo.Check.Readability.LargeNumbers, []},
           {Credo.Check.Readability.MaxLineLength, [priority: :low, max_length: 120]},
