@@ -42,7 +42,7 @@ defmodule ColouredFlow.MultiSetTest do
 
   describe "Inspect" do
     test "inspect" do
-      assert ~s|ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])| ===
+      assert ~s|ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])| ===
                inspect(MultiSet.new(~w[a b c a b a]))
     end
   end
@@ -53,9 +53,9 @@ defmodule ColouredFlow.MultiSetTest do
     test "works" do
       a = :a
 
-      assert MultiSet.from_list([{2, 3}, {:a, 2}, {"a", 1}]) === ~b[(1+1)**3 a**2 "a"**1]
-      assert MultiSet.from_list([{:a, 1}, {"a", 1}]) === ~b(a "a")
-      assert MultiSet.from_list([]) === ~b()
+      assert MultiSet.from_pairs([{3, 2}, {2, :a}, {1, "a"}]) === ~b[3**(1+1) 2**a 1**"a"]
+      assert MultiSet.from_pairs([{1, :a}, {1, "a"}]) === ~b(a "a")
+      assert MultiSet.from_pairs([]) === ~b()
 
       assert_raise RuntimeError, ~r/The sigils ~b only accepts pairs/, fn ->
         Code.eval_quoted(quote(do: ~b[URI.parse("/")]))

@@ -5,10 +5,10 @@ defmodule ColouredFlow.MultiSet do
   A `multi_set` can be constructed using `new/0` or `new/1` functions:
 
       iex> ColouredFlow.MultiSet.new()
-      ColouredFlow.MultiSet.from_list([])
+      ColouredFlow.MultiSet.from_pairs([])
 
       iex> ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
   """
 
   use TypedStructor
@@ -18,6 +18,9 @@ defmodule ColouredFlow.MultiSet do
   @type coefficient() :: non_neg_integer()
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @type value() :: term()
+
+  @type pair() :: {coefficient(), value()}
+
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @type t() :: t(term())
 
@@ -35,9 +38,9 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new()
-      ColouredFlow.MultiSet.from_list([])
+      ColouredFlow.MultiSet.from_pairs([])
       iex> ColouredFlow.MultiSet.new(multi_set)
-      ColouredFlow.MultiSet.from_list([])
+      ColouredFlow.MultiSet.from_pairs([])
   """
   @spec new() :: t()
   def new, do: %__MODULE__{}
@@ -48,9 +51,9 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> ColouredFlow.MultiSet.new(["a", "b", "c"])
-      ColouredFlow.MultiSet.from_list([{"a", 1}, {"b", 1}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
   """
   @spec new(Enumerable.t()) :: t()
   def new(enumerable)
@@ -67,18 +70,18 @@ defmodule ColouredFlow.MultiSet do
 
   ## Examples
 
-      iex> ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}, {"d", 0}])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      iex> ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}, {0, "d"}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
 
-      iex> ColouredFlow.MultiSet.from_list([{"a", 3}, {"a", 2}, {"a", 1}])
-      ColouredFlow.MultiSet.from_list([{"a", 6}])
+      iex> ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "a"}, {1, "a"}])
+      ColouredFlow.MultiSet.from_pairs([{6, "a"}])
   """
-  @spec from_list([{value(), coefficient()}]) :: t()
-  def from_list(list) when is_list(list) do
+  @spec from_pairs([pair()]) :: t()
+  def from_pairs(list) when is_list(list) do
     map =
       list
-      |> Enum.filter(&(elem(&1, 1) > 0))
-      |> Enum.reduce(%{}, fn {value, coefficient}, acc ->
+      |> Enum.filter(&(elem(&1, 0) > 0))
+      |> Enum.reduce(%{}, fn {coefficient, value}, acc ->
         Map.update(acc, value, coefficient, &(&1 + coefficient))
       end)
       |> Map.new()
@@ -87,15 +90,32 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
+  Returns pairs list of the `multi_set`.
+
+  ## Examples
+
+      iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
+      iex> ColouredFlow.MultiSet.to_pairs(multi_set)
+      [{3, "a"}, {2, "b"}, {1, "c"}]
+  """
+  @spec to_pairs(t()) :: [pair()]
+  def to_pairs(%__MODULE__{} = multi_set) do
+    Enum.map(multi_set.map, fn {value, coefficient} ->
+      {coefficient, value}
+    end)
+  end
+
+  @doc """
   Duplicates a value `coefficient` times.
 
   ## Examples
 
       iex> ColouredFlow.MultiSet.duplicate("a", 3)
-      ColouredFlow.MultiSet.from_list([{"a", 3}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}])
 
       iex> ColouredFlow.MultiSet.duplicate("a", 0)
-      ColouredFlow.MultiSet.from_list([])
+      ColouredFlow.MultiSet.from_pairs([])
   """
   @spec duplicate(value(), coefficient()) :: t()
   def duplicate(_value, 0) do
@@ -112,7 +132,7 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.to_list(multi_set)
       ["a", "a", "a", "b", "b", "c"]
   """
@@ -129,7 +149,7 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.size(multi_set)
       6
   """
@@ -147,11 +167,11 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new()
-      ColouredFlow.MultiSet.from_list([])
+      ColouredFlow.MultiSet.from_pairs([])
       iex> multi_set = ColouredFlow.MultiSet.put(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"a", 1}])
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}])
       iex> ColouredFlow.MultiSet.put(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"a", 2}])
+      ColouredFlow.MultiSet.from_pairs([{2, "a"}])
   """
   @spec put(t(val), new_val) :: t(val | new_val) when val: value(), new_val: value()
   def put(%__MODULE__{} = multi_set, value) do
@@ -165,15 +185,15 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> multi_set = ColouredFlow.MultiSet.delete(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"a", 2}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{2, "a"}, {2, "b"}, {1, "c"}])
       iex> multi_set = ColouredFlow.MultiSet.delete(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"a", 1}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {2, "b"}, {1, "c"}])
       iex> multi_set = ColouredFlow.MultiSet.delete(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.delete(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])
   """
   @spec delete(t(val1), val2) :: t(val1) when val1: value(), val2: value()
   def delete(%__MODULE__{} = multi_set, value) do
@@ -190,11 +210,11 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> multi_set = ColouredFlow.MultiSet.drop(multi_set, "a")
-      ColouredFlow.MultiSet.from_list([{"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.drop(multi_set, "d")
-      ColouredFlow.MultiSet.from_list([{"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])
   """
   @spec drop(t(val), val) :: t(val) when val: value()
   def drop(%__MODULE__{} = multi_set, value) do
@@ -207,7 +227,7 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.member?(multi_set, "a")
       true
       iex> ColouredFlow.MultiSet.member?(multi_set, "d")
@@ -224,7 +244,7 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> ColouredFlow.MultiSet.coefficient(multi_set, "a")
       3
       iex> ColouredFlow.MultiSet.coefficient(multi_set, "b")
@@ -245,11 +265,11 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
-      ColouredFlow.MultiSet.from_list([{"a", 3}, {"b", 2}, {"c", 1}])
+      ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])
       iex> multi_set2 = ColouredFlow.MultiSet.new(["a", "b", "c", "d", "e", "f"])
-      ColouredFlow.MultiSet.from_list([{"a", 1}, {"b", 1}, {"c", 1}, {"d", 1}, {"e", 1}, {"f", 1}])
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}, {1, "c"}, {1, "d"}, {1, "e"}, {1, "f"}])
       iex> ColouredFlow.MultiSet.union(multi_set1, multi_set2)
-      ColouredFlow.MultiSet.from_list([{"a", 4}, {"b", 3}, {"c", 2}, {"d", 1}, {"e", 1}, {"f", 1}])
+      ColouredFlow.MultiSet.from_pairs([{4, "a"}, {3, "b"}, {2, "c"}, {1, "d"}, {1, "e"}, {1, "f"}])
   """
   @spec union(t(), t()) :: t()
   def union(%__MODULE__{} = multi_set1, %__MODULE__{} = multi_set2) do
@@ -267,17 +287,17 @@ defmodule ColouredFlow.MultiSet do
   It returns a `multi_set` split by whitespace.
   Character interpolation happens for each pairs.
 
-  This sigil accepts pairs of the form `value**coefficient`,
+  This sigil accepts pairs of the form `coefficient**value`,
   a literal `value`(the coefficient is 1),
   or a variable `value`(the coefficient is 1).
 
   ## Examples
 
       iex> a = :a
-      iex> ~b[(1+1)**3 a**2 "a"**1]
-      ColouredFlow.MultiSet.from_list([{2, 3}, {:a, 2}, {"a", 1}])
+      iex> ~b[3**(1+1) 2**a 1**"a"]
+      ColouredFlow.MultiSet.from_pairs([{3, 2}, {2, :a}, {1, "a"}])
       iex> ~b[a "a"]
-      ColouredFlow.MultiSet.from_list([{:a, 1}, {"a", 1}])
+      ColouredFlow.MultiSet.from_pairs([{1, :a}, {1, "a"}])
   """
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @spec sigil_b(term(), list(binary())) :: Macro.t()
@@ -298,32 +318,32 @@ defmodule ColouredFlow.MultiSet do
         {extract_pair(quoted, __CALLER__), column + String.length(pair)}
       end)
       |> elem(0)
-      |> Enum.map(fn {value, coefficient} ->
-        {quote(do: unquote(value)), quote(do: unquote(coefficient))}
+      |> Enum.map(fn {coefficient, value} ->
+        {quote(do: unquote(coefficient)), quote(do: unquote(value))}
       end)
 
     quote do
-      unquote(__MODULE__).from_list([unquote_splicing(list)])
+      unquote(__MODULE__).from_pairs([unquote_splicing(list)])
     end
   end
 
   defp extract_pair(quoted, caller) do
     case quoted do
-      {:**, _meta, [value, coefficient]} ->
-        {value, coefficient}
+      {:**, _meta, [coefficient, value]} ->
+        {coefficient, value}
 
       {_function_name, _meta, nil} ->
-        {quoted, 1}
+        {1, quoted}
 
       _other ->
         if Macro.quoted_literal?(quoted) do
-          {quoted, 1}
+          {1, quoted}
         else
           stacktrace = Macro.Env.stacktrace(caller)
 
           reraise(
             """
-            The sigils ~b only accepts pairs of the form `value**coefficient`,
+            The sigils ~b only accepts pairs of the form `coefficient**value`,
             a literal `value`(the coefficient is 1),
             or a variable `value`(the coefficient is 1).
             """,
@@ -380,9 +400,9 @@ defmodule ColouredFlow.MultiSet do
 
     # credo:disable-for-next-line Credo.Check.Readability.Specs
     def inspect(multi_set, opts) do
-      list = Enum.to_list(multi_set.map)
+      pairs = @for.to_pairs(multi_set)
 
-      concat(["#{inspect(@for)}.from_list(", Inspect.List.inspect(list, opts), ")"])
+      concat(["#{inspect(@for)}.from_pairs(", Inspect.List.inspect(pairs, opts), ")"])
     end
   end
 end
