@@ -3,6 +3,7 @@ defmodule ColouredFlow.Expression do
   An Elixir expression.
   """
 
+  alias ColouredFlow.Expression.EvalDiagnostic
   alias ColouredFlow.Expression.Scope
 
   @doc """
@@ -216,15 +217,27 @@ defmodule ColouredFlow.Expression do
   end
 
   @spec eval(quoted :: Macro.t(), binding :: Code.binding(), env :: Macro.Env.t()) ::
-          {:ok, term()} | {:error, Exception.t()}
+          {:ok, term()} | {:error, [Exception.t()]}
   # credo:disable-for-previous-line JetCredo.Checks.ExplicitAnyType
   def eval(quoted, binding, env \\ __ENV__) when is_list(binding) do
-    # TODO: refactor this to use `Task.Supervisor.async_nolink/3`
-    {result, _binding, _env} =
-      Code.eval_quoted_with_env(quoted, binding, env, prune_binding: true)
+    {result, all_errors_and_warnings} =
+      Code.with_diagnostics(fn ->
+        try do
+          {result, _binding, _env} =
+            Code.eval_quoted_with_env(quoted, binding, env, prune_binding: true)
 
-    {:ok, result}
-  rescue
-    error -> {:error, error}
+          {:ok, result}
+        rescue
+          error -> {:error, error}
+        end
+      end)
+
+    merge_diagnostics(result, all_errors_and_warnings)
+  end
+
+  defp merge_diagnostics({:ok, result}, _diagnostics), do: {:ok, result}
+
+  defp merge_diagnostics({:error, error}, all_errors_and_warnings) do
+    {:error, [error | Enum.map(all_errors_and_warnings, &EvalDiagnostic.exception/1)]}
   end
 end

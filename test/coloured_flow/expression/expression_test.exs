@@ -3,6 +3,7 @@ defmodule ColouredFlow.ExpressionTest do
   doctest ColouredFlow.Expression, import: true
 
   alias ColouredFlow.Expression
+  alias ColouredFlow.Expression.EvalDiagnostic
 
   describe "compile/2" do
     test "get free variables" do
@@ -286,12 +287,14 @@ defmodule ColouredFlow.ExpressionTest do
 
     test "errors" do
       assert match?(
-               {:error, exception} when is_exception(exception, ArithmeticError),
+               {:error, [exception]} when is_exception(exception, ArithmeticError),
                Expression.eval(compile!("a / 0"), a: 1)
              )
 
       assert match?(
-               {:error, exception} when is_exception(exception, CompileError),
+               {:error, [compile_error, exception]}
+               when is_exception(compile_error, CompileError) and
+                      is_exception(exception, EvalDiagnostic),
                Expression.eval(compile!("a + b"), a: 1)
              )
     end
