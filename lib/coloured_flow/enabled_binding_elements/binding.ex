@@ -44,4 +44,37 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
 
     Enum.filter(conflicts, fn {_key, {v1, v2}} -> v1 != v2 end)
   end
+
+  @doc """
+  Compute combinations of bindings that do not conflict.
+
+  ## Examples
+
+      iex> combine([[[x: 1, y: 2], [x: 1, y: 3]], [[x: 1], [x: 3]]])
+      [[y: 2, x: 1], [y: 3, x: 1]]
+
+      iex> combine([[[x: 1, y: 2], [x: 1, y: 3]], [[x: 1], [x: 3]], [[z: 1], [z: 2]]])
+      [[y: 3, x: 1, z: 2], [y: 3, x: 1, z: 1], [y: 2, x: 1, z: 2], [y: 2, x: 1, z: 1]]
+
+      iex> combine([[[x: 1, y: 2], [x: 1, y: 3]], [[x: 1], [x: 3]], [[y: 3]]])
+      [[x: 1, y: 3]]
+
+      iex> combine([[[x: 1, y: 2]], [[x: 1, y: 3]]])
+      []
+
+      iex> combine([[[x: 1, y: 2]]])
+      [[x: 1, y: 2]]
+  """
+  @spec combine(bindings_list :: [[binding()]]) :: [binding()]
+  def combine(bindings_list) do
+    Enum.reduce(bindings_list, [[]], fn bindings, prevs ->
+      for prev <- prevs, binding <- bindings, reduce: [] do
+        acc ->
+          case get_conflicts(prev, binding) do
+            [] -> [Keyword.merge(prev, binding) | acc]
+            _other -> acc
+          end
+      end
+    end)
+  end
 end
