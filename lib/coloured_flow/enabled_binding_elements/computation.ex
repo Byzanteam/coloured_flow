@@ -28,7 +28,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
       Enum.map(inputs, fn {place, arc} ->
         marking = fetch_marking(place, markings)
 
-        Enum.flat_map(arc.returning, fn pattern ->
+        Enum.flat_map(arc.expression.returning, fn pattern ->
           get_bindings(pattern, MultiSet.to_pairs(marking.tokens))
         end)
       end)
@@ -91,7 +91,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {0, {:cpn_variable, value_var}} = pattern,
+         {0, {:cpn_returning_variable, value_var}} = pattern,
          [{_coefficient, value} | rest],
          acc
        ) do
@@ -103,7 +103,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {expected_coefficient, {:cpn_variable, value_var}} = pattern,
+         {expected_coefficient, {:cpn_returning_variable, value_var}} = pattern,
          [{coefficient, value} | rest],
          acc
        )
@@ -125,7 +125,8 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {{:cpn_variable, coefficient_name}, {:cpn_variable, value_var}} = pattern,
+         {{:cpn_returning_variable, coefficient_name}, {:cpn_returning_variable, value_var}} =
+           pattern,
          [{coefficient, value} | rest],
          acc
        ) do
@@ -138,7 +139,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {{:cpn_variable, coefficient_name}, value} = pattern,
+         {{:cpn_returning_variable, coefficient_name}, value} = pattern,
          [{coefficient, value} | rest],
          acc
        ) do

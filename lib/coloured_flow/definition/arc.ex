@@ -5,11 +5,9 @@ defmodule ColouredFlow.Definition.Arc do
 
   use TypedStructor
 
-  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
 
   @type name() :: binary()
 
@@ -44,20 +42,5 @@ defmodule ColouredFlow.Definition.Arc do
       However, outgoing arcs are allowed to refer to an unbound variable
       that will be updated during the transition action.
       """
-
-    # TODO: move into Expression
-    field :returning,
-          list({
-            non_neg_integer() | {:cpn_variable, Variable.name()},
-            {:cpn_variable, Variable.name()} | {:cpn_value, ColourSet.value()}
-          }),
-          doc: """
-          The result that are returned by the arc, is form of a multi-set of tokens.
-
-          - `[{1, {:cpn_variable, :x}}]`: return 1 token of colour `:x`
-          - `[{2, {:cpn_variable, :x}}, {3, {:cpn_variable, :y}}]`: return 2 tokens of colour `:x` or 3 tokens of colour `:y`
-          - `[{:x, {:cpn_variable, :y}}]`: return `x` tokens of colour `:y`
-          - `[{0, {:cpn_variable, :x}}]`: return 0 tokens (empty tokens) of colour `:x`
-          """
   end
 end

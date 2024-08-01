@@ -39,16 +39,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             },
             %Arc{
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             }
           ],
           variables: [
@@ -92,24 +90,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("{2, {}}"),
-              returning: [{1, {}}]
+              expression: Expression.build!("return {2, {}}")
             },
             %Arc{
               name: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, {}}"),
-              returning: [{1, {}}]
+              expression: Expression.build!("return {1, {}}")
             },
             %Arc{
               name: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, {}}"),
-              returning: [{1, {}}]
+              expression: Expression.build!("return {1, {}}")
             }
           ],
           variables: [
@@ -164,24 +159,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, a}"),
-              returning: [{1, {:cpn_variable, :a}}]
+              expression: Expression.build!("return {1, a}")
             },
             %Arc{
               name: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, b}"),
-              returning: [{1, {:cpn_variable, :b}}]
+              expression: Expression.build!("return {1, b}")
             },
             %Arc{
               name: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, c}"),
-              returning: [{1, {:cpn_variable, :c}}]
+              expression: Expression.build!("return {1, c}")
             }
           ],
           variables: [
@@ -238,28 +230,25 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               expression:
                 Expression.build!("""
                 if b > 0 do
-                  {1, a}
+                  return {1, a}
                 else
-                  {1, 0}
+                  return {1, 0}
                 end
-                """),
-              returning: [{1, {:cpn_variable, :a}}, {1, 0}]
+                """)
             },
             %Arc{
               name: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, b}"),
-              returning: [{1, {:cpn_variable, :b}}]
+              expression: Expression.build!("return {1, b}")
             },
             %Arc{
               name: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, c}"),
-              returning: [{1, {:cpn_variable, :c}}]
+              expression: Expression.build!("return {1, c}")
             }
           ],
           variables: [
@@ -323,24 +312,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("{n, x}"),
-              returning: [{{:cpn_variable, :n}, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {n, x}")
             },
             %Arc{
               name: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("{n, {}}"),
-              returning: [{{:cpn_variable, :n}, {}}]
+              expression: Expression.build!("return {n, {}}")
             },
             %Arc{
               name: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             }
           ],
           variables: [
@@ -392,16 +378,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("{0, x}"),
-              returning: [{0, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {0, x}")
             },
             %Arc{
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             }
           ],
           variables: [
@@ -440,16 +424,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("{2, x}"),
-              returning: [{2, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {2, x}")
             },
             %Arc{
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             }
           ],
           variables: [
@@ -489,24 +471,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("{x, c}"),
-              returning: [{{:cpn_variable, :x}, {:cpn_variable, :c}}]
+              expression: Expression.build!("return {x, c}")
             },
             %Arc{
               name: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, c}"),
-              returning: [{1, {:cpn_variable, :c}}]
+              expression: Expression.build!("return {1, c}")
             },
             %Arc{
               name: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             }
           ],
           variables: [
@@ -562,16 +541,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             },
             %Arc{
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("{1, x}"),
-              returning: [{1, {:cpn_variable, :x}}]
+              expression: Expression.build!("return {1, x}")
             }
           ],
           variables: [
