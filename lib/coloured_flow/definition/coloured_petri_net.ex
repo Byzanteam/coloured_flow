@@ -15,7 +15,7 @@ defmodule ColouredFlow.Definition.ColouredPetriNet do
 
   typed_structor enforce: true do
     # data types
-    field :colour_sets, [ColourSet.t()], default: []
+    field :colour_sets, [ColourSet.t()]
 
     # net
     field :places, [Place.t()]

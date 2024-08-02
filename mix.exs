@@ -59,7 +59,9 @@ defmodule ColouredFlow.MixProject do
       extras: ["README.md"],
       nest_modules_by_prefix: [
         ColouredFlow.Definition,
+        ColouredFlow.EnabledBindingElements,
         ColouredFlow.Enactment,
+        ColouredFlow.Expression,
         ColouredFlow.Notation
       ]
     ]

@@ -6,6 +6,8 @@ defmodule ColouredFlow.Definition.Arc do
   use TypedStructor
 
   alias ColouredFlow.Definition.Expression
+  alias ColouredFlow.Definition.Place
+  alias ColouredFlow.Definition.Transition
 
   @type name() :: binary()
 
@@ -23,17 +25,22 @@ defmodule ColouredFlow.Definition.Arc do
       - `:p_to_t`: from a place to a transition
       """
 
+    field :transition, Transition.name()
+    field :place, Place.name()
+
     field :expression, Expression.t(),
       doc: """
       The expression that is used to evaluate the arc.
 
-      When a transition is fired, the tokens in the in-going places are matched
-      with the in-going arcs will be consumed, and the tokens in the out-going places
+      When a transition is fired, the tokens in the in-coming places are matched
+      with the in-coming arcs will be consumed, and the tokens in the out-going places
       are updated with the out-going arcs.
 
-      Note that the in-going arcs can't refer to an unbound variable,
-      howerver, the out-going arcs can refer to an unbound variable that has to be
-      updated by the action of the transition.
+      Note that incoming arcs cannot refer to an unbound variable,
+      but they can refer to variables bound by other incoming arcs
+      (see <https://cpntools.org/2018/01/09/resource-allocation-example/>).
+      However, outgoing arcs are allowed to refer to an unbound variable
+      that will be updated during the transition action.
       """
   end
 end

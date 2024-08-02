@@ -55,7 +55,7 @@ defmodule TypedStructor.Plugins.DocFields do
 
         doc = Keyword.get(field, :doc, "*not documented*")
 
-        ["**`#{inspect(name)}`** `#{type}`", doc]
+        ["### **`#{inspect(name)}`**", "```\n#{type}\n```", doc]
       end)
 
     fields_docs =
@@ -89,6 +89,6 @@ defmodule TypedStructor.Plugins.DocFields do
   end
 
   defp join_rows(rows) do
-    Enum.map_join(rows, "\n\n", fn [title, body] -> "#{title}\n\n#{body}" end)
+    Enum.map_join(rows, "\n\n", fn parts -> Enum.join(parts, "\n\n") end)
   end
 end
