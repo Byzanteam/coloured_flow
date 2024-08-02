@@ -6,12 +6,13 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.EnabledBindingElements.Binding
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
+
+  import ColouredFlow.EnabledBindingElements.Utils
 
   @doc """
   Compute the list of enabled binding elements for a given transition and CPNet markings.
@@ -22,11 +23,11 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           markings :: [Marking.t()]
         ) :: [BindingElement.t()]
   def list(transition, cpnet, markings) do
-    inputs = fetch_inputs(transition, cpnet)
+    inputs = get_arcs_with_place(transition, :p_to_t, cpnet)
 
     arc_bindings =
-      Enum.map(inputs, fn {place, arc} ->
-        marking = fetch_marking(place, markings)
+      Enum.map(inputs, fn {arc, place} ->
+        marking = get_marking(place, markings)
 
         Enum.flat_map(arc.expression.returnings, fn pattern ->
           get_bindings(pattern, MultiSet.to_pairs(marking.tokens))
@@ -37,13 +38,13 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
 
     Enum.flat_map(binding_combinations, fn binding ->
       inputs
-      |> Enum.reduce_while([], fn {place, arc}, acc ->
+      |> Enum.reduce_while([], fn {arc, place}, acc ->
         with(
           {:ok, {coefficient, value}} <- eval_arc(arc, binding),
-          colour_set = fetch_colour_set(place.colour_set, cpnet),
+          colour_set = fetch_colour_set!(place.colour_set, cpnet),
           {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type),
           {:ok, true} <- eval_transition_guard(transition, binding),
-          marking = fetch_marking(place, markings),
+          marking = get_marking(place, markings),
           tokens = MultiSet.duplicate(value, coefficient),
           true <- MultiSet.include?(marking.tokens, tokens)
         ) do
@@ -66,38 +67,6 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           ]
       end
     end)
-  end
-
-  defp fetch_inputs(%Transition{} = transition, %ColouredPetriNet{} = cpnet) do
-    %{name: transition_name} = transition
-
-    cpnet.arcs
-    |> Stream.flat_map(fn
-      %Arc{orientation: :p_to_t, transition: ^transition_name} = arc -> [arc]
-      %Arc{} -> []
-    end)
-    |> Stream.map(fn %Arc{place: place_name} = arc ->
-      place =
-        Enum.find(cpnet.places, &match?(%Place{name: ^place_name}, &1)) ||
-          raise "Place with name #{inspect(place_name)} not found in the petri net."
-
-      {place, arc}
-    end)
-  end
-
-  defp fetch_marking(%Place{} = place, markings) do
-    Enum.find(
-      markings,
-      %Marking{place: place.name, tokens: MultiSet.new()},
-      fn %Marking{place: place_name} -> place_name == place.name end
-    )
-  end
-
-  defp fetch_colour_set(colour_set, %ColouredPetriNet{} = cpnet) do
-    Enum.find(
-      cpnet.colour_sets,
-      &match?(%ColourSet{name: ^colour_set}, &1)
-    ) || raise "Colour set with name #{inspect(colour_set)} not found in the petri net."
   end
 
   defp get_bindings(pattern, marking, acc \\ [])

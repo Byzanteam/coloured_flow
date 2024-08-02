@@ -10,19 +10,20 @@ defmodule ColouredFlow.Definition.Arc do
   alias ColouredFlow.Definition.Transition
 
   @type name() :: binary()
+  @type orientation() :: :p_to_t | :t_to_p
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
     field :name, name()
 
-    field :orientation, :t_to_p | :p_to_t,
+    field :orientation, orientation(),
       doc: """
       The orientation of the arc, whether it is from a transition to a place,
       or from a place to a transition.
 
-      - `:t_to_p`: from a transition to a place
       - `:p_to_t`: from a place to a transition
+      - `:t_to_p`: from a transition to a place
       """
 
     field :transition, Transition.name()

@@ -12,13 +12,12 @@ defmodule ColouredFlow.Definition.Transition do
 
   @type name() :: binary()
 
-  typed_structor enforce: true do
+  typed_structor do
     plugin TypedStructor.Plugins.DocFields
 
-    field :name, name()
+    field :name, name(), enforce: true
 
     field :guard, Expression.t(),
-      default: nil,
       doc: """
       The guard of the transition.
       If not specified, the transition is always enabled.
@@ -27,7 +26,6 @@ defmodule ColouredFlow.Definition.Transition do
       """
 
     field :action, Action.t(),
-      default: nil,
       doc: """
       The action to be executed when the transition is fired,
       you can utilize it to do side effects,
