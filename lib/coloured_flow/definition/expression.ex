@@ -10,7 +10,7 @@ defmodule ColouredFlow.Definition.Expression do
 
   @type returning() :: {
           non_neg_integer() | {:cpn_returning_variable, Variable.name()},
-          {:cpn_returning_variable, Variable.name()} | {:cpn_value, ColourSet.value()}
+          {:cpn_returning_variable, Variable.name()} | ColourSet.value()
         }
 
   typed_structor enforce: true do
@@ -28,7 +28,7 @@ defmodule ColouredFlow.Definition.Expression do
       be bound to the values that are passed in.
       """
 
-    field :returning,
+    field :returnings,
           list(returning()),
           default: [],
           doc: """
@@ -47,12 +47,33 @@ defmodule ColouredFlow.Definition.Expression do
   def build(expr) when is_nil(expr) when expr === "", do: {:ok, %__MODULE__{}}
 
   def build(expr) when is_binary(expr) do
-    case ColouredFlow.Expression.compile(expr, __ENV__) do
-      {:ok, quoted, vars, returning} ->
-        {:ok, %__MODULE__{expr: quoted, vars: Map.keys(vars), returning: returning}}
+    with(
+      {:ok, quoted, vars, returnings} <- ColouredFlow.Expression.compile(expr, __ENV__),
+      {:ok, returnings} <- check_returning_vars(vars, returnings)
+    ) do
+      {:ok, %__MODULE__{expr: quoted, vars: Map.keys(vars), returnings: returnings}}
+    end
+  end
 
-      {:error, reason} ->
-        {:error, reason}
+  defp check_returning_vars(vars, returnings) do
+    returning_vars = Enum.flat_map(returnings, &ColouredFlow.Expression.Returning.get_var_names/1)
+    returning_vars = Map.new(returning_vars)
+    vars = Enum.map(vars, &elem(&1, 0))
+    diff = Map.drop(returning_vars, vars)
+
+    case Map.to_list(diff) do
+      [] ->
+        {:ok, Enum.map(returnings, &ColouredFlow.Expression.Returning.prune_meta/1)}
+
+      [{name, meta} | _rest] ->
+        {
+          :error,
+          {
+            meta,
+            "missing returning variable in vars: #{inspect(name)}",
+            ""
+          }
+        }
     end
   end
 

@@ -7,10 +7,13 @@ defmodule ColouredFlow.Expression.ReturningTest do
 
   describe "extract_returning/1" do
     test "works" do
-      assert {1, {:cpn_returning_variable, :x}} = Returning.extract_returning(quote do: {1, x})
-      assert {{:cpn_returning_variable, :x}, 1} = Returning.extract_returning(quote do: {x, 1})
+      assert {1, {:cpn_returning_variable, {:x, []}}} =
+               Returning.extract_returning(quote do: {1, x})
 
-      assert {{:cpn_returning_variable, :x}, {:cpn_returning_variable, :y}} =
+      assert {{:cpn_returning_variable, {:x, []}}, 1} =
+               Returning.extract_returning(quote do: {x, 1})
+
+      assert {{:cpn_returning_variable, {:x, []}}, {:cpn_returning_variable, {:y, []}}} =
                Returning.extract_returning(quote do: {x, y})
     end
 

@@ -284,14 +284,33 @@ defmodule ColouredFlow.ExpressionTest do
       assert {:ok, _ast, _variables, [{1, {:a, :b, :c}}]} =
                Expression.compile("return {1, {:a, :b, :c}}")
 
-      assert {:ok, _ast, _variables, [{1, {:cpn_returning_variable, :y}}]} =
+      assert {
+               :ok,
+               _ast,
+               _variables,
+               [{1, {:cpn_returning_variable, {:y, [line: 1, column: 12]}}}]
+             } =
                Expression.compile("return {1, y}")
 
-      assert {:ok, _ast, _variables, [{{:cpn_returning_variable, :x}, true}]} =
+      assert {
+               :ok,
+               _ast,
+               _variables,
+               [{{:cpn_returning_variable, {:x, [line: 1, column: 9]}}, true}]
+             } =
                Expression.compile("return {x, true}")
 
-      assert {:ok, _ast, _variables,
-              [{{:cpn_returning_variable, :x}, {:cpn_returning_variable, :y}}]} =
+      assert {
+               :ok,
+               _ast,
+               _variables,
+               [
+                 {
+                   {:cpn_returning_variable, {:x, [line: 1, column: 9]}},
+                   {:cpn_returning_variable, {:y, [line: 1, column: 12]}}
+                 }
+               ]
+             } =
                Expression.compile("return {x, y}")
     end
   end

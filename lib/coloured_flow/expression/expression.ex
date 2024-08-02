@@ -24,7 +24,7 @@ defmodule ColouredFlow.Expression do
 
       iex> {:ok, _quoted, unbound_vars, returning} = compile("return {a, b}")
       iex> %{a: [[line: 1, column: 9]], b: [[line: 1, column: 12]]} = unbound_vars
-      iex> [{{:cpn_returning_variable, :a}, {:cpn_returning_variable, :b}}] = returning
+      iex> [{{:cpn_returning_variable, {:a, [line: 1, column: 9]}}, {:cpn_returning_variable, {:b, [line: 1, column: 12]}}}] = returning
   """
 
   @typedoc """

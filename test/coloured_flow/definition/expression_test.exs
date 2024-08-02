@@ -14,6 +14,30 @@ defmodule ColouredFlow.Definition.ExpressionTest do
                """)
     end
 
+    test "returnings" do
+      assert {:ok, %Expression{returnings: [{1, {:cpn_returning_variable, :a}}]}} =
+               Expression.build("""
+               return {1, a}
+               """)
+
+      assert {:ok, %Expression{returnings: [{0, 1}, {1, {:cpn_returning_variable, :a}}]}} =
+               Expression.build("""
+               if a > 1 do
+                return {1, a}
+               else
+                return {0, 1}
+               end
+               """)
+    end
+
+    test "returning should be in vars" do
+      assert {:error, {[{:line, 2}, {:column, 12}], "missing returning variable in vars: :b", ""}} =
+               Expression.build("""
+               b = 1
+               return {1, b}
+               """)
+    end
+
     test "return errors" do
       assert {
                :error,
