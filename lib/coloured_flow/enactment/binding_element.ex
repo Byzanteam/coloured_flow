@@ -16,12 +16,14 @@ defmodule ColouredFlow.Enactment.BindingElement do
   alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Enactment.Marking
 
+  @type binding() :: {Variable.name(), ColourSet.value()}
+
   typed_structor enfore: true do
     plugin TypedStructor.Plugins.DocFields
 
     field :transition, Transition.name()
 
-    field :binding, [{Variable.name(), ColourSet.value()}],
+    field :binding, [binding()],
       doc: """
       A bound assignments(aka binding) is an output arc variable
       that has been bound to an input arc or to the guard.
