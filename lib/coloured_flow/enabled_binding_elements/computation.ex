@@ -20,7 +20,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           transition :: Transition.t(),
           cpnet :: ColouredPetriNet.t(),
           markings :: [Marking.t()]
-        ) :: [BindingElement.t()]
+        ) :: [{binding :: BindingElement.t(), to_consume :: [Marking.t()]}]
   def list(transition, cpnet, markings) do
     inputs = fetch_inputs(transition, cpnet)
 
@@ -35,20 +35,27 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
 
     binding_combinations = Binding.combine(arc_bindings)
 
-    Enum.filter(binding_combinations, fn binding ->
-      Enum.all?(inputs, fn {place, arc} ->
+    Enum.flat_map(binding_combinations, fn binding ->
+      inputs
+      |> Enum.reduce_while([], fn {place, arc}, acc ->
         with(
           {:ok, {coefficient, value}} <- eval_arc(arc, binding),
           colour_set = fetch_colour_set(place.colour_set, cpnet),
           {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type),
-          {:ok, true} <- eval_transition_guard(transition, binding)
+          {:ok, true} <- eval_transition_guard(transition, binding),
+          marking = fetch_marking(place, markings),
+          tokens = MultiSet.duplicate(value, coefficient),
+          true <- MultiSet.include?(marking.tokens, tokens)
         ) do
-          marking = fetch_marking(place, markings)
-          MultiSet.include?(marking.tokens, MultiSet.duplicate(value, coefficient))
+          {:cont, [%Marking{place: place.name, tokens: tokens} | acc]}
         else
-          _other -> false
+          _other -> {:halt, :error}
         end
       end)
+      |> case do
+        :error -> []
+        to_consume -> [{binding, to_consume}]
+      end
     end)
   end
 
