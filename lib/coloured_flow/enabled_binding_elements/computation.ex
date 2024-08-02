@@ -20,7 +20,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           transition :: Transition.t(),
           cpnet :: ColouredPetriNet.t(),
           markings :: [Marking.t()]
-        ) :: [{binding :: BindingElement.t(), to_consume :: [Marking.t()]}]
+        ) :: [BindingElement.t()]
   def list(transition, cpnet, markings) do
     inputs = fetch_inputs(transition, cpnet)
 
@@ -53,8 +53,17 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
         end
       end)
       |> case do
-        :error -> []
-        to_consume -> [{binding, to_consume}]
+        :error ->
+          []
+
+        to_consume ->
+          [
+            %BindingElement{
+              transition: transition.name,
+              binding: binding,
+              to_consume: to_consume
+            }
+          ]
       end
     end)
   end
