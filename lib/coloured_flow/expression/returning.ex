@@ -135,7 +135,7 @@ defmodule ColouredFlow.Expression.Returning do
       iex> prune_meta({{:cpn_returning_variable, {:x, []}}, {:cpn_returning_variable, {:y, []}}})
       {{:cpn_returning_variable, :x}, {:cpn_returning_variable, :y}}
   """
-  @spec prune_meta(returning()) :: ColouredFlow.Definition.Expression.returning()
+  @spec prune_meta(returning()) :: ColouredFlow.Definition.Arc.returning()
   def prune_meta({coefficient, value}) do
     coefficient = do_prune_meta(coefficient)
     value = do_prune_meta(value)

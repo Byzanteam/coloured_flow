@@ -1,12 +1,7 @@
 defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   use ExUnit.Case, async: true
+  use ColouredFlow.DefinitionHelpers
 
-  alias ColouredFlow.Definition.Arc
-  alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Expression
-  alias ColouredFlow.Definition.Place
-  alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
@@ -36,20 +31,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "return {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -99,27 +94,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {2, {}}")
-            },
-            %Arc{
+              expression: "return {2, {}}"
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, {}}")
-            },
-            %Arc{
+              expression: "return {1, {}}"
+            ),
+            build_arc!(
               name: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, {}}")
-            }
+              expression: "return {1, {}}"
+            )
           ],
           variables: [
             %Variable{name: :n, colour_set: :int},
@@ -175,27 +170,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, a}")
-            },
-            %Arc{
+              expression: "return {1, a}"
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, b}")
-            },
-            %Arc{
+              expression: "return {1, b}"
+            ),
+            build_arc!(
               name: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, c}")
-            }
+              expression: "return {1, c}"
+            )
           ],
           variables: [
             %Variable{name: :a, colour_set: :int},
@@ -285,34 +280,33 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
-              expression:
-                Expression.build!("""
-                if b > 0 do
-                  return {1, a}
-                else
-                  return {1, 0}
-                end
-                """)
-            },
-            %Arc{
+              expression: """
+              if b > 0 do
+                return {1, a}
+              else
+                return {1, 0}
+              end
+              """
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, b}")
-            },
-            %Arc{
+              expression: "return {1, b}"
+            ),
+            build_arc!(
               name: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, c}")
-            }
+              expression: "return {1, c}"
+            )
           ],
           variables: [
             %Variable{name: :a, colour_set: :int},
@@ -419,27 +413,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "numbers",
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {n, x}")
-            },
-            %Arc{
+              expression: "return {n, x}"
+            ),
+            build_arc!(
               name: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {n, {}}")
-            },
-            %Arc{
+              expression: "return {n, {}}"
+            ),
+            build_arc!(
               name: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :n, colour_set: :int},
@@ -541,20 +535,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "return {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -609,20 +603,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {2, x}")
-            },
-            %Arc{
+              expression: "return {2, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -662,27 +656,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "numbers",
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {x, c}")
-            },
-            %Arc{
+              expression: "return {x, c}"
+            ),
+            build_arc!(
               name: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, c}")
-            },
-            %Arc{
+              expression: "return {1, c}"
+            ),
+            build_arc!(
               name: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int},
@@ -767,20 +761,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "return {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}

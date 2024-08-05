@@ -5,7 +5,6 @@ defmodule ColouredFlow.Expression do
 
   alias ColouredFlow.Expression.Env
   alias ColouredFlow.Expression.EvalDiagnostic
-  alias ColouredFlow.Expression.Returning
   alias ColouredFlow.Expression.Scope
 
   @doc """
@@ -13,18 +12,14 @@ defmodule ColouredFlow.Expression do
 
   ## Examples
 
-      iex> {:ok, _quoted, unbound_vars, _returning} = compile("a + b")
+      iex> {:ok, _quoted, unbound_vars} = compile("a + b")
       iex> %{a: [[line: 1, column: 1]], b: [[line: 1, column: 5]]} = unbound_vars
 
-      iex> {:ok, _quoted, unbound_vars, _returning} = compile(\"""
+      iex> {:ok, _quoted, unbound_vars} = compile(\"""
       ...> fun = fn a -> a + b end
       ...> fun.(a)
       ...> \""")
       iex> %{a: [[line: 2, column: 6]], b: [[line: 1, column: 19]]} =  unbound_vars
-
-      iex> {:ok, _quoted, unbound_vars, returning} = compile("return {a, b}")
-      iex> %{a: [[line: 1, column: 9]], b: [[line: 1, column: 12]]} = unbound_vars
-      iex> [{{:cpn_returning_variable, {:a, [line: 1, column: 9]}}, {:cpn_returning_variable, {:b, [line: 1, column: 12]}}}] = returning
   """
 
   @typedoc """
@@ -42,17 +37,14 @@ defmodule ColouredFlow.Expression do
             token :: binary()
           }
 
-  @typep returning() :: ColouredFlow.Definition.Expression.returning()
-
   @spec compile(string :: binary(), env :: Macro.Env.t()) ::
-          {:ok, Macro.t(), Scope.vars(), list(returning())}
+          {:ok, Macro.t(), Scope.vars()}
           | {:error, compile_error()}
   def compile(string, env \\ __ENV__) when is_binary(string) do
     with({:ok, quoted} <- Code.string_to_quoted(string, columns: true)) do
       scope = analyse_node(quoted, Scope.new(env))
-      returnings = extract_returnings(quoted)
 
-      {:ok, quoted, Scope.merge_vars(scope.free_vars, scope.pinned_vars), returnings}
+      {:ok, quoted, Scope.merge_vars(scope.free_vars, scope.pinned_vars)}
     end
   end
 
@@ -223,18 +215,6 @@ defmodule ColouredFlow.Expression do
   defp split_last(args) when is_list(args) do
     {left, [right]} = Enum.split(args, -1)
     {left, right}
-  end
-
-  defp extract_returnings(quoted) do
-    quoted
-    |> Macro.prewalk([], fn
-      {:return, _meta, [returning]} = ast, acc ->
-        {ast, [Returning.extract_returning(returning) | acc]}
-
-      ast, acc ->
-        {ast, acc}
-    end)
-    |> elem(1)
   end
 
   @spec eval(quoted :: Macro.t(), binding :: Code.binding()) ::

@@ -1,13 +1,7 @@
 defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
   use ExUnit.Case, async: true
+  use ColouredFlow.DefinitionHelpers
 
-  alias ColouredFlow.Definition.Action
-  alias ColouredFlow.Definition.Arc
-  alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Expression
-  alias ColouredFlow.Definition.Place
-  alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
   alias ColouredFlow.EnabledBindingElements.Occurrence
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
@@ -35,20 +29,20 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "return {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -89,27 +83,27 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {2, {}}")
-            },
-            %Arc{
+              expression: "return {2, {}}"
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, {}}")
-            },
-            %Arc{
+              expression: "return {1, {}}"
+            ),
+            build_arc!(
               name: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, {}}")
-            }
+              expression: "return {1, {}}"
+            )
           ],
           variables: []
         }
@@ -152,27 +146,27 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "number",
               place: "number",
               transition: transition.name,
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "return {1, x}"
+            ),
+            build_arc!(
               name: "one",
               place: "one",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "return {1, x}"
+            ),
+            build_arc!(
               name: "another",
               place: "another",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "return {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -233,34 +227,34 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "dividend",
               place: "dividend",
               transition: transition.name,
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, dividend}")
-            },
-            %Arc{
+              expression: "return {1, dividend}"
+            ),
+            build_arc!(
               name: "divisor",
               place: "divisor",
               transition: transition.name,
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, divisor}")
-            },
-            %Arc{
+              expression: "return {1, divisor}"
+            ),
+            build_arc!(
               name: "quotient",
               place: "quotient",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, quotient}")
-            },
-            %Arc{
+              expression: "return {1, quotient}"
+            ),
+            build_arc!(
               name: "modulo",
               place: "modulo",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, modulo}")
-            }
+              expression: "return {1, modulo}"
+            )
           ],
           variables: [
             %Variable{name: :dividend, colour_set: :int},

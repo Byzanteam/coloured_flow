@@ -29,7 +29,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
       Enum.map(inputs, fn {arc, place} ->
         marking = get_marking(place, markings)
 
-        Enum.flat_map(arc.expression.returnings, fn pattern ->
+        Enum.flat_map(arc.returnings, fn pattern ->
           get_bindings(pattern, MultiSet.to_pairs(marking.tokens))
         end)
       end)
