@@ -8,8 +8,11 @@ defmodule ColouredFlow.Definition.Action do
 
   use TypedStructor
 
+  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Variable
+
+  @type output() :: {:cpn_output_variable, Variable.name()} | ColourSet.value()
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
@@ -20,7 +23,7 @@ defmodule ColouredFlow.Definition.Action do
       and the constants. The variables in the out-going isn't available.
       """
 
-    field :outputs, [Variable.name()],
+    field :outputs, [output()],
       doc: """
       The variables are the unbound variables in the out-going places.
       """
