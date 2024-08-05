@@ -11,6 +11,7 @@ defmodule ColouredFlow.MixProject do
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       dialyzer: dialyzer(),
       # Docs
@@ -37,6 +38,9 @@ defmodule ColouredFlow.MixProject do
       {:typed_structor, "~> 0.4"}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   defp aliases do
     [
