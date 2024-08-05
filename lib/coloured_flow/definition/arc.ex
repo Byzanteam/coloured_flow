@@ -14,7 +14,7 @@ defmodule ColouredFlow.Definition.Arc do
 
   @type name() :: binary()
   @type orientation() :: :p_to_t | :t_to_p
-  @type returning() :: {
+  @type binding() :: {
           non_neg_integer() | {:cpn_bind_variable, Variable.name()},
           {:cpn_bind_variable, Variable.name()} | ColourSet.value()
         }
@@ -51,48 +51,48 @@ defmodule ColouredFlow.Definition.Arc do
       that will be updated during the transition action.
       """
 
-    field :returnings,
-          list(returning()),
+    field :bindings,
+          list(binding()),
           default: [],
           doc: """
           The result that are returned by the arc, is form of a multi-set of tokens.
 
-          - `[{1, {:cpn_bind_variable, :x}}]`: return 1 token of colour `:x`
-          - `[{2, {:cpn_bind_variable, :x}}, {3, {:cpn_bind_variable, :y}}]`: return 2 tokens of colour `:x` or 3 tokens of colour `:y`
-          - `[{:x, {:cpn_bind_variable, :y}}]`: return `x` tokens of colour `:y`
-          - `[{0, {:cpn_bind_variable, :x}}]`: return 0 tokens (empty tokens) of colour `:x`
+          - `[{1, {:cpn_bind_variable, :x}}]`: binds 1 token of colour `:x`
+          - `[{2, {:cpn_bind_variable, :x}}, {3, {:cpn_bind_variable, :y}}]`: binds 2 tokens of colour `:x` or 3 tokens of colour `:y`
+          - `[{:x, {:cpn_bind_variable, :y}}]`: binds `x` tokens of colour `:y`
+          - `[{0, {:cpn_bind_variable, :x}}]`: binds 0 tokens (empty tokens) of colour `:x`
           """
   end
 
   @doc """
-  Build returnings from the expression of the arc.
+  Build bindings from the expression of the arc.
 
   ## Examples
 
-      iex> expression = ColouredFlow.Definition.Expression.build!("return {a, b}")
-      iex> {:ok, returning} = build_returnings(expression)
-      iex> [{{:cpn_bind_variable, :a}, {:cpn_bind_variable, :b}}] = returning
+      iex> expression = ColouredFlow.Definition.Expression.build!("bind {a, b}")
+      iex> {:ok, binding} = build_bindings(expression)
+      iex> [{{:cpn_bind_variable, :a}, {:cpn_bind_variable, :b}}] = binding
   """
-  @spec build_returnings(Expression.t()) ::
-          {:ok, list(returning())} | {:error, ColouredFlow.Expression.compile_error()}
-  def build_returnings(expression) do
-    returnings = extract_returnings(expression.expr)
-    check_returning_vars(expression.vars, returnings)
+  @spec build_bindings(Expression.t()) ::
+          {:ok, list(binding())} | {:error, ColouredFlow.Expression.compile_error()}
+  def build_bindings(%Expression{} = expression) do
+    bindings = extract_bindings(expression.expr)
+    check_binding_vars(expression.vars, bindings)
   end
 
-  @spec build_returnings!(Expression.t()) :: list(returning())
-  def build_returnings!(expression) do
-    case build_returnings(expression) do
-      {:ok, returnings} -> returnings
-      {:error, reason} -> raise reason
+  @spec build_bindings!(Expression.t()) :: list(binding())
+  def build_bindings!(%Expression{} = expression) do
+    case build_bindings(expression) do
+      {:ok, bindings} -> bindings
+      {:error, reason} -> raise inspect(reason)
     end
   end
 
-  defp extract_returnings(quoted) do
+  defp extract_bindings(quoted) do
     quoted
     |> Macro.prewalk([], fn
-      {:return, _meta, [returning]} = ast, acc ->
-        {ast, [ArcExpression.extract_returning(returning) | acc]}
+      {:bind, _meta, [binding]} = ast, acc ->
+        {ast, [ArcExpression.extract_binding(binding) | acc]}
 
       ast, acc ->
         {ast, acc}
@@ -100,21 +100,21 @@ defmodule ColouredFlow.Definition.Arc do
     |> elem(1)
   end
 
-  defp check_returning_vars(vars, returnings) do
-    returning_vars = Enum.flat_map(returnings, &ArcExpression.get_var_names/1)
-    returning_vars = Map.new(returning_vars)
-    diff = Map.drop(returning_vars, vars)
+  defp check_binding_vars(vars, bindings) do
+    binding_vars = Enum.flat_map(bindings, &ArcExpression.get_var_names/1)
+    binding_vars = Map.new(binding_vars)
+    diff = Map.drop(binding_vars, vars)
 
     case Map.to_list(diff) do
       [] ->
-        {:ok, Enum.map(returnings, &ArcExpression.prune_meta/1)}
+        {:ok, Enum.map(bindings, &ArcExpression.prune_meta/1)}
 
       [{name, meta} | _rest] ->
         {
           :error,
           {
             meta,
-            "missing returning variable in vars: #{inspect(name)}",
+            "missing binding variable in vars: #{inspect(name)}",
             ""
           }
         }

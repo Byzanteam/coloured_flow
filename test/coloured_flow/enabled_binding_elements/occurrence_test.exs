@@ -34,14 +34,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: "return {1, x}"
+              expression: "bind {1, x}"
             ),
             build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "return {1, x}"
+              expression: "bind {1, x}"
             )
           ],
           variables: [
@@ -88,21 +88,21 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
-              expression: "return {2, {}}"
+              expression: "bind {2, {}}"
             ),
             build_arc!(
               name: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
-              expression: "return {1, {}}"
+              expression: "bind {1, {}}"
             ),
             build_arc!(
               name: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "return {1, {}}"
+              expression: "bind {1, {}}"
             )
           ],
           variables: []
@@ -151,21 +151,21 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "number",
               transition: transition.name,
               orientation: :p_to_t,
-              expression: "return {1, x}"
+              expression: "bind {1, x}"
             ),
             build_arc!(
               name: "one",
               place: "one",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "return {1, x}"
+              expression: "bind {1, x}"
             ),
             build_arc!(
               name: "another",
               place: "another",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "return {1, x}"
+              expression: "bind {1, x}"
             )
           ],
           variables: [
@@ -232,28 +232,28 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "dividend",
               transition: transition.name,
               orientation: :p_to_t,
-              expression: "return {1, dividend}"
+              expression: "bind {1, dividend}"
             ),
             build_arc!(
               name: "divisor",
               place: "divisor",
               transition: transition.name,
               orientation: :p_to_t,
-              expression: "return {1, divisor}"
+              expression: "bind {1, divisor}"
             ),
             build_arc!(
               name: "quotient",
               place: "quotient",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "return {1, quotient}"
+              expression: "bind {1, quotient}"
             ),
             build_arc!(
               name: "modulo",
               place: "modulo",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "return {1, modulo}"
+              expression: "bind {1, modulo}"
             )
           ],
           variables: [

@@ -33,10 +33,10 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
     to_produce =
       Enum.map(outputs, fn {arc, place} ->
         # TODO: return errors
-        {:ok, returning} = ColouredFlow.Expression.eval(arc.expression.expr, binding)
+        {:ok, result} = ColouredFlow.Expression.eval(arc.expression.expr, binding)
 
         # TODO: return errors
-        {:ok, tokens} = build_tokens(returning, place.colour_set, cpnet)
+        {:ok, tokens} = build_tokens(result, place.colour_set, cpnet)
 
         %Marking{place: place.name, tokens: tokens}
       end)
@@ -64,7 +64,7 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
 
   @spec build_tokens(
           # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-          returning :: term(),
+          binding :: term(),
           colour_set :: ColourSet.name(),
           cpnet :: ColouredPetriNet.t()
         ) :: {:ok, MultiSet.t()}

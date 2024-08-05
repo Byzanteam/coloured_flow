@@ -1,15 +1,14 @@
 defmodule ColouredFlow.Expression.Arc do
   @moduledoc """
-  The arc expression returning value, it's used to
-  define the returning value of an arc expression.
+  The arc expression utility module.
   """
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Variable
 
-  @returning_tag :cpn_bind_variable
+  @binding_tag :cpn_bind_variable
 
-  @typep returning() :: {
+  @typep binding() :: {
            coefficient ::
              non_neg_integer() | {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}},
            value ::
@@ -17,42 +16,43 @@ defmodule ColouredFlow.Expression.Arc do
          }
 
   @doc """
-  A macro that return the value as is, this macro is used to mark the returning value.
+  A macro that returns the value as is,
+  this macro is used to mark the binding value.
 
   ```elixir
-  return {1, x}
+  bind {1, x}
   # is equal to the below when evaluated
   {1, x}
   ```
   """
-  defmacro return(returning) do
+  defmacro bind(binding) do
     quote do
-      unquote(returning)
+      unquote(binding)
     end
   end
 
   @doc """
-  Extracts the returning from a quoted expression.
+  Extracts the binding from a quoted expression.
 
   ## Examples
 
-      iex> extract_returning(quote do: {1, x})
+      iex> extract_binding(quote do: {1, x})
       {1, {:cpn_bind_variable, {:x, []}}}
 
-      iex> extract_returning(quote do: {x, y})
+      iex> extract_binding(quote do: {x, y})
       {{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}}
   """
-  @spec extract_returning(Macro.t()) :: returning()
-  def extract_returning({coefficient, value}) do
+  @spec extract_binding(Macro.t()) :: binding()
+  def extract_binding({coefficient, value}) do
     coefficient = extract_coeefficient(coefficient)
     value = extract_value(value)
 
     {coefficient, value}
   end
 
-  def extract_returning(declaration) do
+  def extract_binding(declaration) do
     raise """
-    Invalid declaration for returning, expected a tuple of size 2, got: #{inspect(declaration)}
+    Invalid declaration for binding, expected a tuple of size 2, got: #{inspect(declaration)}
     """
   end
 
@@ -65,16 +65,16 @@ defmodule ColouredFlow.Expression.Arc do
 
           value ->
             raise """
-            Invalid coefficient for returning, expected a non-negative integer, got: #{inspect(value)}
+            Invalid coefficient for binding, expected a non-negative integer, got: #{inspect(value)}
             """
         end
 
       var?(quoted) ->
-        {@returning_tag, extract_var(quoted)}
+        {@binding_tag, extract_var(quoted)}
 
       true ->
         raise """
-        Invalid coefficient for returning, expected a non-negative integer or a variable, got: #{inspect(quoted)}
+        Invalid coefficient for binding, expected a non-negative integer or a variable, got: #{inspect(quoted)}
         """
     end
   end
@@ -85,11 +85,11 @@ defmodule ColouredFlow.Expression.Arc do
         extract_literal(quoted)
 
       var?(quoted) ->
-        {@returning_tag, extract_var(quoted)}
+        {@binding_tag, extract_var(quoted)}
 
       true ->
         raise """
-        Invalid value for returning, expected a variable, got: #{inspect(quoted)}
+        Invalid value for binding, expected a variable, got: #{inspect(quoted)}
         """
     end
   end
@@ -107,7 +107,7 @@ defmodule ColouredFlow.Expression.Arc do
     do: {name, meta}
 
   @doc """
-  Get the variable names from the returning value.
+  Get the variable names from the binding value.
 
   ## Examples
 
@@ -117,16 +117,16 @@ defmodule ColouredFlow.Expression.Arc do
       iex> get_var_names({{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}})
       [{:x, []}, {:y, []}]
   """
-  @spec get_var_names(returning()) :: [{Variable.name(), meta :: Keyword.t()}]
+  @spec get_var_names(binding()) :: [{Variable.name(), meta :: Keyword.t()}]
   def get_var_names({coefficient, value}) do
     Enum.flat_map([coefficient, value], fn
-      {@returning_tag, name_and_meta} -> [name_and_meta]
+      {@binding_tag, name_and_meta} -> [name_and_meta]
       _other -> []
     end)
   end
 
   @doc """
-  Prune the meta information from the returning value.
+  Prune the meta information from the binding value.
 
   ## Examples
 
@@ -136,7 +136,7 @@ defmodule ColouredFlow.Expression.Arc do
       iex> prune_meta({{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}})
       {{:cpn_bind_variable, :x}, {:cpn_bind_variable, :y}}
   """
-  @spec prune_meta(returning()) :: ColouredFlow.Definition.Arc.returning()
+  @spec prune_meta(binding()) :: ColouredFlow.Definition.Arc.binding()
   def prune_meta({coefficient, value}) do
     coefficient = do_prune_meta(coefficient)
     value = do_prune_meta(value)
@@ -144,6 +144,6 @@ defmodule ColouredFlow.Expression.Arc do
     {coefficient, value}
   end
 
-  defp do_prune_meta({@returning_tag, {name, _meta}}), do: {@returning_tag, name}
+  defp do_prune_meta({@binding_tag, {name, _meta}}), do: {@binding_tag, name}
   defp do_prune_meta(value), do: value
 end

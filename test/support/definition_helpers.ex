@@ -29,7 +29,7 @@ defmodule ColouredFlow.DefinitionHelpers do
         ) :: Arc.t()
   def build_arc!(params) do
     expr = Expression.build!(params[:expression])
-    returnings = Arc.build_returnings!(expr)
+    bindings = Arc.build_bindings!(expr)
 
     %Arc{
       name: params[:name],
@@ -37,7 +37,7 @@ defmodule ColouredFlow.DefinitionHelpers do
       transition: params[:transition],
       orientation: params[:orientation],
       expression: expr,
-      returnings: returnings
+      bindings: bindings
     }
   end
 end
