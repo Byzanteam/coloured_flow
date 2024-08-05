@@ -6,10 +6,10 @@ defmodule ColouredFlow.Definition.ArcTest do
   alias ColouredFlow.Definition.Expression
 
   test "returnings" do
-    assert {:ok, [{1, {:cpn_returning_variable, :a}}]} =
+    assert {:ok, [{1, {:cpn_bind_variable, :a}}]} =
              Arc.build_returnings(Expression.build!("return {1, a}"))
 
-    assert {:ok, [{0, 1}, {1, {:cpn_returning_variable, :a}}]} =
+    assert {:ok, [{0, 1}, {1, {:cpn_bind_variable, :a}}]} =
              Arc.build_returnings(
                Expression.build!("""
                if a > 1 do
@@ -39,13 +39,13 @@ defmodule ColouredFlow.Definition.ArcTest do
 
       assert {
                :ok,
-               [{1, {:cpn_returning_variable, :y}}]
+               [{1, {:cpn_bind_variable, :y}}]
              } =
                Arc.build_returnings(Expression.build!("return {1, y}"))
 
       assert {
                :ok,
-               [{{:cpn_returning_variable, :x}, true}]
+               [{{:cpn_bind_variable, :x}, true}]
              } =
                Arc.build_returnings(Expression.build!("return {x, true}"))
 
@@ -53,8 +53,8 @@ defmodule ColouredFlow.Definition.ArcTest do
                :ok,
                [
                  {
-                   {:cpn_returning_variable, :x},
-                   {:cpn_returning_variable, :y}
+                   {:cpn_bind_variable, :x},
+                   {:cpn_bind_variable, :y}
                  }
                ]
              } =

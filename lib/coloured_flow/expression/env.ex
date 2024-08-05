@@ -8,11 +8,11 @@ defmodule ColouredFlow.Expression.Env do
 
   ## Env
 
-  1. `import ColouredFlow.Expression.Returning, only: [return: 1]`
+  1. `import ColouredFlow.Expression.Arc, only: [return: 1]`
   """
   @spec make_env() :: Macro.Env.t()
   def make_env do
-    import ColouredFlow.Expression.Returning, only: [return: 1], warn: false
+    import ColouredFlow.Expression.Arc, only: [return: 1], warn: false
 
     __ENV__
   end

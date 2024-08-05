@@ -10,13 +10,13 @@ defmodule ColouredFlow.Definition.Arc do
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Definition.Variable
-  alias ColouredFlow.Expression.Returning
+  alias ColouredFlow.Expression.Arc, as: ArcExpression
 
   @type name() :: binary()
   @type orientation() :: :p_to_t | :t_to_p
   @type returning() :: {
-          non_neg_integer() | {:cpn_returning_variable, Variable.name()},
-          {:cpn_returning_variable, Variable.name()} | ColourSet.value()
+          non_neg_integer() | {:cpn_bind_variable, Variable.name()},
+          {:cpn_bind_variable, Variable.name()} | ColourSet.value()
         }
 
   typed_structor enforce: true do
@@ -57,10 +57,10 @@ defmodule ColouredFlow.Definition.Arc do
           doc: """
           The result that are returned by the arc, is form of a multi-set of tokens.
 
-          - `[{1, {:cpn_returning_variable, :x}}]`: return 1 token of colour `:x`
-          - `[{2, {:cpn_returning_variable, :x}}, {3, {:cpn_returning_variable, :y}}]`: return 2 tokens of colour `:x` or 3 tokens of colour `:y`
-          - `[{:x, {:cpn_returning_variable, :y}}]`: return `x` tokens of colour `:y`
-          - `[{0, {:cpn_returning_variable, :x}}]`: return 0 tokens (empty tokens) of colour `:x`
+          - `[{1, {:cpn_bind_variable, :x}}]`: return 1 token of colour `:x`
+          - `[{2, {:cpn_bind_variable, :x}}, {3, {:cpn_bind_variable, :y}}]`: return 2 tokens of colour `:x` or 3 tokens of colour `:y`
+          - `[{:x, {:cpn_bind_variable, :y}}]`: return `x` tokens of colour `:y`
+          - `[{0, {:cpn_bind_variable, :x}}]`: return 0 tokens (empty tokens) of colour `:x`
           """
   end
 
@@ -71,7 +71,7 @@ defmodule ColouredFlow.Definition.Arc do
 
       iex> expression = ColouredFlow.Definition.Expression.build!("return {a, b}")
       iex> {:ok, returning} = build_returnings(expression)
-      iex> [{{:cpn_returning_variable, :a}, {:cpn_returning_variable, :b}}] = returning
+      iex> [{{:cpn_bind_variable, :a}, {:cpn_bind_variable, :b}}] = returning
   """
   @spec build_returnings(Expression.t()) ::
           {:ok, list(returning())} | {:error, ColouredFlow.Expression.compile_error()}
@@ -92,7 +92,7 @@ defmodule ColouredFlow.Definition.Arc do
     quoted
     |> Macro.prewalk([], fn
       {:return, _meta, [returning]} = ast, acc ->
-        {ast, [Returning.extract_returning(returning) | acc]}
+        {ast, [ArcExpression.extract_returning(returning) | acc]}
 
       ast, acc ->
         {ast, acc}
@@ -101,13 +101,13 @@ defmodule ColouredFlow.Definition.Arc do
   end
 
   defp check_returning_vars(vars, returnings) do
-    returning_vars = Enum.flat_map(returnings, &ColouredFlow.Expression.Returning.get_var_names/1)
+    returning_vars = Enum.flat_map(returnings, &ArcExpression.get_var_names/1)
     returning_vars = Map.new(returning_vars)
     diff = Map.drop(returning_vars, vars)
 
     case Map.to_list(diff) do
       [] ->
-        {:ok, Enum.map(returnings, &Returning.prune_meta/1)}
+        {:ok, Enum.map(returnings, &ArcExpression.prune_meta/1)}
 
       [{name, meta} | _rest] ->
         {

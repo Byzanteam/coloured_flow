@@ -1,18 +1,19 @@
-defmodule ColouredFlow.Expression.Returning do
+defmodule ColouredFlow.Expression.Arc do
   @moduledoc """
-  The expression returning value, it's used to define the returning value of an expression.
+  The arc expression returning value, it's used to
+  define the returning value of an arc expression.
   """
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Variable
 
-  @returning_tag :cpn_returning_variable
+  @returning_tag :cpn_bind_variable
 
   @typep returning() :: {
            coefficient ::
-             non_neg_integer() | {:cpn_returning_variable, {Variable.name(), meta :: Keyword.t()}},
+             non_neg_integer() | {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}},
            value ::
-             {:cpn_returning_variable, {Variable.name(), meta :: Keyword.t()}} | ColourSet.value()
+             {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}} | ColourSet.value()
          }
 
   @doc """
@@ -36,10 +37,10 @@ defmodule ColouredFlow.Expression.Returning do
   ## Examples
 
       iex> extract_returning(quote do: {1, x})
-      {1, {:cpn_returning_variable, {:x, []}}}
+      {1, {:cpn_bind_variable, {:x, []}}}
 
       iex> extract_returning(quote do: {x, y})
-      {{:cpn_returning_variable, {:x, []}}, {:cpn_returning_variable, {:y, []}}}
+      {{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}}
   """
   @spec extract_returning(Macro.t()) :: returning()
   def extract_returning({coefficient, value}) do
@@ -110,10 +111,10 @@ defmodule ColouredFlow.Expression.Returning do
 
   ## Examples
 
-      iex> get_var_names({1, {:cpn_returning_variable, {:x, [line: 1, column: 2]}}})
+      iex> get_var_names({1, {:cpn_bind_variable, {:x, [line: 1, column: 2]}}})
       [{:x, [line: 1, column: 2]}]
 
-      iex> get_var_names({{:cpn_returning_variable, {:x, []}}, {:cpn_returning_variable, {:y, []}}})
+      iex> get_var_names({{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}})
       [{:x, []}, {:y, []}]
   """
   @spec get_var_names(returning()) :: [{Variable.name(), meta :: Keyword.t()}]
@@ -129,11 +130,11 @@ defmodule ColouredFlow.Expression.Returning do
 
   ## Examples
 
-      iex> prune_meta({1, {:cpn_returning_variable, {:x, [line: 1, column: 2]}}})
-      {1, {:cpn_returning_variable, :x}}
+      iex> prune_meta({1, {:cpn_bind_variable, {:x, [line: 1, column: 2]}}})
+      {1, {:cpn_bind_variable, :x}}
 
-      iex> prune_meta({{:cpn_returning_variable, {:x, []}}, {:cpn_returning_variable, {:y, []}}})
-      {{:cpn_returning_variable, :x}, {:cpn_returning_variable, :y}}
+      iex> prune_meta({{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}})
+      {{:cpn_bind_variable, :x}, {:cpn_bind_variable, :y}}
   """
   @spec prune_meta(returning()) :: ColouredFlow.Definition.Arc.returning()
   def prune_meta({coefficient, value}) do

@@ -76,7 +76,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {0, {:cpn_returning_variable, value_var}} = pattern,
+         {0, {:cpn_bind_variable, value_var}} = pattern,
          [{_coefficient, value} | rest],
          acc
        ) do
@@ -88,7 +88,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {expected_coefficient, {:cpn_returning_variable, value_var}} = pattern,
+         {expected_coefficient, {:cpn_bind_variable, value_var}} = pattern,
          [{coefficient, value} | rest],
          acc
        )
@@ -110,7 +110,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {{:cpn_returning_variable, coefficient_name}, {:cpn_returning_variable, value_var}} =
+         {{:cpn_bind_variable, coefficient_name}, {:cpn_bind_variable, value_var}} =
            pattern,
          [{coefficient, value} | rest],
          acc
@@ -124,7 +124,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   end
 
   defp get_bindings(
-         {{:cpn_returning_variable, coefficient_name}, value} = pattern,
+         {{:cpn_bind_variable, coefficient_name}, value} = pattern,
          [{coefficient, value} | rest],
          acc
        ) do
