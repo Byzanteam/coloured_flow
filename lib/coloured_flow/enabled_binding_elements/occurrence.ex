@@ -7,6 +7,7 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
@@ -14,17 +15,17 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
 
   import ColouredFlow.EnabledBindingElements.Utils
 
+  @doc """
+  Occurs the binding element with the free assignments and the CPNet,
+  returns the occurrence of the binding element.
+  """
   @spec occur(
           binding_element :: BindingElement.t(),
-          action_outputs :: [ColourSet.value()],
+          free_assignments :: [{Variable.name(), ColourSet.value()}],
           cpnet :: ColouredPetriNet.t()
         ) :: Occurrence.t()
-  def occur(binding_element, action_outputs, cpnet) do
+  def occur(binding_element, free_assignments, cpnet) do
     transition = fetch_transition!(binding_element.transition, cpnet)
-
-    output_vars = if transition.action, do: transition.action.outputs, else: []
-    # TODO: return errors
-    free_assignments = zip_free_assignments(output_vars, action_outputs)
 
     binding = Enum.concat(binding_element.binding, free_assignments)
 
@@ -53,13 +54,6 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
       nil -> raise "Transition not found: #{name}"
       transition -> transition
     end
-  end
-
-  defp zip_free_assignments(vars, values, acc \\ [])
-  defp zip_free_assignments([], [], acc), do: acc
-
-  defp zip_free_assignments([var | vars], [value | values], acc) do
-    zip_free_assignments(vars, values, [{var, value} | acc])
   end
 
   @spec build_tokens(

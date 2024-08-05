@@ -55,9 +55,9 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
       }
 
-      action_outputs = []
+      free_assignments = []
 
-      occurrence = Occurrence.occur(binding_element, action_outputs, cpnet)
+      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [] === occurrence.free_assignments
       assert [%Marking{place: "even", tokens: ~b[1**2]}] === occurrence.to_produce
@@ -118,9 +118,9 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ]
         }
 
-      action_outputs = []
+      free_assignments = []
 
-      occurrence = Occurrence.occur(binding_element, action_outputs, cpnet)
+      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [] === occurrence.free_assignments
       assert [%Marking{place: "unit", tokens: ~b[1**{}]}] === occurrence.to_produce
@@ -182,9 +182,9 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ]
         }
 
-      action_outputs = []
+      free_assignments = []
 
-      occurrence = Occurrence.occur(binding_element, action_outputs, cpnet)
+      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [] === occurrence.free_assignments
 
@@ -205,11 +205,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         name: "div",
         guard: nil,
         action: %Action{
-          inputs: [:dividend, :divisor],
-          outputs: [:quotient, :modulo],
+          free_vars: [:dividend, :divisor],
+          outputs: [{:cpn_output_variable, :quotient}, {:cpn_output_variable, :modulo}],
           code:
             Expression.build!("""
-            {div(dividend, divisor), Integer.mod(dividend, divisor)}
+            quotient = div(dividend, divisor)
+            modulo = Integer.mod(dividend, divisor)
+
+            output {quotient, modulo}
             """)
         }
       }
@@ -274,9 +277,9 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ]
         }
 
-      action_outputs = [2, 1]
+      free_assignments = [quotient: 2, modulo: 1]
 
-      occurrence = Occurrence.occur(binding_element, action_outputs, cpnet)
+      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [modulo: 1, quotient: 2] === sort_assignments(occurrence.free_assignments)
 
