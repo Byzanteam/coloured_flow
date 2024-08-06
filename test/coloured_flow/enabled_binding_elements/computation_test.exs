@@ -1,12 +1,8 @@
 defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   use ExUnit.Case, async: true
+  use ColouredFlow.DefinitionHelpers
 
-  alias ColouredFlow.Definition.Arc
-  alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Expression
-  alias ColouredFlow.Definition.Place
-  alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
+  alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
 
@@ -35,20 +31,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "bind {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -60,9 +56,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {[x: 1], [%Marking{place: "integer", tokens: ~b[1]}]},
-               {[x: 1], [%Marking{place: "integer", tokens: ~b[1]}]},
-               {[x: 2], [%Marking{place: "integer", tokens: ~b[2]}]}
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "integer", tokens: ~b[1]}]
+               },
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "integer", tokens: ~b[1]}]
+               },
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 2],
+                 to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+               }
              ] === ebes
     end
 
@@ -86,27 +94,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {2, {}}")
-            },
-            %Arc{
+              expression: "bind {2, {}}"
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, {}}")
-            },
-            %Arc{
+              expression: "bind {1, {}}"
+            ),
+            build_arc!(
               name: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, {}}")
-            }
+              expression: "bind {1, {}}"
+            )
           ],
           variables: [
             %Variable{name: :n, colour_set: :int},
@@ -122,9 +130,13 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [],
-                 [%Marking{place: "a", tokens: ~b[2**{}]}, %Marking{place: "b", tokens: ~b[{}]}]
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
                }
              ] === ebes
 
@@ -158,27 +170,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, a}")
-            },
-            %Arc{
+              expression: "bind {1, a}"
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, b}")
-            },
-            %Arc{
+              expression: "bind {1, b}"
+            ),
+            build_arc!(
               name: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, c}")
-            }
+              expression: "bind {1, c}"
+            )
           ],
           variables: [
             %Variable{name: :a, colour_set: :int},
@@ -195,44 +207,50 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [a: 1, b: 4],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 1, b: 4],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[1]},
                    %Marking{place: "b", tokens: ~b[4]}
                  ]
                },
-               {
-                 [a: 1, b: 5],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 1, b: 5],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[1]},
                    %Marking{place: "b", tokens: ~b[5]}
                  ]
                },
-               {
-                 [a: 2, b: 4],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 2, b: 4],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[2]},
                    %Marking{place: "b", tokens: ~b[4]}
                  ]
                },
-               {
-                 [a: 2, b: 5],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 2, b: 5],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[2]},
                    %Marking{place: "b", tokens: ~b[5]}
                  ]
                },
-               {
-                 [a: 3, b: 4],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 3, b: 4],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[3]},
                    %Marking{place: "b", tokens: ~b[4]}
                  ]
                },
-               {
-                 [a: 3, b: 5],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 3, b: 5],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[3]},
                    %Marking{place: "b", tokens: ~b[5]}
                  ]
@@ -241,7 +259,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                ebes
     end
 
-    test "works with multiple returning on the in-coming arc" do
+    test "works with multiple bindings on the in-coming arc" do
       # if b > 0: a + b, else: a + 0
       # (a, b) -> [a + b] -> (c)
       colour_sets = [
@@ -262,34 +280,33 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "a",
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
-              expression:
-                Expression.build!("""
-                if b > 0 do
-                  return {1, a}
-                else
-                  return {1, 0}
-                end
-                """)
-            },
-            %Arc{
+              expression: """
+              if b > 0 do
+                bind {1, a}
+              else
+                bind {1, 0}
+              end
+              """
+            ),
+            build_arc!(
               name: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, b}")
-            },
-            %Arc{
+              expression: "bind {1, b}"
+            ),
+            build_arc!(
               name: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, c}")
-            }
+              expression: "bind {1, c}"
+            )
           ],
           variables: [
             %Variable{name: :a, colour_set: :int},
@@ -306,44 +323,50 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [a: 0, b: -1],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 0, b: -1],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[0]},
                    %Marking{place: "b", tokens: ~b[1**-1]}
                  ]
                },
-               {
-                 [a: 0, b: 0],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 0, b: 0],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[0]},
                    %Marking{place: "b", tokens: ~b[0]}
                  ]
                },
-               {
-                 [a: 0, b: 1],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 0, b: 1],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[0]},
                    %Marking{place: "b", tokens: ~b[1]}
                  ]
                },
-               {
-                 [a: 1, b: -1],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 1, b: -1],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[0]},
                    %Marking{place: "b", tokens: ~b[1**-1]}
                  ]
                },
-               {
-                 [a: 1, b: 0],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 1, b: 0],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[0]},
                    %Marking{place: "b", tokens: ~b[0]}
                  ]
                },
-               {
-                 [a: 1, b: 1],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 1, b: 1],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[1]},
                    %Marking{place: "b", tokens: ~b[1]}
                  ]
@@ -358,9 +381,10 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [a: 1, b: 1],
-                 [
+               %BindingElement{
+                 transition: "a + b",
+                 binding: [a: 1, b: 1],
+                 to_consume: [
                    %Marking{place: "a", tokens: ~b[1]},
                    %Marking{place: "b", tokens: ~b[1]}
                  ]
@@ -389,27 +413,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "numbers",
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {n, x}")
-            },
-            %Arc{
+              expression: "bind {n, x}"
+            ),
+            build_arc!(
               name: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {n, {}}")
-            },
-            %Arc{
+              expression: "bind {n, {}}"
+            ),
+            build_arc!(
               name: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "bind {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :n, colour_set: :int},
@@ -425,58 +449,66 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [n: 0, x: 1],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 0, x: 1],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[0**{}]},
                    %Marking{place: "numbers", tokens: ~b[0**1]}
                  ]
                },
-               {
-                 [n: 0, x: 2],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 0, x: 2],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[0**{}]},
                    %Marking{place: "numbers", tokens: ~b[0**2]}
                  ]
                },
-               {
-                 [n: 0, x: 3],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 0, x: 3],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[0**{}]},
                    %Marking{place: "numbers", tokens: ~b[0**3]}
                  ]
                },
-               {
-                 [n: 1, x: 1],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 1],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[{}]},
                    %Marking{place: "numbers", tokens: ~b[1]}
                  ]
                },
-               {
-                 [n: 1, x: 2],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 2],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[{}]},
                    %Marking{place: "numbers", tokens: ~b[2]}
                  ]
                },
-               {
-                 [n: 1, x: 3],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 3],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[{}]},
                    %Marking{place: "numbers", tokens: ~b[3]}
                  ]
                },
-               {
-                 [n: 2, x: 1],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 2, x: 1],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[2**{}]},
                    %Marking{place: "numbers", tokens: ~b[2**1]}
                  ]
                },
-               {
-                 [n: 2, x: 2],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 2, x: 2],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[2**{}]},
                    %Marking{place: "numbers", tokens: ~b[2**2]}
                  ]
@@ -503,20 +535,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "bind {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -528,21 +560,24 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [x: 1],
-                 [
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 1],
+                 to_consume: [
                    %Marking{place: "integer", tokens: ~b[1]}
                  ]
                },
-               {
-                 [x: 1],
-                 [
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 1],
+                 to_consume: [
                    %Marking{place: "integer", tokens: ~b[1]}
                  ]
                },
-               {
-                 [x: 2],
-                 [
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 2],
+                 to_consume: [
                    %Marking{place: "integer", tokens: ~b[2]}
                  ]
                }
@@ -568,20 +603,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {2, x}")
-            },
-            %Arc{
+              expression: "bind {2, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "bind {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -593,9 +628,10 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [x: 1],
-                 [%Marking{place: "integer", tokens: ~b[2**1]}]
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "integer", tokens: ~b[2**1]}]
                }
              ] === ebes
     end
@@ -620,27 +656,27 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "numbers",
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {x, c}")
-            },
-            %Arc{
+              expression: "bind {x, c}"
+            ),
+            build_arc!(
               name: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, c}")
-            },
-            %Arc{
+              expression: "bind {1, c}"
+            ),
+            build_arc!(
               name: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "bind {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int},
@@ -656,37 +692,42 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [c: 2, x: 0],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [c: 2, x: 0],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[2]},
                    %Marking{place: "numbers", tokens: ~b[0**2]}
                  ]
                },
-               {
-                 [c: 2, x: 1],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [c: 2, x: 1],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[2]},
                    %Marking{place: "numbers", tokens: ~b[1**2]}
                  ]
                },
-               {
-                 [c: 2, x: 2],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [c: 2, x: 2],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[2]},
                    %Marking{place: "numbers", tokens: ~b[2**2]}
                  ]
                },
-               {
-                 [c: 3, x: 0],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [c: 3, x: 0],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[3]},
                    %Marking{place: "numbers", tokens: ~b[0**3]}
                  ]
                },
-               {
-                 [c: 3, x: 1],
-                 [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [c: 3, x: 1],
+                 to_consume: [
                    %Marking{place: "counter", tokens: ~b[3]},
                    %Marking{place: "numbers", tokens: ~b[1**3]}
                  ]
@@ -720,20 +761,20 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
             transition
           ],
           arcs: [
-            %Arc{
+            build_arc!(
               name: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
-              expression: Expression.build!("return {1, x}")
-            },
-            %Arc{
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
               name: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: Expression.build!("return {1, x}")
-            }
+              expression: "bind {1, x}"
+            )
           ],
           variables: [
             %Variable{name: :x, colour_set: :int}
@@ -745,9 +786,10 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
-               {
-                 [x: 2],
-                 [%Marking{place: "integer", tokens: ~b[2]}]
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 2],
+                 to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
                }
              ] === ebes
     end
@@ -756,11 +798,11 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   defp list_bindings(transition, cpnet, markings) do
     transition
     |> Computation.list(cpnet, markings)
-    |> Enum.map(fn {binding, to_consume} ->
-      binding = List.keysort(binding, 0)
-      to_consume = Enum.sort_by(to_consume, & &1.place)
+    |> Enum.map(fn binding_element ->
+      binding = List.keysort(binding_element.binding, 0)
+      to_consume = Enum.sort_by(binding_element.to_consume, & &1.place)
 
-      {binding, to_consume}
+      %{binding_element | binding: binding, to_consume: to_consume}
     end)
     |> Enum.sort()
   end

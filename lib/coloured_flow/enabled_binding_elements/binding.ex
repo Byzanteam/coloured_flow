@@ -5,8 +5,9 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Variable
+  alias ColouredFlow.Enactment.BindingElement
 
-  @typep binding() :: [{Variable.name(), ColourSet.value()}]
+  @typep binding() :: BindingElement.binding()
 
   @doc """
   Get the conflicts between two bindings.
@@ -28,7 +29,7 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
       iex> get_conflicts([{:x, 1}, {:y, 2}], [{:z, 3}])
       []
   """
-  @spec get_conflicts(binding1 :: binding(), binding2 :: binding()) ::
+  @spec get_conflicts(binding1 :: [binding()], binding2 :: [binding()]) ::
           [{Variable.name(), {ColourSet.value(), ColourSet.value()}}]
   def get_conflicts(binding1, []) when is_list(binding1), do: []
   def get_conflicts([], binding2) when is_list(binding2), do: []

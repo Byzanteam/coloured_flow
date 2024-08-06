@@ -8,23 +8,72 @@ defmodule ColouredFlow.Definition.Action do
 
   use TypedStructor
 
+  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Variable
+  alias ColouredFlow.Expression.Action, as: ActionExpression
+
+  @type output() :: {:cpn_output_variable, Variable.name()} | ColourSet.value()
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
-    field :inputs, [Variable.name()],
-      doc: """
-      The available variables includes the variables in the in-coming places,
-      and the constants. The variables in the out-going isn't available.
-      """
-
-    field :outputs, [Variable.name()],
+    field :free_vars, [Variable.name()],
       doc: """
       The variables are the unbound variables in the out-going places.
+      The return values of the action will be bound to the free variables.
+
+      - `[:x, :y]`: outputs will be bound to [x, y]
+      """
+
+    field :outputs, [output()],
+      doc: """
+      The return values of the action will be bound to the free variables.
+
+      - `[1, {:cpn_bind_variable, :x}]`: outputs [1, x]
+      - `[{:cpn_bind_variable, :x}, {:cpn_bind_variable, :5}]`: outputs [x, x]
       """
 
     field :code, Expression.t()
+  end
+
+  @spec build_outputs(Expression.t()) ::
+          {:ok, list(output())} | {:error, ColouredFlow.Expression.compile_error()}
+  def build_outputs(%Expression{} = expression) do
+    outputs = extract_outputs(expression.expr)
+    check_outputs(outputs)
+  end
+
+  @spec build_outputs!(Expression.t()) :: list(output())
+  def build_outputs!(%Expression{} = expression) do
+    case build_outputs(expression) do
+      {:ok, outputs} -> outputs
+      {:error, reason} -> raise inspect(reason)
+    end
+  end
+
+  defp extract_outputs(quoted) do
+    quoted
+    |> Macro.prewalk([], fn
+      {:output, _meta, [result]} = ast, acc ->
+        {ast, [ActionExpression.extract_output(result) | acc]}
+
+      ast, acc ->
+        {ast, acc}
+    end)
+    |> elem(1)
+  end
+
+  defp check_outputs([output]), do: {:ok, [output]}
+
+  defp check_outputs(outputs) do
+    # OPTIMIZE: check output types at the corresponding position
+    outputs
+    |> Enum.group_by(&Enum.count/1)
+    |> map_size()
+    |> case do
+      1 -> {:ok, outputs}
+      _other -> {:error, {[], "All outputs must have the same length", ""}}
+    end
   end
 end

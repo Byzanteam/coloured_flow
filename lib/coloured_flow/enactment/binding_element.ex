@@ -14,25 +14,22 @@ defmodule ColouredFlow.Enactment.BindingElement do
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Definition.Variable
+  alias ColouredFlow.Enactment.Marking
+
+  @type binding() :: {Variable.name(), ColourSet.value()}
 
   typed_structor enfore: true do
     plugin TypedStructor.Plugins.DocFields
 
     field :transition, Transition.name()
 
-    field :bound_assignments, {Variable.name(), ColourSet.value()},
+    field :binding, [binding()],
       doc: """
       A bound assignments(aka binding) is an output arc variable
       that has been bound to an input arc or to the guard.
       """
 
-    field :free_assignments, {Variable.name(), ColourSet.value()},
-      doc: """
-      A free assignments(aka binding) is an output arc variable,
-      that has not been bound to an input arc or to the guard.
-
-      The free assignments must be bound after the transition is fired,
-      and they are bound to the outputs of the transition action.
-      """
+    field :to_consume, [Marking.t()],
+      doc: "The markings to be consumed while firing the transition."
   end
 end

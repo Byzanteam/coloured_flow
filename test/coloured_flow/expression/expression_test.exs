@@ -279,42 +279,6 @@ defmodule ColouredFlow.ExpressionTest do
     end
   end
 
-  describe "returns returnings while compiling" do
-    test "works" do
-      assert {:ok, _ast, _variables, [{1, {:a, :b, :c}}]} =
-               Expression.compile("return {1, {:a, :b, :c}}")
-
-      assert {
-               :ok,
-               _ast,
-               _variables,
-               [{1, {:cpn_returning_variable, {:y, [line: 1, column: 12]}}}]
-             } =
-               Expression.compile("return {1, y}")
-
-      assert {
-               :ok,
-               _ast,
-               _variables,
-               [{{:cpn_returning_variable, {:x, [line: 1, column: 9]}}, true}]
-             } =
-               Expression.compile("return {x, true}")
-
-      assert {
-               :ok,
-               _ast,
-               _variables,
-               [
-                 {
-                   {:cpn_returning_variable, {:x, [line: 1, column: 9]}},
-                   {:cpn_returning_variable, {:y, [line: 1, column: 12]}}
-                 }
-               ]
-             } =
-               Expression.compile("return {x, y}")
-    end
-  end
-
   describe "eval/3" do
     test "works" do
       assert {:ok, 3} === Expression.eval(compile!("1 + 2"), [])
@@ -337,12 +301,12 @@ defmodule ColouredFlow.ExpressionTest do
   end
 
   defp get_free_variables(code) do
-    assert {:ok, _ast, variables, _returning} = Expression.compile(code)
+    assert {:ok, _ast, variables} = Expression.compile(code)
     MapSet.new(variables, &elem(&1, 0))
   end
 
   defp compile!(code) do
-    assert {:ok, quoted, _variables, _returning} = Expression.compile(code)
+    assert {:ok, quoted, _variables} = Expression.compile(code)
     quoted
   end
 end
