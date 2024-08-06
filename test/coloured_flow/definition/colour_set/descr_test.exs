@@ -4,6 +4,10 @@ defmodule ColouredFlow.Definition.ColourSet.DescrTest do
 
   describe "of_descr/1" do
     test "works" do
+      assert_of_descr({:integer, []})
+      assert_of_descr({:float, []})
+      assert_of_descr({:boolean, []})
+      assert_of_descr({:binary, []})
       assert_of_descr({:unit, []})
     end
 
