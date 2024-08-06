@@ -23,7 +23,7 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
           binding_element :: BindingElement.t(),
           free_assignments :: [{Variable.name(), ColourSet.value()}],
           cpnet :: ColouredPetriNet.t()
-        ) :: Occurrence.t()
+        ) :: {:ok, Occurrence.t()} | {:error, [Exception.t()]}
   def occur(binding_element, free_assignments, cpnet) do
     transition = fetch_transition!(binding_element.transition, cpnet)
 
@@ -31,28 +31,27 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
 
     outputs = get_arcs_with_place(transition, :t_to_p, cpnet)
 
-    to_produce =
-      Enum.map(outputs, fn {arc, place} ->
-        # TODO: return errors
-        {:ok, result} = ColouredFlow.Expression.eval(arc.expression.expr, binding)
-
-        # TODO: return errors
-        {:ok, tokens} = build_tokens(result, place.colour_set, cpnet)
-
-        %Marking{place: place.name, tokens: tokens}
+    {to_produce, exceptions} =
+      Enum.map_reduce(outputs, [], fn {arc, place}, acc ->
+        with {:ok, result} <- ColouredFlow.Expression.eval(arc.expression.expr, binding),
+             {:ok, tokens} <- build_tokens(result, place.colour_set, cpnet) do
+          {%Marking{place: place.name, tokens: tokens}, acc}
+        else
+          {:error, exceptions} -> {:error, acc ++ exceptions}
+        end
       end)
 
-    %Occurrence{
-      binding_element: binding_element,
-      free_assignments: free_assignments,
-      to_produce: to_produce
-    }
-  end
-
-  defp fetch_transition!(name, cpnet) do
-    case Enum.find(cpnet.transitions, &(&1.name == name)) do
-      nil -> raise "Transition not found: #{name}"
-      transition -> transition
+    if match?([], exceptions) do
+      {
+        :ok,
+        %Occurrence{
+          binding_element: binding_element,
+          free_assignments: free_assignments,
+          to_produce: to_produce
+        }
+      }
+    else
+      {:error, exceptions}
     end
   end
 
@@ -61,14 +60,20 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
           binding :: term(),
           colour_set :: ColourSet.name(),
           cpnet :: ColouredPetriNet.t()
-        ) :: {:ok, MultiSet.t()}
+        ) :: {:ok, MultiSet.t()} | {:error, [Exception.t()]}
   defp build_tokens({coefficient, value}, colour_set, cpnet)
        when is_integer(coefficient) and coefficient >= 0 do
+    alias ColouredFlow.Definition.ColourSet.ColourSetMismatch
     alias ColouredFlow.Definition.ColourSet.Of
+
     colour_set = fetch_colour_set!(colour_set, %ColouredPetriNet{} = cpnet)
 
-    {:ok, value} = Of.of_type(value, colour_set.type)
+    case Of.of_type(value, colour_set.type) do
+      {:ok, value} ->
+        {:ok, MultiSet.from_pairs([{coefficient, value}])}
 
-    {:ok, MultiSet.from_pairs([{coefficient, value}])}
+      :error ->
+        {:error, [ColourSetMismatch.exception(colour_set: colour_set, value: value)]}
+    end
   end
 end

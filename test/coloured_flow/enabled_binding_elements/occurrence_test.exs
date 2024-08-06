@@ -57,7 +57,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_assignments = []
 
-      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [] === occurrence.free_assignments
       assert [%Marking{place: "even", tokens: ~b[1**2]}] === occurrence.to_produce
@@ -120,7 +120,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_assignments = []
 
-      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [] === occurrence.free_assignments
       assert [%Marking{place: "unit", tokens: ~b[1**{}]}] === occurrence.to_produce
@@ -184,7 +184,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_assignments = []
 
-      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [] === occurrence.free_assignments
 
@@ -279,7 +279,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_assignments = [quotient: 2, modulo: 1]
 
-      occurrence = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
 
       assert [modulo: 1, quotient: 2] === sort_assignments(occurrence.free_assignments)
 
@@ -287,6 +287,118 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
                %Marking{place: "modulo", tokens: ~b[1]},
                %Marking{place: "quotient", tokens: ~b[2]}
              ] === sort_markings(occurrence.to_produce)
+    end
+
+    test "eval errors" do
+      # (integer) -> [filter] -> (even)
+      colour_sets = [
+        colset(int() :: integer())
+      ]
+
+      transition = %Transition{name: "filter", guard: Expression.build!("Integer.mod(x, 2) == 0")}
+
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: colour_sets,
+          places: [
+            %Place{name: "integer", colour_set: :int},
+            %Place{name: "even", colour_set: :int}
+          ],
+          transitions: [
+            transition
+          ],
+          arcs: [
+            build_arc!(
+              name: "input",
+              place: "integer",
+              transition: "filter",
+              orientation: :p_to_t,
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
+              name: "output",
+              place: "even",
+              transition: "filter",
+              orientation: :t_to_p,
+              expression: """
+              1/0
+              bind {1, x}
+              """
+            )
+          ],
+          variables: [
+            %Variable{name: :x, colour_set: :int}
+          ]
+        }
+
+      binding_element = %BindingElement{
+        transition: "filter",
+        binding: [x: 2],
+        to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+      }
+
+      free_assignments = []
+
+      {:error, exceptions} = Occurrence.occur(binding_element, free_assignments, cpnet)
+
+      assert [%ArithmeticError{}] = exceptions
+    end
+
+    test "colour_set_mismatch errors" do
+      # (integer) -> [filter] -> (even)
+      colour_sets = [
+        colset(int() :: integer())
+      ]
+
+      transition = %Transition{name: "filter", guard: Expression.build!("Integer.mod(x, 2) == 0")}
+
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: colour_sets,
+          places: [
+            %Place{name: "integer", colour_set: :int},
+            %Place{name: "even", colour_set: :int}
+          ],
+          transitions: [
+            transition
+          ],
+          arcs: [
+            build_arc!(
+              name: "input",
+              place: "integer",
+              transition: "filter",
+              orientation: :p_to_t,
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
+              name: "output",
+              place: "even",
+              transition: "filter",
+              orientation: :t_to_p,
+              expression: "bind {1, true}"
+            )
+          ],
+          variables: [
+            %Variable{name: :x, colour_set: :int}
+          ]
+        }
+
+      binding_element = %BindingElement{
+        transition: "filter",
+        binding: [x: 2],
+        to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+      }
+
+      free_assignments = []
+
+      {:error, exceptions} = Occurrence.occur(binding_element, free_assignments, cpnet)
+
+      assert [
+               %ColouredFlow.Definition.ColourSet.ColourSetMismatch{
+                 colour_set: %ColouredFlow.Definition.ColourSet{name: :int, type: {:integer, []}},
+                 value: true
+               }
+             ] = exceptions
     end
   end
 
