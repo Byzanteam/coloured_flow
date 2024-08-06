@@ -204,17 +204,16 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       transition = %Transition{
         name: "div",
         guard: nil,
-        action: %Action{
-          free_vars: [:dividend, :divisor],
-          outputs: [{:cpn_output_variable, :quotient}, {:cpn_output_variable, :modulo}],
-          code:
-            Expression.build!("""
+        action:
+          build_action!(
+            free_vars: [:dividend, :divisor],
+            code: """
             quotient = div(dividend, divisor)
             modulo = Integer.mod(dividend, divisor)
 
             output {quotient, modulo}
-            """)
-        }
+            """
+          )
       }
 
       cpnet =

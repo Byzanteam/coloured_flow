@@ -1,10 +1,12 @@
 defmodule ColouredFlow.DefinitionHelpers do
   @moduledoc false
 
+  alias ColouredFlow.Definition.Action
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
+  alias ColouredFlow.Definition.Variable
 
   defmacro __using__(_opts) do
     quote generated: true do
@@ -38,6 +40,21 @@ defmodule ColouredFlow.DefinitionHelpers do
       orientation: params[:orientation],
       expression: expr,
       bindings: bindings
+    }
+  end
+
+  @spec build_action!(
+          free_vars: [Variable.name()],
+          code: binary()
+        ) :: Action.t()
+  def build_action!(params) do
+    code = Expression.build!(params[:code])
+    outputs = Action.build_outputs!(code)
+
+    %Action{
+      free_vars: params[:free_vars],
+      outputs: outputs,
+      code: code
     }
   end
 end
