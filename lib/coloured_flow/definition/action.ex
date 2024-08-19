@@ -38,13 +38,13 @@ defmodule ColouredFlow.Definition.Action do
   end
 
   @spec build_outputs(Expression.t()) ::
-          {:ok, list(output())} | {:error, ColouredFlow.Expression.compile_error()}
+          {:ok, list(list(output()))} | {:error, ColouredFlow.Expression.compile_error()}
   def build_outputs(%Expression{} = expression) do
     outputs = extract_outputs(expression.expr)
     check_outputs(outputs)
   end
 
-  @spec build_outputs!(Expression.t()) :: list(output())
+  @spec build_outputs!(Expression.t()) :: list(list(output()))
   def build_outputs!(%Expression{} = expression) do
     case build_outputs(expression) do
       {:ok, outputs} -> outputs
@@ -64,6 +64,7 @@ defmodule ColouredFlow.Definition.Action do
     |> elem(1)
   end
 
+  defp check_outputs([]), do: {:ok, []}
   defp check_outputs([output]), do: {:ok, [output]}
 
   defp check_outputs(outputs) do

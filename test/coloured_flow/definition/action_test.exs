@@ -6,6 +6,8 @@ defmodule ColouredFlow.Definition.ActionTest do
 
   describe "build_outputs/1" do
     test "works" do
+      assert {:ok, []} === Action.build_outputs(Expression.build!(""))
+
       assert {:ok, [[1, {:cpn_output_variable, {:x, [line: 1, column: 12]}}]]} ===
                Action.build_outputs(Expression.build!("output {1, x}"))
 
