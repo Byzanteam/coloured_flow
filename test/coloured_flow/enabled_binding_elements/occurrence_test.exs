@@ -201,20 +201,20 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{
-        name: "div",
-        guard: nil,
-        action:
-          build_action!(
-            free_vars: [:dividend, :divisor],
-            code: """
-            quotient = div(dividend, divisor)
-            modulo = Integer.mod(dividend, divisor)
+      transition =
+        %Transition{
+          name: "div and mod",
+          guard: nil,
+          action:
+            build_action!(
+              code: """
+              quotient = div(dividend, divisor)
+              modulo = Integer.mod(dividend, divisor)
 
-            output {quotient, modulo}
-            """
-          )
-      }
+              output {quotient, modulo}
+              """
+            )
+        }
 
       cpnet =
         %ColouredPetriNet{

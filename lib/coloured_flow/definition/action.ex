@@ -18,14 +18,6 @@ defmodule ColouredFlow.Definition.Action do
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
-    field :free_vars, [Variable.name()],
-      doc: """
-      The variables are the unbound variables in the out-going places.
-      The return values of the action will be bound to the free variables.
-
-      - `[:x, :y]`: outputs will be bound to [x, y]
-      """
-
     field :outputs, [output()],
       doc: """
       The return values of the action will be bound to the free variables.

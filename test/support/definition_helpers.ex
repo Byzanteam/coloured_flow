@@ -6,7 +6,6 @@ defmodule ColouredFlow.DefinitionHelpers do
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
 
   defmacro __using__(_opts) do
     quote generated: true do
@@ -43,16 +42,12 @@ defmodule ColouredFlow.DefinitionHelpers do
     }
   end
 
-  @spec build_action!(
-          free_vars: [Variable.name()],
-          code: binary()
-        ) :: Action.t()
+  @spec build_action!(code: binary()) :: Action.t()
   def build_action!(params) do
     code = Expression.build!(params[:code])
     outputs = Action.build_outputs!(code)
 
     %Action{
-      free_vars: params[:free_vars],
       outputs: outputs,
       code: code
     }
