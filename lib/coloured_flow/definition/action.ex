@@ -31,7 +31,7 @@ defmodule ColouredFlow.Definition.Action do
       The return values of the action will be bound to the free variables.
 
       - `[1, {:cpn_bind_variable, :x}]`: outputs [1, x]
-      - `[{:cpn_bind_variable, :x}, {:cpn_bind_variable, :5}]`: outputs [x, x]
+      - `[{:cpn_bind_variable, :x}, {:cpn_bind_variable, :x}]`: outputs [x, x]
       """
 
     field :code, Expression.t()
