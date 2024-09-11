@@ -31,6 +31,11 @@ defmodule ColouredFlow.MixProject do
 
   defp deps do
     [
+      {:ecto, "~> 3.0"},
+      {:ecto_sql, "~> 3.12"},
+      {:postgrex, ">= 0.0.0"},
+      {:ex_machina, "~> 2.8.0", only: :test},
+      {:jason, "~> 1.0"},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
