@@ -260,6 +260,45 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
+  Returns the difference of two `multi_set`s.
+
+  The difference is calculated by subtracting the coefficients of elements
+  in `multi_set2` from the coefficients of elements in `multi_set1`. If an
+  element in `multi_set2` is not present in `multi_set1`, it is ignored.
+  If the resulting coefficient is zero or negative, the element is removed
+  from the resulting `multi_set`.
+
+  ## Examples
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["a", "b", "c", "a"])
+      iex> ColouredFlow.MultiSet.difference(multi_set1, multi_set2)
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}])
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["d", "e", "f"])
+      iex> ColouredFlow.MultiSet.difference(multi_set1, multi_set2)
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}, {1, "c"}])
+  """
+  @spec difference(t(), t()) :: t()
+  def difference(%__MODULE__{} = multi_set1, %__MODULE__{} = multi_set2) do
+    map =
+      Enum.reduce(multi_set1.map, %{}, fn {value, coefficient}, acc ->
+        coefficient2 = Map.get(multi_set2.map, value, 0)
+
+        case coefficient - coefficient2 do
+          new_coefficient when new_coefficient > 0 ->
+            Map.put(acc, value, new_coefficient)
+
+          _other ->
+            acc
+        end
+      end)
+
+    %__MODULE__{map: map}
+  end
+
+  @doc """
   Returns the `multi_set` that is the union of `multi_set1` and `multi_set2`.
 
   ## Examples
