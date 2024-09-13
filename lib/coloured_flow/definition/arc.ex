@@ -12,7 +12,7 @@ defmodule ColouredFlow.Definition.Arc do
   alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Expression.Arc, as: ArcExpression
 
-  @type name() :: binary()
+  @type label() :: binary()
   @type orientation() :: :p_to_t | :t_to_p
   @type binding() :: {
           non_neg_integer() | {:cpn_bind_variable, Variable.name()},
@@ -22,7 +22,9 @@ defmodule ColouredFlow.Definition.Arc do
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
-    field :name, name()
+    field :label, label(),
+      enforce: false,
+      doc: "The label of the arc, optional, used for debugging."
 
     field :orientation, orientation(),
       doc: """
