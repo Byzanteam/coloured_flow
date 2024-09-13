@@ -43,8 +43,12 @@ defmodule ColouredFlow.Definition.ColourSet do
           # list
           | [value()]
 
-  @typep primitive_descr() :: {:integer, []} | {:float, []} | {:boolean, []} | {:binary, []}
-  @typep unit_descr() :: {:unit, []}
+  @typep primitive_descr() ::
+           {:unit, []}
+           | {:integer, []}
+           | {:float, []}
+           | {:boolean, []}
+           | {:binary, []}
   @typep tuple_descr() :: {:tuple, [descr()]}
   @typep map_descr() :: {:map, %{atom() => descr()}}
   @typep enum_descr() :: {:enum, [atom()]}
@@ -53,7 +57,6 @@ defmodule ColouredFlow.Definition.ColourSet do
 
   @type descr() ::
           primitive_descr()
-          | unit_descr()
           | tuple_descr()
           | map_descr()
           | enum_descr()
