@@ -11,10 +11,13 @@ defmodule TypedStructor.Plugins.DocFields do
       @typedoc unquote(__MODULE__).__generate_doc__(
                  unquote(caller),
                  unquote(definition),
-                 Module.get_attribute(
-                   __MODULE__,
-                   :typedoc,
-                   "The `#{inspect(__MODULE__)}` struct."
+                 elem(
+                   Module.get_attribute(
+                     __MODULE__,
+                     :typedoc,
+                     {0, "The `#{inspect(__MODULE__)}` struct."}
+                   ),
+                   1
                  )
                )
 
