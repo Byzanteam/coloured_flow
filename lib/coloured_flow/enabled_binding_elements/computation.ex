@@ -58,13 +58,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           []
 
         to_consume ->
-          [
-            %BindingElement{
-              transition: transition.name,
-              binding: binding,
-              to_consume: to_consume
-            }
-          ]
+          [BindingElement.new(transition.name, binding, to_consume)]
       end
     end)
   end
