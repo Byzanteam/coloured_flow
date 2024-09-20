@@ -10,6 +10,13 @@ defmodule ColouredFlow.Definition.Expression do
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
+    field :code, binary() | nil,
+      default: nil,
+      doc: """
+      the original code of the expression. `nil` is a valid code that does nothing.
+      We store the code along with the `expr`, because compiling to `expr` will lose the original formatting.
+      """
+
     field :expr, Macro.t(),
       default: nil,
       doc: "a quoted expression, `nil` is a valid expression that does nothing."
@@ -30,7 +37,7 @@ defmodule ColouredFlow.Definition.Expression do
 
   def build(expr) when is_binary(expr) do
     with({:ok, quoted, vars} <- ColouredFlow.Expression.compile(expr, __ENV__)) do
-      {:ok, %__MODULE__{expr: quoted, vars: Map.keys(vars)}}
+      {:ok, %__MODULE__{code: expr, expr: quoted, vars: Map.keys(vars)}}
     end
   end
 
