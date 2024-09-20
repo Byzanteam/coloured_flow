@@ -15,8 +15,7 @@ defmodule ColouredFlow.Definition.Procedure do
     plugin TypedStructor.Plugins.DocFields
 
     field :name, name()
-    field :parameters, [ColourSet.name()], default: []
     field :expression, Expression.t()
-    field :result, ColourSet.name()
+    field :result, ColourSet.descr()
   end
 end
