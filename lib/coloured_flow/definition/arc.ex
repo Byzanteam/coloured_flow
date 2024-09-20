@@ -51,6 +51,20 @@ defmodule ColouredFlow.Definition.Arc do
       (see <https://cpntools.org/2018/01/09/resource-allocation-example/>).
       However, outgoing arcs are allowed to refer to an unbound variable
       that will be updated during the transition action.
+
+      Examples:
+
+      ```elixir
+      if x > 0 do
+        # use `bind` keyword to bind the variable
+        bind {1, x}
+      else
+        bind {2, 1}
+      end
+
+      # the bindings are:
+      # [{2, 1}, {1, {:cpn_bind_variable, :x}}]
+      ```
       """
 
     field :bindings,

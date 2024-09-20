@@ -13,20 +13,57 @@ defmodule ColouredFlow.Definition.Action do
   alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Expression.Action, as: ActionExpression
 
-  @type output() :: {:cpn_output_variable, Variable.name()} | ColourSet.value()
+  # TODO: meta is necessary?
+  @type output() ::
+          {:cpn_output_variable, {Variable.name(), meta :: keyword()}} | ColourSet.value()
 
-  typed_structor enforce: true do
+  typed_structor do
     plugin TypedStructor.Plugins.DocFields
 
-    field :outputs, [output()],
+    field :code, Expression.t(),
+      doc: """
+      The code segment to be executed when the transition is fired.
+
+      Examples:
+
+      ```
+      quotient = div(dividend, divisor)
+      modulo = Integer.mod(dividend, divisor)
+
+      # use `output` keyword to mark outputs
+      output {quotient, modulo}
+
+      # the outputs are:
+      [
+        [
+          cpn_output_variable: {:quotient, [line: 4, column: 9]},
+          cpn_output_variable: {:modulo, [line: 4, column: 19]}
+        ]
+      ]
+
+      ```
+
+      ```
+      output {1, x}
+
+      # the outpus are:
+      [
+        [
+          1,
+          {:cpn_output_variable, {:x, [line: 1, column: 12]}}
+        ]
+      ]
+      ```
+      """
+
+    field :outputs, [[output()]],
+      enforce: true,
       doc: """
       The return values of the action will be bound to the free variables.
 
-      - `[1, {:cpn_bind_variable, :x}]`: outputs [1, x]
-      - `[{:cpn_bind_variable, :x}, {:cpn_bind_variable, :x}]`: outputs [x, x]
+      - `[1, {:cpn_output_variable, :x}]`: outputs [1, x]
+      - `[{:cpn_output_variable, :x}, {:cpn_output_variable, :x}]`: outputs [x, x]
       """
-
-    field :code, Expression.t()
   end
 
   @spec build_outputs(Expression.t()) ::
