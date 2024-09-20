@@ -23,7 +23,6 @@ defmodule ColouredFlow.Definition.ColourSet.Of do
   defp type?(float, {:float, []}) when is_float(float), do: true
   defp type?(bool, {:boolean, []}) when is_boolean(bool), do: true
   defp type?(binary, {:binary, []}) when is_binary(binary), do: true
-
   defp type?({}, {:unit, []}), do: true
 
   # composite
