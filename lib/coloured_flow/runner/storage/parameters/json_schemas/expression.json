@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Expression",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string"
+    },
+    "expr": {
+      "description": "The Elixir expression",
+      "type": [
+        "string"
+      ]
+    },
+    "vars": {
+      "$comment": "TODO: how to store"
+    }
+  },
+  "required": [
+    "code"
+  ],
+  "additionalProperties": false
+}

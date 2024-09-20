@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Constant",
+  "description": "A constant is a named value that can never be changed, can be used in expressions.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The name of the constant.",
+      "$ref": "common.json#/definitions/variable_name"
+    },
+    "colour_set": {
+      "description": "The name of the colour set.",
+      "$ref": "colour_set.json#/definitions/name"
+    },
+    "value": {
+      "description": "A **literal** value.",
+      "$ref": "colour_set.json#/definitions/value"
+    }
+  },
+  "required": [
+    "name",
+    "colour_set",
+    "value"
+  ]
+}

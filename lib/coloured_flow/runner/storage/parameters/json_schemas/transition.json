@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Transition",
+  "type": "object",
+  "properties": {
+    "name": {
+      "$ref": "#/definitions/name"
+    },
+    "guard": {
+      "$ref": "expression.json",
+      "description": "The guard of the transition. If not specified, the transition is always enabled. Note that, the guard can't refer to an unbound variable."
+    },
+    "action": {
+      "$ref": "action.json",
+      "description": "The action to be executed when the transition is fired, you can utilize it to do side effects, and update unbound variables in the out-going arcs."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "definitions": {
+    "name": {
+      "description": "The name of the transition.",
+      "$ref": "common.json#/definitions/variable_name"
+    }
+  }
+}

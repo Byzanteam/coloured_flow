@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Procedure",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The name of the procedure, represented as an atom in Elixir.",
+      "$ref": "common.json#/definitions/variable_name"
+    },
+    "expression": {
+      "description": "The expression associated with the procedure.",
+      "$ref": "expression.json"
+    },
+    "result": {
+      "description": "The name of the ColourSet that is the result of the procedure.",
+      "$ref": "colour_set.json#/definitions/descr"
+    }
+  },
+  "required": [
+    "name",
+    "expression",
+    "result"
+  ],
+  "additionalProperties": false
+}

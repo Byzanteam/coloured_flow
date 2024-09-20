@@ -1,0 +1,57 @@
+{
+  "$schema": "../coloured_petri_net.json",
+  "title": "filter even integers",
+  "colour_sets": [
+    {
+      "name": "int",
+      "type": {
+        "type": "integer",
+        "args": []
+      }
+    }
+  ],
+  "places": [
+    {
+      "name": "integer",
+      "colour_set": "int"
+    },
+    {
+      "name": "even",
+      "colour_set": "int"
+    }
+  ],
+  "transitions": [
+    {
+      "name": "filter",
+      "guard": {
+        "code": "Integer.mod(integer, 2) === 0"
+      }
+    }
+  ],
+  "arcs": [
+    {
+      "label": "input",
+      "place": "integer",
+      "transition": "filter",
+      "orientation": "p_to_t",
+      "expression": {
+        "code": "bind {1, x}"
+      }
+    },
+    {
+      "label": "output",
+      "place": "even",
+      "transition": "filter",
+      "orientation": "t_to_p",
+      "expression": {
+        "code": "bind {1, x}"
+      }
+    }
+  ],
+  "variables": [
+    {
+      "name": "x",
+      "colour_set": "int"
+    }
+  ]
+}

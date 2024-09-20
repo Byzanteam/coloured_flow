@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Variable",
+  "description": "A typed variable is a variable that is not bound to any value. It can be used in arc annotations, guard expressions, etc.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The name of the variable",
+      "$ref": "common.json#/definitions/variable_name"
+    },
+    "colour_set": {
+      "description": "The colour set associated with the variable",
+      "$ref": "colour_set.json#/definitions/name"
+    }
+  },
+  "required": [
+    "name",
+    "colour_set"
+  ]
+}

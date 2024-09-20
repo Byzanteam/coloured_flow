@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Arc",
+  "type": "object",
+  "properties": {
+    "label": {
+      "description": "The label of the arc.",
+      "type": "string"
+    },
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "p_to_t",
+        "t_to_p"
+      ],
+      "description": "The orientation of the arc, whether it is from a transition to a place, or from a place to a transition."
+    },
+    "transition": {
+      "$ref": "transition.json#/definitions/name"
+    },
+    "place": {
+      "$ref": "place.json#/definitions/name"
+    },
+    "expression": {
+      "description": "The expression that is used to evaluate the arc.",
+      "$ref": "expression.json"
+    },
+    "bindings": {
+      "$comment": "TODO: how to store"
+    }
+  },
+  "required": [
+    "orientation",
+    "transition",
+    "place",
+    "expression"
+  ]
+}

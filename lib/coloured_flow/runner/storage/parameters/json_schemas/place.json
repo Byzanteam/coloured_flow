@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.Place",
+  "type": "object",
+  "properties": {
+    "name": {
+      "$ref": "#/definitions/name"
+    },
+    "colour_set": {
+      "$ref": "colour_set.json#/definitions/name",
+      "description": "The data type of the tokens that are stored"
+    }
+  },
+  "required": [
+    "name",
+    "colour_set"
+  ],
+  "definitions": {
+    "name": {
+      "description": "The name of the place",
+      "$ref": "common.json#/definitions/variable_name"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredPetriNet",
+  "type": "object",
+  "properties": {
+    "colour_sets": {
+      "type": "array",
+      "items": {
+        "$ref": "colour_set.json"
+      }
+    },
+    "places": {
+      "type": "array",
+      "items": {
+        "$ref": "place.json"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "transition.json"
+      }
+    },
+    "arcs": {
+      "type": "array",
+      "items": {
+        "$ref": "arc.json"
+      }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "$ref": "variable.json"
+      },
+      "default": []
+    },
+    "constants": {
+      "type": "array",
+      "items": {
+        "$ref": "constant.json"
+      },
+      "default": []
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "$ref": "procedure.json"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "colour_sets",
+    "places",
+    "transitions",
+    "arcs"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Common definitions",
+  "definitions": {
+    "variable_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9_]*$"
+    }
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ColouredFlow.Definition.ColourSet",
+  "type": "object",
+  "properties": {
+    "name": {
+      "$ref": "#/definitions/variable_name",
+      "description": "The name of the colour set, must conform to Elixir variable name convention."
+    },
+    "type": {
+      "$ref": "#/definitions/descr"
+    }
+  },
+  "required": [
+    "name",
+    "type"
+  ],
+  "definitions": {
+    "name": {
+      "$ref": "#/definitions/variable_name"
+    },
+    "variable_name": {
+      "$ref": "common.json#/definitions/variable_name"
+    },
+    "value": {
+      "oneOf": [
+        {
+          "description": "The unit value.",
+          "const": {}
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "description": "A tuple value.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/definitions/value"
+          }
+        },
+        {
+          "description": "A map value.",
+          "type": "object",
+          "patternProperties": {
+            "^[a-z][a-zA-Z0-9_]*$": {
+              "$ref": "#/definitions/value"
+            }
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        },
+        {
+          "description": "An enum value.",
+          "$ref": "#/definitions/variable_name"
+        },
+        {
+          "description": "A union value.",
+          "type": "object",
+          "properties": {
+            "tag": {
+              "$ref": "#/definitions/variable_name"
+            },
+            "value": {
+              "$ref": "#/definitions/value"
+            }
+          },
+          "required": [
+            "tag",
+            "value"
+          ]
+        }
+      ]
+    },
+    "descr": {
+      "oneOf": [
+        {
+          "title": "PrimitiveDescr",
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "unit",
+                "integer",
+                "float",
+                "boolean",
+                "binary"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "maxItems": 0
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ]
+        },
+        {
+          "title": "TupleDescr",
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "tuple"
+            },
+            "args": {
+              "description": "A list of types for each element of the tuple, must have at least 2 elements.",
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/definitions/descr"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ]
+        },
+        {
+          "title": "MapDescr",
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "map"
+            },
+            "args": {
+              "type": "object",
+              "minProperties": 1,
+              "patternProperties": {
+                "^[a-z][a-zA-Z0-9_]*$": {
+                  "$ref": "#/definitions/descr"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ]
+        },
+        {
+          "title": "EnumDescr",
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "enum"
+            },
+            "args": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/definitions/variable_name"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ]
+        },
+        {
+          "title": "UnionDescr",
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "union"
+            },
+            "args": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z][a-zA-Z0-9_]*$": {
+                  "$ref": "#/definitions/descr"
+                }
+              },
+              "minProperties": 2,
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ]
+        },
+        {
+          "title": "ListDescr",
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "list"
+            },
+            "args": {
+              "$ref": "#/definitions/descr"
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ]
+        }
+      ]
+    }
+  }
+}
