@@ -205,6 +205,39 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
+  Pop `count` occurrences of `value` from the `multi_set`.
+
+  Returns a tuple with the number of occurrences popped and the resulting `multi_set`.
+
+  ## Examples
+
+      iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> {1, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "a")
+      {1, ColouredFlow.MultiSet.from_pairs([{2, "a"}, {2, "b"}, {1, "c"}])}
+      iex> {3, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "a", 3)
+      {3, ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])}
+
+      iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> {3, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "a", 100)
+      {3, ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])}
+      iex> {0, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "d")
+      {0, ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])}
+  """
+  @spec pop(t(val), val, count) :: {count, t(val)} when count: non_neg_integer(), val: value()
+  def pop(%__MODULE__{} = multi_set, value, count \\ 1) do
+    case Map.pop(multi_set.map, value) do
+      {nil, _map} ->
+        {0, multi_set}
+
+      {coefficient, map} when coefficient <= count ->
+        {coefficient, %{multi_set | map: map}}
+
+      {coefficient, map} when coefficient > count ->
+        {count, %{multi_set | map: Map.put(map, value, coefficient - count)}}
+    end
+  end
+
+  @doc """
   Drops `value` from the `multi_set`.
 
   ## Examples
