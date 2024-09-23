@@ -8,8 +8,9 @@ defmodule ColouredFlow.Runner.Enactment.Snapshot do
   alias ColouredFlow.Enactment.Marking
 
   typed_structor enforce: true do
-    field :enactment_id, Ecto.UUID.t()
-    field :version, non_neg_integer()
-    field :markings, [Marking.t()]
+    plugin TypedStructor.Plugins.DocFields
+
+    field :version, non_neg_integer(), doc: "The snapshot version of the enactment."
+    field :markings, [Marking.t()], doc: "The snapshot markings of the enactment."
   end
 end

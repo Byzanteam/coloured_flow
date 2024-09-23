@@ -36,7 +36,11 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @spec start_link(init_arg()) :: GenServer.on_start()
   def start_link(init_arg) do
-    GenServer.start_link(__MODULE__, init_arg)
+    enactment_id = Keyword.fetch!(init_arg, :enactment_id)
+
+    GenServer.start_link(__MODULE__, init_arg,
+      name: Registry.via_name({:enactment, enactment_id})
+    )
   end
 
   @impl GenServer
@@ -57,14 +61,13 @@ defmodule ColouredFlow.Runner.Enactment do
 
         :error ->
           %Snapshot{
-            enactment_id: state.enactment_id,
             version: 0,
             markings: Storage.get_initial_markings(state.enactment_id)
           }
       end
 
-    snapshot = catchup_snapshot(snapshot)
-    Storage.write_enactment_snapshot(state.enactment_id, snapshot)
+    snapshot = catchup_snapshot(state.enactment_id, snapshot)
+    Storage.take_enactment_snapshot(state.enactment_id, snapshot)
 
     workitems = Storage.list_live_workitems(state.enactment_id)
 
@@ -113,9 +116,9 @@ defmodule ColouredFlow.Runner.Enactment do
     {:noreply, %__MODULE__{state | workitems: existings ++ produced_workitems}}
   end
 
-  @spec catchup_snapshot(Snapshot.t()) :: Snapshot.t()
-  defp catchup_snapshot(snapshot) do
-    occurrences = Storage.occurrences_stream(snapshot.enactment_id, snapshot.version)
+  @spec catchup_snapshot(Storage.enactment_id(), Snapshot.t()) :: Snapshot.t()
+  defp catchup_snapshot(enactment_id, snapshot) do
+    occurrences = Storage.occurrences_stream(enactment_id, snapshot.version)
 
     {steps, markings} = Catchuping.apply(snapshot.markings, occurrences)
 

@@ -36,7 +36,6 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
   @spec to_snapshot(t()) :: Snapshot.t()
   def to_snapshot(%__MODULE__{} = snapshot) do
     %Snapshot{
-      enactment_id: snapshot.enactment_id,
       version: snapshot.version,
       markings: snapshot.data.markings
     }

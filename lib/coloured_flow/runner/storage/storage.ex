@@ -17,36 +17,6 @@ defmodule ColouredFlow.Runner.Storage do
 
   @type enactment_id() :: Ecto.UUID.t()
   @type flow_id() :: Ecto.UUID.t()
-  @type flow_name() :: String.t()
-  @type flow_version() :: pos_integer()
-
-  @doc """
-  Fetches the flow with the given name and version.
-  """
-  @spec fetch_flow(flow_id()) :: {:ok, ColouredPetriNet.t()} | :error
-  def fetch_flow(flow_id) when is_binary(flow_id) do
-    case Repo.get_by(Schemas.Flow, id: flow_id) do
-      nil ->
-        :error
-
-      flow ->
-        {:ok, Schemas.Flow.to_coloured_petri_net(flow)}
-    end
-  end
-
-  @spec fetch_flow({flow_name(), flow_version()}) :: {:ok, ColouredPetriNet.t()} | :error
-  def fetch_flow({name, version}), do: fetch_flow(name, version)
-
-  @spec fetch_flow(flow_name(), flow_version()) :: {:ok, ColouredPetriNet.t()} | :error
-  def fetch_flow(name, version) do
-    case Repo.get_by(Schemas.Flow, name: name, version: version) do
-      nil ->
-        :error
-
-      flow ->
-        {:ok, Schemas.Flow.to_coloured_petri_net(flow)}
-    end
-  end
 
   @spec get_flow_by_enactment(enactment_id()) :: ColouredPetriNet.t()
   def get_flow_by_enactment(enactment_id) do
@@ -171,8 +141,8 @@ defmodule ColouredFlow.Runner.Storage do
     :ok
   end
 
-  @spec write_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok
-  def write_enactment_snapshot(enactment_id, snapshot) do
+  @spec take_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok
+  def take_enactment_snapshot(enactment_id, snapshot) do
     %Schemas.Snapshot{enactment_id: enactment_id}
     |> Ecto.Changeset.change(
       version: snapshot.version,
