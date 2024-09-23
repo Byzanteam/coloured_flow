@@ -403,7 +403,7 @@ defmodule ColouredFlow.MultiSet do
   defmacro sigil_b(term, modifiers)
 
   defmacro sigil_b({:<<>>, _meta, [pairs]}, _modifiers) do
-    list =
+    {list, is_literal?} =
       pairs
       |> String.split()
       |> Enum.map_reduce(1, fn pair, column ->
@@ -417,12 +417,26 @@ defmodule ColouredFlow.MultiSet do
         {extract_pair(quoted, __CALLER__), column + String.length(pair)}
       end)
       |> elem(0)
-      |> Enum.map(fn {coefficient, value} ->
-        {quote(do: unquote(coefficient)), quote(do: unquote(value))}
+      |> Enum.map_reduce(true, fn {coefficient, value}, acc ->
+        with true <- Macro.quoted_literal?(coefficient),
+             true <- Macro.quoted_literal?(value),
+             {coefficient, []} <- safe_eval(coefficient),
+             {value, []} <- safe_eval(value) do
+          {{coefficient, value}, acc}
+        else
+          _other ->
+            {{quote(do: unquote(coefficient)), quote(do: unquote(value))}, false}
+        end
       end)
 
-    quote do
-      unquote(__MODULE__).from_pairs([unquote_splicing(list)])
+    if is_literal? do
+      quote do
+        unquote(Macro.escape(from_pairs(list)))
+      end
+    else
+      quote do
+        unquote(__MODULE__).from_pairs([unquote_splicing(list)])
+      end
     end
   end
 
@@ -450,6 +464,12 @@ defmodule ColouredFlow.MultiSet do
           )
         end
     end
+  end
+
+  defp safe_eval(expr) do
+    Code.eval_quoted(expr, [])
+  rescue
+    _error -> :error
   end
 
   defimpl Enumerable do
