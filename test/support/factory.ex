@@ -39,7 +39,7 @@ defmodule ColouredFlow.Factory do
         %Place{name: "output", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "pass_through", guard: Expression.build!(nil)}
+        %Transition{name: "pass_through", guard: nil}
       ],
       arcs: [
         build_arc!(

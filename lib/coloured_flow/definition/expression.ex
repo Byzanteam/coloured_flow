@@ -30,6 +30,12 @@ defmodule ColouredFlow.Definition.Expression do
       """
   end
 
+  @doc """
+  Build an expression from code.
+
+  Note that, `""` and `nil` are valid codes that are always evaluated to `nil`,
+  and are treated as `false` in the guard of a transition.
+  """
   @spec build(binary() | nil) ::
           {:ok, t()}
           | {:error, ColouredFlow.Expression.compile_error()}
@@ -41,6 +47,9 @@ defmodule ColouredFlow.Definition.Expression do
     end
   end
 
+  @doc """
+  Build an expression from code, raise if failed. See `build/1`.
+  """
   @spec build!(binary() | nil) :: t()
   def build!(expr) do
     case build(expr) do
