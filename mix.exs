@@ -71,7 +71,8 @@ defmodule ColouredFlow.MixProject do
         ColouredFlow.EnabledBindingElements,
         ColouredFlow.Enactment,
         ColouredFlow.Expression,
-        ColouredFlow.Notation
+        ColouredFlow.Notation,
+        ColouredFlow.Runner
       ],
       before_closing_body_tag: fn
         :html ->
