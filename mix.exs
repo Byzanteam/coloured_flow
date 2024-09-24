@@ -14,6 +14,7 @@ defmodule ColouredFlow.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       dialyzer: dialyzer(),
+      test_coverage: test_coverage(),
       # Docs
       name: "ColouredFlow",
       source_url: @repo_url,
@@ -57,6 +58,19 @@ defmodule ColouredFlow.MixProject do
     [
       plt_local_path: "priv/plts/coloured_flow.plt",
       plt_core_path: "priv/plts/core.plt"
+    ]
+  end
+
+  defp test_coverage do
+    [
+      ignore_modules: [
+        ColouredFlow.Runner.Enactment.Registry,
+        ColouredFlow.Runner.Storage.Schemas.Types,
+        ColouredFlow.Runner.Supervisor,
+        Inspect.ColouredFlow.Expression.Scope,
+        TypedStructor.Plugins.DocFields,
+        ~r/ColouredFlow.Runner.Migrations.*/
+      ]
     ]
   end
 
