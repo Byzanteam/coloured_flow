@@ -61,5 +61,13 @@ defmodule ColouredFlow.MultiSetTest do
         Code.eval_quoted(quote(do: ~b[URI.parse("/")]))
       end
     end
+
+    test "works with tuple" do
+      assert MultiSet.from_pairs([{2, {}}]) === ~b(2**{})
+      assert MultiSet.from_pairs([{1, {}}]) === ~b({})
+
+      assert MultiSet.from_pairs([{1, {:{}, [], []}}]) === ~b({:{},[],[]})
+      assert MultiSet.from_pairs([{2, {:{}, [], []}}]) === ~b(2**{:{},[],[]})
+    end
   end
 end

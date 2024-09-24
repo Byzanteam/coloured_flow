@@ -32,4 +32,23 @@ defmodule ColouredFlow.Enactment.BindingElement do
     field :to_consume, [Marking.t()],
       doc: "The markings to be consumed while firing the transition."
   end
+
+  @doc """
+  Build a new order-consistent binding element,
+  where the binding is ordered by the variable name,
+  and the to_consume markings are ordered by the place name.
+  """
+  @spec new(
+          transition :: Transition.name(),
+          binding :: [binding()],
+          to_consume :: [Marking.t()]
+        ) ::
+          t()
+  def new(transition, binding, to_consume) do
+    %__MODULE__{
+      transition: transition,
+      binding: Enum.sort_by(binding, &elem(&1, 0)),
+      to_consume: Enum.sort_by(to_consume, & &1.place)
+    }
+  end
 end

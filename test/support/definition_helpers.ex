@@ -6,7 +6,6 @@ defmodule ColouredFlow.DefinitionHelpers do
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
 
   defmacro __using__(_opts) do
     quote generated: true do
@@ -23,18 +22,19 @@ defmodule ColouredFlow.DefinitionHelpers do
   end
 
   @spec build_arc!(
-          name: Arc.name(),
+          label: Arc.label(),
           place: Place.name(),
           transition: Transition.name(),
           orientation: Arc.orientation(),
           expression: binary()
         ) :: Arc.t()
   def build_arc!(params) do
+    params = Keyword.validate!(params, [:label, :place, :transition, :orientation, :expression])
     expr = Expression.build!(params[:expression])
     bindings = Arc.build_bindings!(expr)
 
     %Arc{
-      name: params[:name],
+      label: Keyword.get(params, :label),
       place: params[:place],
       transition: params[:transition],
       orientation: params[:orientation],
@@ -43,16 +43,12 @@ defmodule ColouredFlow.DefinitionHelpers do
     }
   end
 
-  @spec build_action!(
-          free_vars: [Variable.name()],
-          code: binary()
-        ) :: Action.t()
+  @spec build_action!(code: binary()) :: Action.t()
   def build_action!(params) do
     code = Expression.build!(params[:code])
     outputs = Action.build_outputs!(code)
 
     %Action{
-      free_vars: params[:free_vars],
       outputs: outputs,
       code: code
     }

@@ -14,6 +14,7 @@ defmodule ColouredFlow.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
       dialyzer: dialyzer(),
+      test_coverage: test_coverage(),
       # Docs
       name: "ColouredFlow",
       source_url: @repo_url,
@@ -31,6 +32,11 @@ defmodule ColouredFlow.MixProject do
 
   defp deps do
     [
+      {:ecto, "~> 3.0"},
+      {:ecto_sql, "~> 3.12"},
+      {:postgrex, ">= 0.0.0"},
+      {:ex_machina, "~> 2.8.0", only: :test},
+      {:jason, "~> 1.0"},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
@@ -55,6 +61,19 @@ defmodule ColouredFlow.MixProject do
     ]
   end
 
+  defp test_coverage do
+    [
+      ignore_modules: [
+        ColouredFlow.Runner.Enactment.Registry,
+        ColouredFlow.Runner.Storage.Schemas.Types,
+        ColouredFlow.Runner.Supervisor,
+        Inspect.ColouredFlow.Expression.Scope,
+        TypedStructor.Plugins.DocFields,
+        ~r/ColouredFlow.Runner.Migrations.*/
+      ]
+    ]
+  end
+
   defp docs do
     [
       main: "ColouredFlow",
@@ -66,8 +85,39 @@ defmodule ColouredFlow.MixProject do
         ColouredFlow.EnabledBindingElements,
         ColouredFlow.Enactment,
         ColouredFlow.Expression,
-        ColouredFlow.Notation
-      ]
+        ColouredFlow.Notation,
+        ColouredFlow.Runner
+      ],
+      before_closing_body_tag: fn
+        :html ->
+          """
+          <script>
+            function mermaidLoaded() {
+              mermaid.initialize({
+                startOnLoad: false,
+                theme: document.body.className.includes("dark") ? "dark" : "default"
+              });
+              let id = 0;
+              for (const codeEl of document.querySelectorAll("pre code.mermaid")) {
+                const preEl = codeEl.parentElement;
+                const graphDefinition = codeEl.textContent;
+                const graphEl = document.createElement("div");
+                const graphId = "mermaid-graph-" + id++;
+                mermaid.render(graphId, graphDefinition).then(({svg, bindFunctions}) => {
+                  graphEl.innerHTML = svg;
+                  bindFunctions?.(graphEl);
+                  preEl.insertAdjacentElement("afterend", graphEl);
+                  preEl.remove();
+                });
+              }
+            }
+          </script>
+          <script async src="https://cdn.jsdelivr.net/npm/mermaid@10.2.3/dist/mermaid.min.js" onload="mermaidLoaded();"></script>
+          """
+
+        _ ->
+          ""
+      end
     ]
   end
 

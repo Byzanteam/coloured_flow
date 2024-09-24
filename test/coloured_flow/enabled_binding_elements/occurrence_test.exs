@@ -30,14 +30,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
@@ -84,21 +84,21 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ],
           arcs: [
             build_arc!(
-              name: "a",
+              label: "a",
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {2, {}}"
             ),
             build_arc!(
-              name: "b",
+              label: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {1, {}}"
             ),
             build_arc!(
-              name: "unit",
+              label: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
@@ -147,21 +147,21 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ],
           arcs: [
             build_arc!(
-              name: "number",
+              label: "number",
               place: "number",
               transition: transition.name,
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "one",
+              label: "one",
               place: "one",
               transition: transition.name,
               orientation: :t_to_p,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "another",
+              label: "another",
               place: "another",
               transition: transition.name,
               orientation: :t_to_p,
@@ -201,20 +201,20 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{
-        name: "div",
-        guard: nil,
-        action:
-          build_action!(
-            free_vars: [:dividend, :divisor],
-            code: """
-            quotient = div(dividend, divisor)
-            modulo = Integer.mod(dividend, divisor)
+      transition =
+        %Transition{
+          name: "div and mod",
+          guard: nil,
+          action:
+            build_action!(
+              code: """
+              quotient = div(dividend, divisor)
+              modulo = Integer.mod(dividend, divisor)
 
-            output {quotient, modulo}
-            """
-          )
-      }
+              output {quotient, modulo}
+              """
+            )
+        }
 
       cpnet =
         %ColouredPetriNet{
@@ -230,28 +230,28 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ],
           arcs: [
             build_arc!(
-              name: "dividend",
+              label: "dividend",
               place: "dividend",
               transition: transition.name,
               orientation: :p_to_t,
               expression: "bind {1, dividend}"
             ),
             build_arc!(
-              name: "divisor",
+              label: "divisor",
               place: "divisor",
               transition: transition.name,
               orientation: :p_to_t,
               expression: "bind {1, divisor}"
             ),
             build_arc!(
-              name: "quotient",
+              label: "quotient",
               place: "quotient",
               transition: transition.name,
               orientation: :t_to_p,
               expression: "bind {1, quotient}"
             ),
             build_arc!(
-              name: "modulo",
+              label: "modulo",
               place: "modulo",
               transition: transition.name,
               orientation: :t_to_p,
@@ -308,14 +308,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
@@ -363,14 +363,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,

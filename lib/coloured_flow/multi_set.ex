@@ -205,6 +205,39 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
+  Pop `count` occurrences of `value` from the `multi_set`.
+
+  Returns a tuple with the number of occurrences popped and the resulting `multi_set`.
+
+  ## Examples
+
+      iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> {1, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "a")
+      {1, ColouredFlow.MultiSet.from_pairs([{2, "a"}, {2, "b"}, {1, "c"}])}
+      iex> {3, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "a", 3)
+      {3, ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])}
+
+      iex> multi_set = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> {3, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "a", 100)
+      {3, ColouredFlow.MultiSet.from_pairs([{2, "b"}, {1, "c"}])}
+      iex> {0, _multi_set} = ColouredFlow.MultiSet.pop(multi_set, "d")
+      {0, ColouredFlow.MultiSet.from_pairs([{3, "a"}, {2, "b"}, {1, "c"}])}
+  """
+  @spec pop(t(val), val, count) :: {count, t(val)} when count: non_neg_integer(), val: value()
+  def pop(%__MODULE__{} = multi_set, value, count \\ 1) do
+    case Map.pop(multi_set.map, value) do
+      {nil, _map} ->
+        {0, multi_set}
+
+      {coefficient, map} when coefficient <= count ->
+        {coefficient, %{multi_set | map: map}}
+
+      {coefficient, map} when coefficient > count ->
+        {count, %{multi_set | map: Map.put(map, value, coefficient - count)}}
+    end
+  end
+
+  @doc """
   Drops `value` from the `multi_set`.
 
   ## Examples
@@ -257,6 +290,45 @@ defmodule ColouredFlow.MultiSet do
   @spec coefficient(t(), value()) :: coefficient()
   def coefficient(%__MODULE__{} = multi_set, value) do
     Map.get(multi_set.map, value, 0)
+  end
+
+  @doc """
+  Returns the difference of two `multi_set`s.
+
+  The difference is calculated by subtracting the coefficients of elements
+  in `multi_set2` from the coefficients of elements in `multi_set1`. If an
+  element in `multi_set2` is not present in `multi_set1`, it is ignored.
+  If the resulting coefficient is zero or negative, the element is removed
+  from the resulting `multi_set`.
+
+  ## Examples
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["a", "b", "c", "a"])
+      iex> ColouredFlow.MultiSet.difference(multi_set1, multi_set2)
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}])
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["d", "e", "f"])
+      iex> ColouredFlow.MultiSet.difference(multi_set1, multi_set2)
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}, {1, "c"}])
+  """
+  @spec difference(t(), t()) :: t()
+  def difference(%__MODULE__{} = multi_set1, %__MODULE__{} = multi_set2) do
+    map =
+      Enum.reduce(multi_set1.map, %{}, fn {value, coefficient}, acc ->
+        coefficient2 = Map.get(multi_set2.map, value, 0)
+
+        case coefficient - coefficient2 do
+          new_coefficient when new_coefficient > 0 ->
+            Map.put(acc, value, new_coefficient)
+
+          _other ->
+            acc
+        end
+      end)
+
+    %__MODULE__{map: map}
   end
 
   @doc """
@@ -331,7 +403,7 @@ defmodule ColouredFlow.MultiSet do
   defmacro sigil_b(term, modifiers)
 
   defmacro sigil_b({:<<>>, _meta, [pairs]}, _modifiers) do
-    list =
+    {list, is_literal?} =
       pairs
       |> String.split()
       |> Enum.map_reduce(1, fn pair, column ->
@@ -345,12 +417,26 @@ defmodule ColouredFlow.MultiSet do
         {extract_pair(quoted, __CALLER__), column + String.length(pair)}
       end)
       |> elem(0)
-      |> Enum.map(fn {coefficient, value} ->
-        {quote(do: unquote(coefficient)), quote(do: unquote(value))}
+      |> Enum.map_reduce(true, fn {coefficient, value}, acc ->
+        with true <- Macro.quoted_literal?(coefficient),
+             true <- Macro.quoted_literal?(value),
+             {coefficient, []} <- safe_eval(coefficient),
+             {value, []} <- safe_eval(value) do
+          {{coefficient, value}, acc}
+        else
+          _other ->
+            {{quote(do: unquote(coefficient)), quote(do: unquote(value))}, false}
+        end
       end)
 
-    quote do
-      unquote(__MODULE__).from_pairs([unquote_splicing(list)])
+    if is_literal? do
+      quote do
+        unquote(Macro.escape(from_pairs(list)))
+      end
+    else
+      quote do
+        unquote(__MODULE__).from_pairs([unquote_splicing(list)])
+      end
     end
   end
 
@@ -378,6 +464,12 @@ defmodule ColouredFlow.MultiSet do
           )
         end
     end
+  end
+
+  defp safe_eval(expr) do
+    Code.eval_quoted(expr, [])
+  rescue
+    _error -> :error
   end
 
   defimpl Enumerable do

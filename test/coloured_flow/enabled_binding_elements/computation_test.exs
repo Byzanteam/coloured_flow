@@ -32,14 +32,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
@@ -95,21 +95,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "a",
+              label: "a",
               place: "a",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {2, {}}"
             ),
             build_arc!(
-              name: "b",
+              label: "b",
               place: "b",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {1, {}}"
             ),
             build_arc!(
-              name: "unit",
+              label: "unit",
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
@@ -171,21 +171,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "a",
+              label: "a",
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
               expression: "bind {1, a}"
             ),
             build_arc!(
-              name: "b",
+              label: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
               expression: "bind {1, b}"
             ),
             build_arc!(
-              name: "c",
+              label: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
@@ -281,7 +281,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "a",
+              label: "a",
               place: "a",
               transition: "a + b",
               orientation: :p_to_t,
@@ -294,14 +294,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               """
             ),
             build_arc!(
-              name: "b",
+              label: "b",
               place: "b",
               transition: "a + b",
               orientation: :p_to_t,
               expression: "bind {1, b}"
             ),
             build_arc!(
-              name: "c",
+              label: "c",
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
@@ -414,21 +414,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "numbers",
+              label: "numbers",
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {n, x}"
             ),
             build_arc!(
-              name: "counter",
+              label: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {n, {}}"
             ),
             build_arc!(
-              name: "number",
+              label: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
@@ -536,14 +536,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
@@ -604,14 +604,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {2, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
@@ -657,21 +657,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "numbers",
+              label: "numbers",
               place: "numbers",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {x, c}"
             ),
             build_arc!(
-              name: "counter",
+              label: "counter",
               place: "counter",
               transition: "merge",
               orientation: :p_to_t,
               expression: "bind {1, c}"
             ),
             build_arc!(
-              name: "number",
+              label: "number",
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
@@ -762,14 +762,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
           ],
           arcs: [
             build_arc!(
-              name: "input",
+              label: "input",
               place: "integer",
               transition: "filter",
               orientation: :p_to_t,
               expression: "bind {1, x}"
             ),
             build_arc!(
-              name: "output",
+              label: "output",
               place: "even",
               transition: "filter",
               orientation: :t_to_p,

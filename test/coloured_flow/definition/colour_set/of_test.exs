@@ -53,6 +53,11 @@ defmodule ColouredFlow.Definition.ColourSet.OfTest do
         %{name: "Alice", age: 20, sex: :female},
         {:map, %{name: {:binary, []}, age: {:integer, []}}}
       )
+
+      refute_of_type(
+        %{name: "Alice", sex: :female},
+        {:map, %{name: {:binary, []}, age: {:integer, []}}}
+      )
     end
 
     test "enum" do

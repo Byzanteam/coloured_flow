@@ -1,7 +1,7 @@
 # Colour set
 
-The colour set is like a data type in a programming language.
-We use Elixir terms to define the colour sets.
+The colour set is like a data type in a programming language. We use Elixir
+terms to define the colour sets.
 
 ## Unit colour sets
 
@@ -53,13 +53,13 @@ colset int() :: integer();
 
 ### Operations
 
-`i1 / i2` returns the floating-point division of `i1` by `i2`.
-If you want to perform integer division, use the `Kernel.div/2` operator.
+`i1 / i2` returns the floating-point division of `i1` by `i2`. If you want to
+perform integer division, use the `Kernel.div/2` operator.
 
 ## Float(ing-point) colour sets
 
-Floats are numerals with a decimal point.
-It follows IEEE 754 standard, except for the `NaN` and `Infinity` values.
+Floats are numerals with a decimal point. It follows IEEE 754 standard, except
+for the `NaN` and `Infinity` values.
 
 ### Declaration syntax
 
@@ -163,8 +163,8 @@ colset packet() :: {:data, binary()} | {:ack, integer()}
 
 ## List colour sets
 
-A list is a collection of elements, note that the
-elements must be of the same type.
+A list is a collection of elements, note that the elements must be of the same
+type.
 
 ### Declaration syntax
 

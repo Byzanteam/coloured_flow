@@ -13,38 +13,67 @@ defmodule ColouredFlow.Definition.Action do
   alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Expression.Action, as: ActionExpression
 
-  @type output() :: {:cpn_output_variable, Variable.name()} | ColourSet.value()
+  # TODO: meta is necessary?
+  @type output() ::
+          {:cpn_output_variable, {Variable.name(), meta :: keyword()}} | ColourSet.value()
 
-  typed_structor enforce: true do
+  typed_structor do
     plugin TypedStructor.Plugins.DocFields
 
-    field :free_vars, [Variable.name()],
+    field :code, Expression.t(),
       doc: """
-      The variables are the unbound variables in the out-going places.
-      The return values of the action will be bound to the free variables.
+      The code segment to be executed when the transition is fired.
 
-      - `[:x, :y]`: outputs will be bound to [x, y]
+      Examples:
+
+      ```
+      quotient = div(dividend, divisor)
+      modulo = Integer.mod(dividend, divisor)
+
+      # use `output` keyword to mark outputs
+      output {quotient, modulo}
+
+      # the outputs are:
+      [
+        [
+          cpn_output_variable: {:quotient, [line: 4, column: 9]},
+          cpn_output_variable: {:modulo, [line: 4, column: 19]}
+        ]
+      ]
+
+      ```
+
+      ```
+      output {1, x}
+
+      # the outpus are:
+      [
+        [
+          1,
+          {:cpn_output_variable, {:x, [line: 1, column: 12]}}
+        ]
+      ]
+      ```
       """
 
-    field :outputs, [output()],
+    field :outputs, [[output()]],
+      enforce: true,
       doc: """
       The return values of the action will be bound to the free variables.
 
-      - `[1, {:cpn_bind_variable, :x}]`: outputs [1, x]
-      - `[{:cpn_bind_variable, :x}, {:cpn_bind_variable, :5}]`: outputs [x, x]
+      - `[1, {:cpn_output_variable, :x}]`: outputs [1, x]
+      - `[{:cpn_output_variable, :x}, {:cpn_output_variable, :x}]`: outputs [x, x]
       """
-
-    field :code, Expression.t()
   end
 
   @spec build_outputs(Expression.t()) ::
-          {:ok, list(output())} | {:error, ColouredFlow.Expression.compile_error()}
+          {:ok, list(list(output()))} | {:error, ColouredFlow.Expression.compile_error()}
   def build_outputs(%Expression{} = expression) do
     outputs = extract_outputs(expression.expr)
     check_outputs(outputs)
   end
 
-  @spec build_outputs!(Expression.t()) :: list(output())
+  @spec build_outputs!(Expression.t()) :: list(list(output()))
   def build_outputs!(%Expression{} = expression) do
     case build_outputs(expression) do
       {:ok, outputs} -> outputs
@@ -64,6 +93,7 @@ defmodule ColouredFlow.Definition.Action do
     |> elem(1)
   end
 
+  defp check_outputs([]), do: {:ok, []}
   defp check_outputs([output]), do: {:ok, [output]}
 
   defp check_outputs(outputs) do

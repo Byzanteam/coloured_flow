@@ -12,7 +12,7 @@ defmodule ColouredFlow.Definition.Arc do
   alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Expression.Arc, as: ArcExpression
 
-  @type name() :: binary()
+  @type label() :: binary()
   @type orientation() :: :p_to_t | :t_to_p
   @type binding() :: {
           non_neg_integer() | {:cpn_bind_variable, Variable.name()},
@@ -22,7 +22,9 @@ defmodule ColouredFlow.Definition.Arc do
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
-    field :name, name()
+    field :label, label(),
+      enforce: false,
+      doc: "The label of the arc, optional, used for debugging."
 
     field :orientation, orientation(),
       doc: """
@@ -49,6 +51,20 @@ defmodule ColouredFlow.Definition.Arc do
       (see <https://cpntools.org/2018/01/09/resource-allocation-example/>).
       However, outgoing arcs are allowed to refer to an unbound variable
       that will be updated during the transition action.
+
+      Examples:
+
+      ```elixir
+      if x > 0 do
+        # use `bind` keyword to bind the variable
+        bind {1, x}
+      else
+        bind {2, 1}
+      end
+
+      # the bindings are:
+      # [{2, 1}, {1, {:cpn_bind_variable, :x}}]
+      ```
       """
 
     field :bindings,
