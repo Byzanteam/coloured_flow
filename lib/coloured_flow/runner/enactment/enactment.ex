@@ -128,4 +128,52 @@ defmodule ColouredFlow.Runner.Enactment do
 
     %Snapshot{snapshot | version: snapshot.version + steps, markings: markings}
   end
+
+  @impl GenServer
+  def handle_call({:allocate_workitem, workitem_id}, _from, %__MODULE__{} = state) do
+    case pop_workitem(state, workitem_id, :enabled) do
+      {:ok, workitem, workitems} ->
+        workitem = Storage.transition_workitem(workitem, :allocated)
+        state = %__MODULE__{state | workitems: [workitem | workitems]}
+
+        {:reply, {:ok, workitem}, state}
+
+      {:error, :workitem_not_found} ->
+        exception =
+          Exceptions.NonLiveWorkitem.exception(
+            id: workitem_id,
+            enactment_id: state.enactment_id
+          )
+
+        {:reply, {:error, exception}, state}
+
+      {:error, {:workitem_unexpected_state, workitem_state}} ->
+        exception =
+          Exceptions.InvalidWorkitemTransition.exception(
+            id: workitem_id,
+            enactment_id: state.enactment_id,
+            state: workitem_state,
+            transition: :allocate
+          )
+
+        {:reply, {:error, exception}, state}
+    end
+  end
+
+  @spec pop_workitem(state(), workitem_id(), expected_state :: Workitem.state()) ::
+          {:ok, Workitem.t(), [Workitem.t()]}
+          | {:error,
+             :workitem_not_found | {:workitem_unexpected_state, state :: Workitem.state()}}
+  defp pop_workitem(%__MODULE__{} = state, workitem_id, expected_state) do
+    case Enum.split_with(state.workitems, &(&1.id === workitem_id)) do
+      {[], _workitems} ->
+        {:error, :workitem_not_found}
+
+      {[%Workitem{state: ^expected_state} = workitem], workitems} ->
+        {:ok, workitem, workitems}
+
+      {[%Workitem{} = workitem], _workitems} ->
+        {:error, {:workitem_unexpected_state, workitem.state}}
+    end
+  end
 end
