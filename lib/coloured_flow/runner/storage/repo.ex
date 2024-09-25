@@ -8,6 +8,7 @@ defmodule ColouredFlow.Runner.Storage.Repo do
     insert!: 2,
     insert_all: 3,
     one!: 1,
+    transaction: 1,
     update_all: 2
   ]
 

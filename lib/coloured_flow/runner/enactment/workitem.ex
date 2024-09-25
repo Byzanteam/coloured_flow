@@ -93,4 +93,28 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   """
   @spec __states__() :: [state()]
   def __states__, do: __live_states__() ++ __completed_states__()
+
+  @doc """
+  The valid transitions of the workitem, represented as a list of a `{from, transition, to}` tuple.
+
+  For example, `{:enabled, :allocate, :allocated}` means the workitem can be `allocated`
+  when it is `enabled` by the `allocate` transition.
+  """
+  @spec __transitions__() :: [{from :: state(), transition :: atom(), to :: state()}]
+  def __transitions__ do
+    [
+      # normal
+      {:enabled, :allocate, :allocated},
+      {:allocated, :start, :started},
+      {:started, :complete, :completed},
+      # exception
+      {:allocated, :reoffer_a, :enabled},
+      {:started, :reoffer_s, :enabled},
+      {:started, :reallocate_s, :allocated},
+      # system
+      {:enabled, :withdraw_o, :withdrawn},
+      {:allocated, :withdraw_a, :withdrawn},
+      {:started, :withdraw_s, :withdrawn}
+    ]
+  end
 end

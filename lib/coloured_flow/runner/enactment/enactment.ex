@@ -111,7 +111,7 @@ defmodule ColouredFlow.Runner.Enactment do
       )
 
     produced_workitems = Storage.produce_workitems(state.enactment_id, to_produce)
-    :ok = Storage.withdraw_workitems(to_withdraw)
+    _withdrawn = Storage.transition_workitems(to_withdraw, :withdrawn)
 
     {:noreply, %__MODULE__{state | workitems: existings ++ produced_workitems}}
   end

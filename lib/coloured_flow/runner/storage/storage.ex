@@ -121,24 +121,105 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc """
-  Withdraws the enabled workitems.
+  Transition a workitem from one state to another.
+  This is a shortcut for `ColouredFlow.Runner.Storage.transition_workitems/2`.
   """
-  @spec withdraw_workitems([Workitem.t()]) :: :ok
-  def withdraw_workitems(workitems) do
-    ids =
-      Enum.map(workitems, fn
-        %Workitem{state: state} = workitem when state in @live_states ->
-          workitem.id
+  @spec transition_workitem(Workitem.t(), target_state :: Workitem.state()) :: Workitem.t()
+  def transition_workitem(workitem, target_state) do
+    workitem
+    |> List.wrap()
+    |> transition_workitems(target_state)
+    |> hd()
+  end
 
-        %Workitem{} = workitem ->
-          raise ArgumentError, "The workitem state is not `enabled`: #{inspect(workitem)}"
-      end)
+  @doc """
+  Transition the workitems from one state to another in accordance with the state machine (See `c:ColouredFlow.Runner.Enactment.Workitem.state/0`).
+  """
+  @spec transition_workitems([Workitem.t()], target_state :: Workitem.state()) :: [Workitem.t()]
+  def transition_workitems([], _target_state), do: []
 
-    Schemas.Workitem
-    |> where([wi], wi.id in ^ids and wi.state in @live_states)
-    |> Repo.update_all(set: [state: :withdrawn])
+  valid_transitions = Enum.group_by(Workitem.__transitions__(), &elem(&1, 2), &elem(&1, 0))
 
-    :ok
+  for {target_state, valid_states} <- valid_transitions do
+    def transition_workitems(workitems, unquote(target_state))
+        when is_list(workitems) do
+      do_transition_workitems(workitems, unquote(target_state), unquote(valid_states))
+    end
+  end
+
+  defp do_transition_workitems(workitems, target_state, valid_states)
+       when is_list(workitems) do
+    {ids, length} = check_state!(workitems, valid_states)
+
+    case update_all(ids, length, target_state) do
+      :ok ->
+        Enum.map(workitems, &Map.put(&1, :state, target_state))
+
+      {:error, {:unexpected_updated_rows, [expected: length, actual: actual]}} ->
+        # When the actual number is not equal to the expected number,
+        # it means the workitems in the gen_server are not consistent with the database.
+        # So we just raise an error to crash the process, and let the supervisor
+        # restart the gen_server and retry.
+        raise """
+        The number of workitems to transition to #{inspect(target_state)} is not equal to the actual number.
+        Expected: #{length}, Actual: #{actual}
+        Workitems: #{Enum.join(ids, ", ")}
+        """
+    end
+  end
+
+  @spec check_state!([Workitem.t()], [Workitem.state()]) ::
+          {ids :: [Workitem.id()], length :: pos_integer()}
+  defp check_state!(workitems, valid_states)
+       when is_list(workitems) and is_list(valid_states) do
+    Enum.map_reduce(workitems, 0, fn %Workitem{state: state} = workitem, acc ->
+      if state in valid_states do
+        {workitem.id, acc + 1}
+      else
+        raise ArgumentError,
+              """
+              The workitem state is not in valid states.
+              Valid states: #{inspect(valid_states)}
+              Workitem: #{inspect(workitem)}
+              """
+      end
+    end)
+  end
+
+  @spec update_all(
+          ids :: [Workitem.id()],
+          expected_length :: pos_integer(),
+          target_state :: Workitem.state()
+        ) ::
+          :ok
+          | {
+              :error,
+              {:unexpected_updated_rows, [expected: pos_integer(), actual: pos_integer()]}
+            }
+  defp update_all(ids, expected_length, target_state) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.update_all(
+      :withdraw,
+      where(Schemas.Workitem, [wi], wi.id in ^ids),
+      set: [state: target_state, updated_at: DateTime.utc_now()]
+    )
+    |> Ecto.Multi.run(:result, fn _repo, %{withdraw: withdraw} ->
+      case withdraw do
+        {^expected_length, nil} ->
+          {:ok, :ok}
+
+        {actual, nil} ->
+          {:error, {:unexpected_updated_rows, expected: expected_length, actual: actual}}
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, :result, reason, _changes_so_far} ->
+        {:error, reason}
+    end
   end
 
   @spec take_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok
