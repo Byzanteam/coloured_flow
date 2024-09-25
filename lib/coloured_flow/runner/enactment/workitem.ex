@@ -5,6 +5,8 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   use TypedStructor
 
+  @type id() :: Ecto.UUID.t()
+
   @typedoc """
   The state of the workitem. [^1] [^2]
 
@@ -60,7 +62,7 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
-    field :id, Ecto.UUID.t(),
+    field :id, id(),
       doc: """
       The unique identifier of the workitem.
       """

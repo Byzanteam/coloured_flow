@@ -15,14 +15,18 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage
+
+  @typep enactment_id() :: Storage.enactment_id()
+  @typep workitem_id() :: Workitem.id()
 
   typed_structor type_name: :state, enforce: true do
     @typedoc "The state of the enactment."
 
     plugin TypedStructor.Plugins.DocFields
 
-    field :enactment_id, Storage.enactment_id(), doc: "The unique identifier of this enactment."
+    field :enactment_id, enactment_id(), doc: "The unique identifier of this enactment."
 
     field :version, non_neg_integer(),
       default: 0,
@@ -32,7 +36,7 @@ defmodule ColouredFlow.Runner.Enactment do
     field :workitems, [Workitem.t()], default: [], doc: "The live workitems of the enactment."
   end
 
-  @typep init_arg() :: [enactment_id: String.t()]
+  @typep init_arg() :: [enactment_id: enactment_id()]
 
   @spec start_link(init_arg()) :: GenServer.on_start()
   def start_link(init_arg) do
@@ -116,7 +120,7 @@ defmodule ColouredFlow.Runner.Enactment do
     {:noreply, %__MODULE__{state | workitems: existings ++ produced_workitems}}
   end
 
-  @spec catchup_snapshot(Storage.enactment_id(), Snapshot.t()) :: Snapshot.t()
+  @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
   defp catchup_snapshot(enactment_id, snapshot) do
     occurrences = Storage.occurrences_stream(enactment_id, snapshot.version)
 
