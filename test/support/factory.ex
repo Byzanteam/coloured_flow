@@ -105,7 +105,7 @@ defmodule ColouredFlow.Factory do
     %Schemas.Workitem{
       id: Ecto.UUID.generate(),
       enactment: fn -> build(:enactment) end,
-      state: :offered,
+      state: :enabled,
       data: fn ->
         %{
           binding_element:

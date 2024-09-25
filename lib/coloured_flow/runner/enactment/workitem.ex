@@ -13,19 +13,19 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
       direction LR
 
       %% normal
-      [*] --> offered: *create
-      offered --> allocated: *allocate
+      [*] --> enabled: *create
+      enabled --> allocated: *allocate
       allocated --> started: *start
       started --> completed: *complete
       completed --> [*]
 
       %% exception
-      allocated --> offered: reoffer-a
-      started --> offered: reoffer-s
+      allocated --> enabled: reoffer-a
+      started --> enabled: reoffer-s
       started --> allocated: reallocate−s
 
       %% system
-      offered --> withdrawn: withdraw-o
+      enabled --> withdrawn: withdraw-o
       allocated --> withdrawn: withdraw-a
       started --> withdrawn: withdraw-s
       withdrawn --> [*]
@@ -37,13 +37,13 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   | State | Description |
   | --- | --- |
-  | `offered` | The workitem has been offered to resources. |
+  | `enabled` | The workitem has been enabled to resources. |
   | `allocated` | The workitem has been allocated to a resource. |
   | `started` | The workitem has been started to handle. |
   | `completed` | The workitem has been completed normally. |
   | `withdrawn` | The workitem has been withdrawn, perhaps because other workitem has been allocated. |
 
-  Among these states, `offered`, `allocated`, and `started` are the `live` states.
+  Among these states, `enabled`, `allocated`, and `started` are the `live` states.
 
   > #### INFO {: .info}
   > Note: The workitem should not be *failed*, because the failure should be handled by handlers.
@@ -54,7 +54,7 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   [^2]: Modern Business Process Automation YAWL and its Support Environment.pdf, p. 249
 
   """
-  @type state() :: :offered | :allocated | :started | :completed | :withdrawn
+  @type state() :: :enabled | :allocated | :started | :completed | :withdrawn
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields

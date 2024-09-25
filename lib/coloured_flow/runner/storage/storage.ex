@@ -80,7 +80,7 @@ defmodule ColouredFlow.Runner.Storage do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
-  @live_states ~w[offered allocated started]a
+  @live_states ~w[enabled allocated started]a
 
   @doc """
   Returns a list of live workitems for the given enactment.
@@ -102,7 +102,7 @@ defmodule ColouredFlow.Runner.Storage do
       Enum.map(binding_elements, fn binding_element ->
         %{
           enactment_id: enactment_id,
-          state: :offered,
+          state: :enabled,
           data: %Schemas.Workitem.Data{
             binding_element: binding_element
           },
@@ -121,7 +121,7 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc """
-  Withdraws the offered workitems.
+  Withdraws the enabled workitems.
   """
   @spec withdraw_workitems([Workitem.t()]) :: :ok
   def withdraw_workitems(workitems) do
@@ -131,7 +131,7 @@ defmodule ColouredFlow.Runner.Storage do
           workitem.id
 
         %Workitem{} = workitem ->
-          raise ArgumentError, "The workitem state is not `offered`: #{inspect(workitem)}"
+          raise ArgumentError, "The workitem state is not `enabled`: #{inspect(workitem)}"
       end)
 
     Schemas.Workitem

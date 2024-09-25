@@ -27,7 +27,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
     test "without snapshot", %{enactment: enactment} do
       enactment_id = enactment.id
 
-      workitems_query = Schemas.Workitem |> from() |> where(state: :offered)
+      workitems_query = Schemas.Workitem |> from() |> where(state: :enabled)
 
       workitems_count = Repo.aggregate(workitems_query, :count)
 
@@ -41,7 +41,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  workitems: [
                    %Enactment.Workitem{
                      id: one_workitem_id,
-                     state: :offered,
+                     state: :enabled,
                      binding_element: %BindingElement{
                        transition: "pass_through",
                        binding: [x: 1],
@@ -50,7 +50,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                    },
                    %Enactment.Workitem{
                      id: two_workitem_id,
-                     state: :offered,
+                     state: :enabled,
                      binding_element: %BindingElement{
                        transition: "pass_through",
                        binding: [x: 1],
@@ -97,7 +97,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  workitems: [
                    %Enactment.Workitem{
                      id: _workitem_id,
-                     state: :offered,
+                     state: :enabled,
                      binding_element: %BindingElement{
                        transition: "pass_through",
                        binding: [x: 1],
@@ -142,7 +142,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  workitems: [
                    %Enactment.Workitem{
                      id: _workitem_id,
-                     state: :offered,
+                     state: :enabled,
                      binding_element: %BindingElement{
                        transition: "pass_through",
                        binding: [x: 1],
@@ -164,7 +164,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
     test "works", %{enactment: enactment} do
       offered_workitem =
         :workitem
-        |> build(enactment: enactment, state: :offered)
+        |> build(enactment: enactment, state: :enabled)
         |> workitem_with_binding_element(
           BindingElement.new(
             "pass_through",
@@ -259,7 +259,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                },
                %Enactment.Workitem{
                  id: produced_workitem_id,
-                 state: :offered,
+                 state: :enabled,
                  binding_element: %BindingElement{
                    transition: "pass_through",
                    binding: [x: 1],
