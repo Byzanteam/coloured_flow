@@ -43,7 +43,8 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   | `completed` | The workitem has been completed normally. |
   | `withdrawn` | The workitem has been withdrawn, perhaps because other workitem has been allocated. |
 
-  Among these states, `enabled`, `allocated`, and `started` are the `live` states.
+  Among these states, `enabled`, `allocated`, and `started` are the `live` states,
+  and `completed` and `withdrawn` are the `completed` states.
 
   > #### INFO {: .info}
   > Note: The workitem should not be *failed*, because the failure should be handled by handlers.
@@ -74,4 +75,22 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
       The binding element for the workitem.
       """
   end
+
+  @doc """
+  The live states of the workitem. See more at `t:state/0`.
+  """
+  @spec __live_states__() :: [state()]
+  def __live_states__, do: ~w[enabled allocated started]a
+
+  @doc """
+  The completed states of the workitem. See more at `t:state/0`.
+  """
+  @spec __completed_states__() :: [state()]
+  def __completed_states__, do: ~w[completed withdrawn]a
+
+  @doc """
+  The states of the workitem. See more at `t:state/0`.
+  """
+  @spec __states__() :: [state()]
+  def __states__, do: __live_states__() ++ __completed_states__()
 end

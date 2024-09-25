@@ -80,7 +80,7 @@ defmodule ColouredFlow.Runner.Storage do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
-  @live_states ~w[enabled allocated started]a
+  @live_states Workitem.__live_states__()
 
   @doc """
   Returns a list of live workitems for the given enactment.
