@@ -9,12 +9,12 @@ defmodule ColouredFlow.Runner.Enactment do
   use TypedStructor
 
   alias ColouredFlow.Enactment.Marking
-  alias ColouredFlow.MultiSet
 
   alias ColouredFlow.Runner.Enactment.Catchuping
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Enactment.WorkitemCalibration
   alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage
 
@@ -88,36 +88,10 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def handle_continue(:calibrate_workitems, %__MODULE__{} = state) do
-    alias ColouredFlow.EnabledBindingElements.Computation
+    state = WorkitemCalibration.initial_calibrate(state)
 
-    cpnet = Storage.get_flow_by_enactment(state.enactment_id)
 
-    binding_elements =
-      cpnet.transitions
-      |> Enum.flat_map(fn transition ->
-        Computation.list(transition, cpnet, state.markings)
-      end)
-      |> MultiSet.new()
-
-    %{to_produce: to_produce, to_withdraw: to_withdraw, existings: existings} =
-      Enum.reduce(
-        state.workitems,
-        %{to_produce: binding_elements, to_withdraw: [], existings: []},
-        fn %Workitem{} = workitem, ctx ->
-          case MultiSet.pop(ctx.to_produce, workitem.binding_element) do
-            {0, _binding_elements} ->
-              %{ctx | to_withdraw: [workitem | ctx.to_withdraw]}
-
-            {1, binding_elements} ->
-              %{ctx | to_produce: binding_elements, existings: [workitem | ctx.existings]}
-          end
-        end
-      )
-
-    produced_workitems = Storage.produce_workitems(state.enactment_id, to_produce)
-    _withdrawn = Storage.transition_workitems(to_withdraw, :withdrawn)
-
-    {:noreply, %__MODULE__{state | workitems: existings ++ produced_workitems}}
+    {:noreply, state}
   end
 
   @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
