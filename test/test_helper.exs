@@ -1,5 +1,6 @@
 Mix.Task.run("ecto.create")
 
+{:ok, _pid} = ColouredFlow.Runner.Supervisor.start_link([])
 {:ok, _pid} = ColouredFlow.TestRepo.start_link()
 :ok = ColouredFlow.TestRepo.migrate()
 

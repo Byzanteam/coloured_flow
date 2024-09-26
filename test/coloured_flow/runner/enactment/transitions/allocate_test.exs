@@ -22,7 +22,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
   end
 
   test "works", %{enactment: enactment} do
-    {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment.id)
+    pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
     %Enactment{workitems: [workitem]} = get_enactment_state(pid)
 
@@ -31,7 +31,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
   end
 
   test "returns InvalidWorkitemTransition exception", %{enactment: enactment} do
-    {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment.id)
+    pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
     %Enactment{workitems: [workitem]} = get_enactment_state(pid)
 
@@ -49,7 +49,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
   end
 
   test "returns NonLiveWorkitem exception", %{enactment: enactment} do
-    {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment.id)
+    pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
     workitem_id = Ecto.UUID.generate()
     assert {:error, exception} = GenServer.call(pid, {:allocate_workitem, workitem_id})

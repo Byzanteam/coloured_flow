@@ -31,7 +31,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
       workitems_count = Repo.aggregate(workitems_query, :count)
 
-      {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment_id)
+      pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
       assert match?(
                %Enactment{
@@ -84,7 +84,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
       enactment_id = enactment.id
 
-      {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment_id)
+      pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
       assert match?(
                %Enactment{
@@ -129,7 +129,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
       })
       |> insert()
 
-      {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment_id)
+      pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
       assert match?(
                %Enactment{
@@ -228,7 +228,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
       previous_workitems = Repo.all(Schemas.Workitem)
 
-      {:ok, pid} = GenServer.start_link(Enactment, enactment_id: enactment_id)
+      pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
       assert %Enactment{
                enactment_id: ^enactment_id,
