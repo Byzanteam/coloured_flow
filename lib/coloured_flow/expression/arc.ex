@@ -3,17 +3,18 @@ defmodule ColouredFlow.Expression.Arc do
   The arc expression utility module.
   """
 
-  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Variable
 
-  @binding_tag :cpn_bind_variable
+  @binding_literal_tag :cpn_bind_literal
+  @binding_variable_tag :cpn_bind_variable
 
-  @typep binding() :: {
-           coefficient ::
-             non_neg_integer() | {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}},
-           value ::
-             {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}} | ColourSet.value()
-         }
+  @type value_pattern() :: Macro.t()
+  @type binding() :: {
+          coefficient ::
+            {:cpn_bind_literal, non_neg_integer()}
+            | {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}},
+          value_pattern()
+        }
 
   @doc """
   A macro that returns the value as is,
@@ -37,21 +38,21 @@ defmodule ColouredFlow.Expression.Arc do
   ## Examples
 
       iex> extract_binding(quote do: {1, x})
-      {1, {:cpn_bind_variable, {:x, []}}}
+      {{:cpn_bind_literal, 1}, {:x, [], __MODULE__}}
 
       iex> extract_binding(quote do: {x, y})
-      {{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}}
+      {{:cpn_bind_variable, {:x, []}}, {:y, [], __MODULE__}}
   """
   @spec extract_binding(Macro.t()) :: binding()
   def extract_binding({coefficient, value}) do
     coefficient = extract_coeefficient(coefficient)
-    value = extract_value(value)
+    value = validate_value_pattern(value)
 
     {coefficient, value}
   end
 
   def extract_binding(declaration) do
-    raise """
+    raise ArgumentError, """
     Invalid declaration for binding, expected a tuple of size 2, got: #{inspect(declaration)}
     """
   end
@@ -61,36 +62,46 @@ defmodule ColouredFlow.Expression.Arc do
       Macro.quoted_literal?(quoted) ->
         case extract_literal(quoted) do
           coefficient when is_integer(coefficient) and coefficient >= 0 ->
-            coefficient
+            {@binding_literal_tag, coefficient}
 
           value ->
-            raise """
+            raise ArgumentError, """
             Invalid coefficient for binding, expected a non-negative integer, got: #{inspect(value)}
             """
         end
 
       var?(quoted) ->
-        {@binding_tag, extract_var(quoted)}
+        {@binding_variable_tag, extract_var(quoted)}
 
       true ->
-        raise """
+        raise ArgumentError, """
         Invalid coefficient for binding, expected a non-negative integer or a variable, got: #{inspect(quoted)}
         """
     end
   end
 
-  defp extract_value(quoted) do
-    cond do
-      Macro.quoted_literal?(quoted) ->
-        extract_literal(quoted)
+  defp validate_value_pattern(quoted) do
+    {_result, diagnostics} =
+      Code.with_diagnostics(fn ->
+        try do
+          env = Macro.Env.to_match(__ENV__)
+          :elixir_expand.expand(quoted, :elixir_env.env_to_ex(env), env)
+        rescue
+          _error ->
+            :ok
+        end
+      end)
 
-      var?(quoted) ->
-        {@binding_tag, extract_var(quoted)}
+    if Enum.empty?(diagnostics) do
+      quoted
+    else
+      raise ArgumentError, """
+      Invalid value pattern for binding, got: #{inspect(quoted)}
 
-      true ->
-        raise """
-        Invalid value for binding, expected a variable, got: #{inspect(quoted)}
-        """
+      Diagnostics:
+
+      #{Enum.map_join(diagnostics, "\n", &Map.get(&1, :message))}
+      """
     end
   end
 
@@ -111,39 +122,34 @@ defmodule ColouredFlow.Expression.Arc do
 
   ## Examples
 
-      iex> get_var_names({1, {:cpn_bind_variable, {:x, [line: 1, column: 2]}}})
-      [{:x, [line: 1, column: 2]}]
+      iex> get_var_names({{:cpn_bind_literal, 1}, quote do: x})
+      [{:x, []}]
 
-      iex> get_var_names({{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}})
+      iex> get_var_names({{:cpn_bind_variable, {:x, []}}, quote do: y})
       [{:x, []}, {:y, []}]
+
+      iex> get_var_names({{:cpn_bind_variable, {:x, []}}, quote do: {y, z}})
+      [{:x, []}, {:y, []}, {:z, []}]
   """
   @spec get_var_names(binding()) :: [{Variable.name(), meta :: Keyword.t()}]
-  def get_var_names({coefficient, value}) do
-    Enum.flat_map([coefficient, value], fn
-      {@binding_tag, name_and_meta} -> [name_and_meta]
-      _other -> []
+  def get_var_names({coefficient, value_pattern}) do
+    get_var_names_from_coeefficient(coefficient) ++
+      get_var_names_from_value_pattern(value_pattern)
+  end
+
+  defp get_var_names_from_coeefficient({@binding_variable_tag, var_name}), do: [var_name]
+  defp get_var_names_from_coeefficient({@binding_literal_tag, _value}), do: []
+
+  defp get_var_names_from_value_pattern(pattern) do
+    pattern
+    |> Macro.prewalk([], fn
+      {name, meta, context} = ast, acc when is_atom(name) and is_atom(context) ->
+        {ast, [{name, meta} | acc]}
+
+      ast, acc ->
+        {ast, acc}
     end)
+    |> elem(1)
+    |> Enum.reverse()
   end
-
-  @doc """
-  Prune the meta information from the binding value.
-
-  ## Examples
-
-      iex> prune_meta({1, {:cpn_bind_variable, {:x, [line: 1, column: 2]}}})
-      {1, {:cpn_bind_variable, :x}}
-
-      iex> prune_meta({{:cpn_bind_variable, {:x, []}}, {:cpn_bind_variable, {:y, []}}})
-      {{:cpn_bind_variable, :x}, {:cpn_bind_variable, :y}}
-  """
-  @spec prune_meta(binding()) :: ColouredFlow.Definition.Arc.binding()
-  def prune_meta({coefficient, value}) do
-    coefficient = do_prune_meta(coefficient)
-    value = do_prune_meta(value)
-
-    {coefficient, value}
-  end
-
-  defp do_prune_meta({@binding_tag, {name, _meta}}), do: {@binding_tag, name}
-  defp do_prune_meta(value), do: value
 end

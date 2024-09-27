@@ -137,6 +137,30 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                    %Marking{place: "a", tokens: ~b[2**{}]},
                    %Marking{place: "b", tokens: ~b[{}]}
                  ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
                }
              ] === ebes
 

@@ -38,7 +38,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
             Codec.decode(unquote(codec_spec), data)
           end
 
-          @defoverridable Codec
+          defoverridable Codec
         end
 
       :error ->
@@ -63,6 +63,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   @type codec_spec() ::
           :string
           | :atom
+          # set to nil when encoding and decoding
+          | :ignore
           | {:struct, struct_module(), Keyword.t(codec_spec())}
           | {:list, codec_spec()}
           | {:codec, codec_module()}
@@ -81,6 +83,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
 
   defp do_encode(:string, value) when is_binary(value), do: value
   defp do_encode(:atom, value) when is_atom(value), do: Atom.to_string(value)
+  defp do_encode(:ignore, _value), do: nil
 
   defp do_encode({:struct, module, fields_spec}, value)
        when is_atom(module) and is_list(fields_spec) and is_struct(value, module) do
