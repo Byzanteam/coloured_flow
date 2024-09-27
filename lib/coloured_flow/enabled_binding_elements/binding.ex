@@ -3,9 +3,12 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
   The utility functions for bindings.
   """
 
+  alias ColouredFlow.MultiSet
+
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Enactment.BindingElement
+  alias ColouredFlow.Expression.Arc, as: ArcExpression
 
   @typep binding() :: BindingElement.binding()
 
@@ -77,5 +80,115 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
           end
       end
     end)
+  end
+
+  @doc """
+  Get the bindings from a place tokens(`t:ColouredFlow.MultiSet.t/0`) that match the arc expression expression (see detail at`t:ColouredFlow.Expression.Arc.binding/0`).
+  """
+  @spec match_bag(
+          place_tokens_bag :: MultiSet.t(),
+          arc_binding :: ArcExpression.binding(),
+          value_var_context :: atom()
+        ) :: [binding()]
+  def match_bag(place_tokens_bag, arc_binding, value_var_context \\ nil) do
+    place_tokens_bag
+    |> MultiSet.to_pairs()
+    |> Enum.flat_map(&match(&1, arc_binding, value_var_context))
+  end
+
+  @doc """
+  Get the bindings from a token (`t:ColouredFlow.MultiSet.pair/0`) that match the arc_binding expression (see detail at`t:ColouredFlow.Expression.Arc.binding/0`).
+  """
+  @spec match(
+          place_tokens :: MultiSet.pair(),
+          arc_binding :: ArcExpression.binding(),
+          value_var_context :: atom()
+        ) :: [binding()]
+  def match(place_tokens, arc_binding, value_var_context \\ nil)
+
+  def match(place_tokens, {{:cpn_bind_literal, coefficient}, value_pattern}, value_var_context),
+    do: literal_match(place_tokens, coefficient, value_pattern, value_var_context)
+
+  def match(place_tokens, {{:cpn_bind_variable, coefficient}, value_pattern}, value_var_context),
+    do: variable_match(place_tokens, coefficient, value_pattern, value_var_context)
+
+  defp literal_match(place_tokens, expected_coefficient, value_pattern, value_var_context)
+
+  defp literal_match(
+         {token_coefficient, _token_value},
+         expected_coefficient,
+         _value_pattern,
+         _binding_context
+       )
+       when expected_coefficient > token_coefficient,
+       do: []
+
+  defp literal_match(
+         {token_coefficient, token_value},
+         expected_coefficient,
+         value_pattern,
+         value_var_context
+       ) do
+    case match_value_pattern(token_value, value_pattern, value_var_context) do
+      :error ->
+        []
+
+      {:ok, binding} ->
+        prepend_coefficient_binding(token_coefficient, expected_coefficient, binding)
+    end
+  end
+
+  defp variable_match(
+         {token_coefficient, token_value},
+         {coefficient_var, _meta},
+         value_pattern,
+         value_var_context
+       ) do
+    case match_value_pattern(token_value, value_pattern, value_var_context) do
+      :error ->
+        []
+
+      {:ok, binding} ->
+        case Keyword.fetch(binding, coefficient_var) do
+          :error ->
+            for coeff <- 0..token_coefficient do
+              [{coefficient_var, coeff} | binding]
+            end
+
+          {:ok, coefficient} ->
+            prepend_coefficient_binding(token_coefficient, coefficient, binding)
+        end
+    end
+  end
+
+  @spec match_value_pattern(
+          MultiSet.value(),
+          ArcExpression.value_pattern(),
+          value_var_context :: atom()
+        ) ::
+          {:ok, [binding()]} | :error
+  defp match_value_pattern(token_value, value_pattern, value_var_context) do
+    ast =
+      quote do
+        case unquote(Macro.escape(token_value)) do
+          unquote(value_pattern) -> {:ok, binding(unquote(value_var_context))}
+          _other -> :error
+        end
+      end
+
+    ast
+    |> Code.eval_quoted()
+    |> elem(0)
+  rescue
+    _error -> []
+  end
+
+  defp prepend_coefficient_binding(token_coefficient, expected_coefficient, binding) do
+    if 0 === expected_coefficient do
+      [binding]
+    else
+      result = div(token_coefficient, expected_coefficient)
+      List.duplicate(binding, result)
+    end
   end
 end
