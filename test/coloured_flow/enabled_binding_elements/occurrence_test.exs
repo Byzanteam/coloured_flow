@@ -41,7 +41,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -102,7 +102,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, {}}"
+              expression: "{1, {}}"
             )
           ],
           variables: []
@@ -158,14 +158,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "one",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             ),
             build_arc!(
               label: "another",
               place: "another",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -248,14 +248,14 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "quotient",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "bind {1, quotient}"
+              expression: "{1, quotient}"
             ),
             build_arc!(
               label: "modulo",
               place: "modulo",
               transition: transition.name,
               orientation: :t_to_p,
-              expression: "bind {1, modulo}"
+              expression: "{1, modulo}"
             )
           ],
           variables: [
@@ -321,7 +321,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               orientation: :t_to_p,
               expression: """
               1/0
-              bind {1, x}
+              {1, x}
               """
             )
           ],
@@ -374,7 +374,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, true}"
+              expression: "{1, true}"
             )
           ],
           variables: [

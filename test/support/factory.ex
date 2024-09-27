@@ -54,7 +54,7 @@ defmodule ColouredFlow.Factory do
           place: "output",
           transition: "pass_through",
           orientation: :t_to_p,
-          expression: "bind {1, x}"
+          expression: "{1, x}"
         )
       ],
       variables: [

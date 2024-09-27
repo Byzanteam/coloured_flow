@@ -43,7 +43,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -113,7 +113,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, {}}"
+              expression: "{1, {}}"
             )
           ],
           variables: [
@@ -213,7 +213,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: "bind {1, c}"
+              expression: "{1, c}"
             )
           ],
           variables: [
@@ -329,7 +329,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: "bind {1, c}"
+              expression: "{1, c}"
             )
           ],
           variables: [
@@ -456,7 +456,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -571,7 +571,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -639,7 +639,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -699,7 +699,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -797,7 +797,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [

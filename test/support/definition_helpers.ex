@@ -31,7 +31,12 @@ defmodule ColouredFlow.DefinitionHelpers do
   def build_arc!(params) do
     params = Keyword.validate!(params, [:label, :place, :transition, :orientation, :expression])
     expr = Expression.build!(params[:expression])
-    bindings = Arc.build_bindings!(expr)
+
+    bindings =
+      case params[:orientation] do
+        :p_to_t -> Arc.build_bindings!(expr)
+        :t_to_p -> []
+      end
 
     %Arc{
       label: Keyword.get(params, :label),
@@ -41,6 +46,23 @@ defmodule ColouredFlow.DefinitionHelpers do
       expression: expr,
       bindings: bindings
     }
+  end
+
+  @spec build_transition_arcs!(
+          transition :: Transition.name(),
+          params_list :: [
+            label: Arc.label(),
+            place: Place.name(),
+            transition: Transition.name(),
+            orientation: Arc.orientation(),
+            expression: binary()
+          ]
+        ) ::
+          [Arc.t()]
+  def build_transition_arcs!(transition, params_list) do
+    Enum.map(params_list, fn params ->
+      build_arc!([{:transition, transition} | params])
+    end)
   end
 
   @spec build_action!(code: binary()) :: Action.t()
