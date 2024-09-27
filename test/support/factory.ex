@@ -21,8 +21,8 @@ defmodule ColouredFlow.Factory do
     }
   end
 
-  def flow_with_cpnet(flow, :simple_sequence) do
-    Map.put(flow, :data, %{definition: build_cpnet(:simple_sequence)})
+  def flow_with_cpnet(flow, flow_name) do
+    Map.put(flow, :data, %{definition: build_cpnet(flow_name)})
   end
 
   defp build_cpnet(:simple_sequence) do
@@ -60,6 +60,154 @@ defmodule ColouredFlow.Factory do
       variables: [
         %Variable{name: :x, colour_set: :int}
       ]
+    }
+  end
+
+  defp build_cpnet(:transmission_protocol) do
+    # from Coloured Petri Nets.pdf, p. 80, Fig 4.1.
+    import ColouredFlow.Notation.Colset
+
+    use ColouredFlow.DefinitionHelpers
+
+    %ColouredPetriNet{
+      colour_sets: [
+        colset(no() :: integer()),
+        colset(data() :: binary()),
+        colset(no_data() :: {integer(), binary()}),
+        colset(bool() :: boolean())
+      ],
+      variables: [
+        %Variable{name: :n, colour_set: :no},
+        %Variable{name: :k, colour_set: :no},
+        %Variable{name: :d, colour_set: :data},
+        %Variable{name: :data, colour_set: :data},
+        %Variable{name: :success, colour_set: :bool}
+      ],
+      places: [
+        %Place{name: "packets_to_send", colour_set: :no_data},
+        %Place{name: "a", colour_set: :no_data},
+        %Place{name: "b", colour_set: :no_data},
+        %Place{name: "data_recevied", colour_set: :data},
+        %Place{name: "next_rec", colour_set: :no},
+        %Place{name: "c", colour_set: :no},
+        %Place{name: "d", colour_set: :no},
+        %Place{name: "next_send", colour_set: :no}
+      ],
+      transitions: [
+        %Transition{name: "send_packet"},
+        %Transition{name: "transmit_packet"},
+        %Transition{name: "receive_packet"},
+        %Transition{name: "transmit_ack"},
+        %Transition{name: "receive_ack"}
+      ],
+      arcs:
+        List.flatten([
+          # arcs are grouped by transitions, ordered by:
+          # - the in or out orientation
+          # - the position: top, right, bottom, left
+          build_transition_arcs!("send_packet", [
+            [
+              place: "packets_to_send",
+              orientation: :p_to_t,
+              expression: """
+              bind {1, {n, d}}
+              """
+            ],
+            [
+              place: "next_send",
+              orientation: :p_to_t,
+              expression: "bind {1, {1, n}}"
+            ],
+            [
+              place: "packets_to_send",
+              orientation: :t_to_p,
+              expression: "{1, {n, d}}"
+            ],
+            [
+              place: "a",
+              orientation: :t_to_p,
+              expression: "{1, {n, d}}"
+            ],
+            [
+              place: "next_send",
+              orientation: :t_to_p,
+              expression: "{1, {1, n}}"
+            ]
+          ]),
+          build_transition_arcs!("transmit_packet", [
+            [
+              place: "a",
+              orientation: :p_to_t,
+              expression: "bind {1, {n, d}}"
+            ],
+            [
+              place: "b",
+              orientation: :t_to_p,
+              expression: "if success do: {1, {n, d}}, else: {0, {n, d}}"
+            ]
+          ]),
+          build_transition_arcs!("receive_packet", [
+            [
+              place: "b",
+              orientation: :p_to_t,
+              expression: "bind {1, {n, d}}"
+            ],
+            [
+              place: "data_recevied",
+              orientation: :p_to_t,
+              expression: "bind {1, data}"
+            ],
+            [
+              place: "next_rec",
+              orientation: :p_to_t,
+              expression: "bind {1, k}"
+            ],
+            [
+              place: "data_recevied",
+              orientation: :t_to_p,
+              expression: "if n == k do: {1, data <> d}, else: {1, data}"
+            ],
+            [
+              place: "c",
+              orientation: :t_to_p,
+              expression: "if n == k, do: {1, k + 1}, else: {1, k}"
+            ],
+            [
+              place: "next_rec",
+              orientation: :t_to_p,
+              expression: "if n == k, do: {1, k + 1}, else: {1, k}"
+            ]
+          ]),
+          build_transition_arcs!("transmit_ack", [
+            [
+              place: "c",
+              orientation: :p_to_t,
+              expression: "bind {1, n}"
+            ],
+            [
+              place: "d",
+              orientation: :t_to_p,
+              expression: "if success do: {1, n}, else: {0, n}"
+            ]
+          ]),
+          build_transition_arcs!("receive_ack", [
+            [
+              place: "next_send",
+              orientation: :p_to_t,
+              expression: "bind {1, k}"
+            ],
+            [
+              place: "d",
+              orientation: :p_to_t,
+              expression: "bind {1, n}"
+            ],
+            [
+              place: "next_send",
+              orientation: :t_to_p,
+              expression: "{1, n}"
+            ]
+          ])
+        ])
     }
   end
 
