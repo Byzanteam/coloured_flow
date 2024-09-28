@@ -90,8 +90,17 @@ defmodule ColouredFlow.Runner.Enactment do
   def handle_continue(:calibrate_workitems, %__MODULE__{} = state) do
     state = WorkitemCalibration.initial_calibrate(state)
 
-
     {:noreply, state}
+  end
+
+  def handle_continue(
+        {:calibrate_workitems, transition, affected_workitems},
+        %__MODULE__{} = state
+      ) do
+    calibration = WorkitemCalibration.calibrate(state, transition, affected_workitems)
+    Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
+
+    {:noreply, calibration.state}
   end
 
   @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
@@ -107,10 +116,11 @@ defmodule ColouredFlow.Runner.Enactment do
   def handle_call({:allocate_workitem, workitem_id}, _from, %__MODULE__{} = state) do
     case pop_workitem(state, workitem_id, :enabled) do
       {:ok, workitem, workitems} ->
-        workitem = Storage.transition_workitem(workitem, :allocated)
-        state = %__MODULE__{state | workitems: [workitem | workitems]}
+        allocated_workitem = Storage.transition_workitem(workitem, :allocated)
+        state = %__MODULE__{state | workitems: [allocated_workitem | workitems]}
 
-        {:reply, {:ok, workitem}, state}
+        {:reply, {:ok, allocated_workitem}, state,
+         {:continue, {:calibrate_workitems, :allocate, [workitem]}}}
 
       {:error, :workitem_not_found} ->
         exception =
