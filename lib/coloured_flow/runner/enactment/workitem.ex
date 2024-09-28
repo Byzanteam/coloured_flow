@@ -7,6 +7,24 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   @type id() :: Ecto.UUID.t()
 
+  @transitions [
+    # normal
+    {:enabled, :allocate, :allocated},
+    {:allocated, :start, :started},
+    {:started, :complete, :completed},
+    # exception
+    {:allocated, :reoffer_a, :enabled},
+    {:started, :reoffer_s, :enabled},
+    {:started, :reallocate_s, :allocated},
+    # system
+    {:enabled, :withdraw_o, :withdrawn},
+    {:allocated, :withdraw_a, :withdrawn},
+    {:started, :withdraw_s, :withdrawn}
+  ]
+
+  @type live_state() :: :enabled | :allocated | :started
+  @type completed_state() :: :completed | :withdrawn
+
   @typedoc """
   The state of the workitem. [^1] [^2]
 
@@ -51,13 +69,19 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   > #### INFO {: .info}
   > Note: The workitem should not be *failed*, because the failure should be handled by handlers.
 
+  ## Available Transitions
+
+  | From | Transition | To |
+  | --- | --- | --- |
+  #{Enum.map_join(@transitions, "\n", fn {from, transition, to} -> "| `#{from}` | `#{transition}` | `#{to}` |" end)}
+
   ## References
   [^1]: Workflow Patterns: The Definitive Guide.pdf, p. 293.
 
   [^2]: Modern Business Process Automation YAWL and its Support Environment.pdf, p. 249
 
   """
-  @type state() :: :enabled | :allocated | :started | :completed | :withdrawn
+  @type state() :: live_state() | completed_state()
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
@@ -81,13 +105,13 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   @doc """
   The live states of the workitem. See more at `t:state/0`.
   """
-  @spec __live_states__() :: [state()]
+  @spec __live_states__() :: [live_state()]
   def __live_states__, do: ~w[enabled allocated started]a
 
   @doc """
   The completed states of the workitem. See more at `t:state/0`.
   """
-  @spec __completed_states__() :: [state()]
+  @spec __completed_states__() :: [completed_state()]
   def __completed_states__, do: ~w[completed withdrawn]a
 
   @doc """
@@ -101,22 +125,16 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   For example, `{:enabled, :allocate, :allocated}` means the workitem can be `allocated`
   when it is `enabled` by the `allocate` transition.
+
+  See `t:state/0` for the available transitions.
   """
-  @spec __transitions__() :: [{from :: state(), transition :: atom(), to :: state()}]
-  def __transitions__ do
-    [
-      # normal
-      {:enabled, :allocate, :allocated},
-      {:allocated, :start, :started},
-      {:started, :complete, :completed},
-      # exception
-      {:allocated, :reoffer_a, :enabled},
-      {:started, :reoffer_s, :enabled},
-      {:started, :reallocate_s, :allocated},
-      # system
-      {:enabled, :withdraw_o, :withdrawn},
-      {:allocated, :withdraw_a, :withdrawn},
-      {:started, :withdraw_s, :withdrawn}
-    ]
-  end
+  @spec __transitions__() ::
+          [
+            unquote(
+              @transitions
+              |> Enum.map(fn t -> Macro.escape(t) end)
+              |> ColouredFlow.Types.make_sum_type()
+            )
+          ]
+  def __transitions__, do: @transitions
 end
