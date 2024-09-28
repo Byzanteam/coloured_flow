@@ -4,16 +4,19 @@ defmodule ColouredFlow.Runner.Exceptions.NonLiveWorkitem do
   such as the workitem is completed or withdrawn, or not even enabled at all.
   """
 
-  alias ColouredFlow.Runner.Enactment.Workitem
+  use TypedStructor
 
-  defexception [:id, :enactment_id]
+  alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage
+
+  typed_structor definer: :defexception, enforce: true do
+    field :id, Workitem.id()
+    field :enactment_id, Storage.enactment_id()
+  end
 
   @impl Exception
-  def exception(arguments) when is_list(arguments) do
-    %__MODULE__{
-      id: Keyword.fetch!(arguments, :id),
-      enactment_id: Keyword.fetch!(arguments, :enactment_id)
-    }
+  def exception(arguments) do
+    struct!(__MODULE__, arguments)
   end
 
   @impl Exception

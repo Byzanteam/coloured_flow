@@ -6,16 +6,29 @@ defmodule ColouredFlow.Runner.Exceptions.InvalidWorkitemTransition do
   See workitem transition details in `ColouredFlow.Runner.Enactment.WorkitemTransition`.
   """
 
-  defexception [:id, :enactment_id, :state, :transition]
+  use TypedStructor
+
+  alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage
+
+  @typep transition() ::
+           unquote(
+             Workitem.__transitions__()
+             |> Enum.map(&elem(&1, 1))
+             |> Enum.uniq()
+             |> ColouredFlow.Types.make_sum_type()
+           )
+
+  typed_structor definer: :defexception, enforce: true do
+    field :id, Workitem.id()
+    field :enactment_id, Storage.enactment_id()
+    field :state, Workitem.state()
+    field :transition, transition()
+  end
 
   @impl Exception
-  def exception(arguments) when is_list(arguments) do
-    %__MODULE__{
-      id: Keyword.fetch!(arguments, :id),
-      enactment_id: Keyword.fetch!(arguments, :enactment_id),
-      state: Keyword.fetch!(arguments, :state),
-      transition: Keyword.fetch!(arguments, :transition)
-    }
+  def exception(arguments) do
+    struct!(__MODULE__, arguments)
   end
 
   @impl Exception
