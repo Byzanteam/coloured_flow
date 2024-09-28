@@ -2,6 +2,7 @@
 defmodule ColouredFlow.Factory do
   @moduledoc false
 
+  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
@@ -21,7 +22,11 @@ defmodule ColouredFlow.Factory do
     }
   end
 
-  def flow_with_cpnet(flow, flow_name) do
+  def flow_with_cpnet(flow, %ColouredPetriNet{} = cpnet) do
+    Map.put(flow, :data, %{definition: cpnet})
+  end
+
+  def flow_with_cpnet(flow, flow_name) when is_atom(flow_name) do
     Map.put(flow, :data, %{definition: build_cpnet(flow_name)})
   end
 
@@ -55,6 +60,67 @@ defmodule ColouredFlow.Factory do
           transition: "pass_through",
           orientation: :t_to_p,
           expression: "{1, x}"
+        )
+      ],
+      variables: [
+        %Variable{name: :x, colour_set: :int}
+      ]
+    }
+  end
+
+  # ```mermad
+  # flowchart LR
+  #   i((input))
+  #   o((output))
+  #   pt1[pass_through_1]
+  #   pt2[pass_through_2]
+  #   i --> pt1 & pt2 --> o
+  # ```
+  defp build_cpnet(:deferred_choice) do
+    import ColouredFlow.Notation.Colset
+
+    use ColouredFlow.DefinitionHelpers
+
+    %ColouredPetriNet{
+      colour_sets: [
+        colset(int() :: integer())
+      ],
+      places: [
+        %Place{name: "input", colour_set: :int},
+        %Place{name: "output", colour_set: :int}
+      ],
+      transitions: [
+        %Transition{name: "pass_through_1", guard: nil},
+        %Transition{name: "pass_through_2", guard: nil}
+      ],
+      arcs: [
+        build_arc!(
+          label: "in",
+          place: "input",
+          transition: "pass_through_1",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          label: "in",
+          place: "input",
+          transition: "pass_through_2",
+          orientation: :p_to_t,
+          expression: "bind {2, x}"
+        ),
+        build_arc!(
+          label: "out",
+          place: "output",
+          transition: "pass_through_1",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          label: "out",
+          place: "output",
+          transition: "pass_through_2",
+          orientation: :t_to_p,
+          expression: "{2, x}"
         )
       ],
       variables: [
