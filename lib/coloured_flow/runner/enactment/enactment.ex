@@ -15,11 +15,11 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Enactment.WorkitemCalibration
+  alias ColouredFlow.Runner.Enactment.WorkitemConsumption
   alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage
 
   @typep enactment_id() :: Storage.enactment_id()
-  @typep workitem_id() :: Workitem.id()
 
   typed_structor type_name: :state, enforce: true do
     @typedoc "The state of the enactment."
@@ -124,17 +124,21 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   @impl GenServer
-  def handle_call({:allocate_workitem, workitem_id}, _from, %__MODULE__{} = state) do
-    # TODO: allocate multiple workitems at once
-    case pop_workitem(state, workitem_id, :enabled) do
-      {:ok, workitem, workitems} ->
-        allocated_workitem = Storage.transition_workitem(workitem, :allocated)
-        state = %__MODULE__{state | workitems: [allocated_workitem | workitems]}
+  def handle_call({:allocate_workitems, workitem_ids}, _from, %__MODULE__{} = state)
+      when is_list(workitem_ids) do
+    with(
+      {:ok, enabled_workitems, workitems} <-
+        WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, :enabled),
+      binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
+      {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
+    ) do
+      allocated_workitems = Storage.transition_workitems(enabled_workitems, :allocated)
+      state = %__MODULE__{state | workitems: allocated_workitems ++ workitems}
 
-        {:reply, {:ok, allocated_workitem}, state,
-         {:continue, {:calibrate_workitems, :allocate, [workitem]}}}
-
-      {:error, :workitem_not_found} ->
+      {:reply, {:ok, allocated_workitems}, state,
+       {:continue, {:calibrate_workitems, :allocate, enabled_workitems}}}
+    else
+      {:error, {:workitem_not_found, workitem_id}} ->
         exception =
           Exceptions.NonLiveWorkitem.exception(
             id: workitem_id,
@@ -143,33 +147,26 @@ defmodule ColouredFlow.Runner.Enactment do
 
         {:reply, {:error, exception}, state}
 
-      {:error, {:workitem_unexpected_state, workitem_state}} ->
+      {:error, {:workitem_unexpected_state, workitem}} ->
         exception =
           Exceptions.InvalidWorkitemTransition.exception(
-            id: workitem_id,
+            id: workitem.id,
             enactment_id: state.enactment_id,
-            state: workitem_state,
+            state: workitem.state,
             transition: :allocate
           )
 
         {:reply, {:error, exception}, state}
-    end
-  end
 
-  @spec pop_workitem(state(), workitem_id(), expected_state :: Workitem.state()) ::
-          {:ok, Workitem.t(), [Workitem.t()]}
-          | {:error,
-             :workitem_not_found | {:workitem_unexpected_state, state :: Workitem.state()}}
-  defp pop_workitem(%__MODULE__{} = state, workitem_id, expected_state) do
-    case Enum.split_with(state.workitems, &(&1.id === workitem_id)) do
-      {[], _workitems} ->
-        {:error, :workitem_not_found}
+      {:error, {:unsufficient_tokens, %Marking{} = marking}} ->
+        exception =
+          Exceptions.UnsufficientTokensToConsume.exception(
+            enactment_id: state.enactment_id,
+            place: marking.place,
+            tokens: marking.tokens
+          )
 
-      {[%Workitem{state: ^expected_state} = workitem], workitems} ->
-        {:ok, workitem, workitems}
-
-      {[%Workitem{} = workitem], _workitems} ->
-        {:error, {:workitem_unexpected_state, workitem.state}}
+        {:reply, {:error, exception}, state}
     end
   end
 end

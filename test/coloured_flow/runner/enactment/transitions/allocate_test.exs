@@ -27,7 +27,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
 
       %Enactment{workitems: [workitem]} = get_enactment_state(pid)
 
-      assert {:ok, workitem} = GenServer.call(pid, {:allocate_workitem, workitem.id})
+      assert {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [workitem.id]})
       assert :allocated === workitem.state
     end
 
@@ -36,10 +36,10 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
 
       %Enactment{workitems: [workitem]} = get_enactment_state(pid)
 
-      assert {:ok, workitem} = GenServer.call(pid, {:allocate_workitem, workitem.id})
+      assert {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [workitem.id]})
       assert :allocated === workitem.state
 
-      assert {:error, exception} = GenServer.call(pid, {:allocate_workitem, workitem.id})
+      assert {:error, exception} = GenServer.call(pid, {:allocate_workitems, [workitem.id]})
 
       assert %Exceptions.InvalidWorkitemTransition{
                id: workitem.id,
@@ -53,12 +53,59 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
       pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
       workitem_id = Ecto.UUID.generate()
-      assert {:error, exception} = GenServer.call(pid, {:allocate_workitem, workitem_id})
+      assert {:error, exception} = GenServer.call(pid, {:allocate_workitems, [workitem_id]})
 
       assert %Exceptions.NonLiveWorkitem{
                id: workitem_id,
                enactment_id: enactment.id
              } === exception
+    end
+
+    test "returns UnsufficientTokensToConsume exception" do
+      flow = :flow |> build() |> flow_with_cpnet(:deferred_choice) |> insert()
+
+      initial_markings = [
+        %Marking{place: "input", tokens: ~b[2**1]}
+      ]
+
+      enactment =
+        :enactment
+        |> build(flow: flow)
+        |> enactment_with_initial_markings(initial_markings)
+        |> insert()
+
+      pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
+
+      %Enactment{workitems: [workitem_1, _workitem_2, workitem_3]} = get_enactment_state(pid)
+
+      assert {:error, exception} =
+               GenServer.call(pid, {:allocate_workitems, [workitem_1.id, workitem_3.id]})
+
+      assert %Exceptions.UnsufficientTokensToConsume{
+               enactment_id: enactment.id,
+               place: "input",
+               tokens: ~b[2**1]
+             } === exception
+    end
+
+    test "allocates multiple workitems", %{flow: flow} do
+      initial_markings = [%Marking{place: "input", tokens: ~b[2**1]}]
+
+      enactment =
+        :enactment
+        |> build(flow: flow)
+        |> enactment_with_initial_markings(initial_markings)
+        |> insert()
+
+      pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
+
+      %Enactment{workitems: [workitem_1, workitem_2]} = get_enactment_state(pid)
+
+      assert {:ok, [workitem_1, workitem_2]} =
+               GenServer.call(pid, {:allocate_workitems, [workitem_1.id, workitem_2.id]})
+
+      assert :allocated === workitem_1.state
+      assert :allocated === workitem_2.state
     end
   end
 
@@ -83,7 +130,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
       [pt1_workitem_1, pt1_workitem_2, pt2_workitem] =
         Enum.sort_by(state.workitems, fn workitem -> workitem.binding_element.transition end)
 
-      assert {:ok, workitem} = GenServer.call(pid, {:allocate_workitem, pt1_workitem_1.id})
+      assert {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [pt1_workitem_1.id]})
       assert :allocated === workitem.state
 
       new_state = get_enactment_state(pid)

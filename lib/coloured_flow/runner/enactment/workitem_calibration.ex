@@ -107,7 +107,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   defp consume_markings([%Marking{} = to_consume | rest], place_tokens) do
     tokens = Map.fetch!(place_tokens, to_consume.place)
-    remaining_tokens = MultiSet.difference(tokens, to_consume.tokens)
+    {:ok, remaining_tokens} = MultiSet.safe_difference(tokens, to_consume.tokens)
 
     case MultiSet.size(remaining_tokens) do
       0 -> consume_markings(rest, Map.delete(place_tokens, to_consume.place))
