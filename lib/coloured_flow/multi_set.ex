@@ -13,7 +13,7 @@ defmodule ColouredFlow.MultiSet do
 
   use TypedStructor
 
-  @opaque internal(value) :: %{value => pos_integer()}
+  @typep internal(value) :: %{value => pos_integer()}
 
   @type coefficient() :: non_neg_integer()
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
@@ -31,6 +31,19 @@ defmodule ColouredFlow.MultiSet do
 
     field :map, internal(value), default: %{}
   end
+
+  @doc """
+  Checks if `value` is an empty `multi_set`.
+
+  ## Examples
+
+      iex> ColouredFlow.MultiSet.is_empty(ColouredFlow.MultiSet.new())
+      true
+
+      iex> ColouredFlow.MultiSet.is_empty(ColouredFlow.MultiSet.new(["a", "b", "c"]))
+      false
+  """
+  defguard is_empty(value) when is_struct(value, __MODULE__) and map_size(value.map) === 0
 
   @doc """
   Returns a new `multi_set`.
