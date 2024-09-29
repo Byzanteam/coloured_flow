@@ -86,12 +86,14 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
+    parameter :state
+
     field :id, id(),
       doc: """
       The unique identifier of the workitem.
       """
 
-    field :state, state(),
+    field :state, state,
       doc: """
       The state of the workitem, see `t:ColouredFlow.Runner.Workitem.state/0`.
       """
@@ -101,6 +103,8 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
       The binding element for the workitem.
       """
   end
+
+  @type t() :: t(state())
 
   @doc """
   The live states of the workitem. See more at `t:state/0`.
