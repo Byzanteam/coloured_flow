@@ -129,6 +129,71 @@ defmodule ColouredFlow.Factory do
     }
   end
 
+  # ```mermad
+  # flowchart TB
+  #   %% colset int() :: integer()
+  #   i1((input1))
+  #   i2((input2))
+  #   i3((input3))
+  #   o((output))
+  #   join[And Join]
+  #   i1 & i2 & i3 --> join --> o
+  # ```
+  defp build_cpnet(:generalized_and_join) do
+    import ColouredFlow.Notation.Colset
+
+    use ColouredFlow.DefinitionHelpers
+
+    %ColouredPetriNet{
+      colour_sets: [
+        colset(int() :: integer())
+      ],
+      places: [
+        %Place{name: "input1", colour_set: :int},
+        %Place{name: "input2", colour_set: :int},
+        %Place{name: "input3", colour_set: :int},
+        %Place{name: "output", colour_set: :int}
+      ],
+      transitions: [
+        %Transition{name: "and_join", guard: nil}
+      ],
+      arcs:
+        build_transition_arcs!("and_join", [
+          [
+            label: "input1",
+            place: "input1",
+            transition: "and_join",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          ],
+          [
+            label: "input2",
+            place: "input2",
+            transition: "and_join",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          ],
+          [
+            label: "input3",
+            place: "input3",
+            transition: "and_join",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          ],
+          [
+            label: "output",
+            place: "output",
+            transition: "and_join",
+            orientation: :t_to_p,
+            expression: "{1, x}"
+          ]
+        ]),
+      variables: [
+        %Variable{name: :x, colour_set: :int}
+      ]
+    }
+  end
+
   defp build_cpnet(:transmission_protocol) do
     # from Coloured Petri Nets.pdf, p. 80, Fig 4.1.
     import ColouredFlow.Notation.Colset
