@@ -88,7 +88,9 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def handle_continue(:calibrate_workitems, %__MODULE__{} = state) do
-    state = WorkitemCalibration.initial_calibrate(state)
+    cpnet = Storage.get_flow_by_enactment(state.enactment_id)
+    calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+    state = apply_calibration(calibration)
 
     {:noreply, state}
   end
@@ -98,9 +100,9 @@ defmodule ColouredFlow.Runner.Enactment do
         %__MODULE__{} = state
       ) do
     calibration = WorkitemCalibration.calibrate(state, transition, affected_workitems)
-    Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
+    state = apply_calibration(calibration)
 
-    {:noreply, calibration.state}
+    {:noreply, state}
   end
 
   @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
@@ -112,8 +114,18 @@ defmodule ColouredFlow.Runner.Enactment do
     %Snapshot{snapshot | version: snapshot.version + steps, markings: markings}
   end
 
+  defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
+    Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
+
+    produced_workitems =
+      Storage.produce_workitems(state.enactment_id, calibration.to_produce)
+
+    %__MODULE__{state | workitems: state.workitems ++ produced_workitems}
+  end
+
   @impl GenServer
   def handle_call({:allocate_workitem, workitem_id}, _from, %__MODULE__{} = state) do
+    # TODO: allocate multiple workitems at once
     case pop_workitem(state, workitem_id, :enabled) do
       {:ok, workitem, workitems} ->
         allocated_workitem = Storage.transition_workitem(workitem, :allocated)

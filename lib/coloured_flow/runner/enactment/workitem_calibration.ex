@@ -9,6 +9,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   alias ColouredFlow.MultiSet
 
+  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
@@ -17,22 +18,20 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   alias ColouredFlow.Runner.Enactment
   alias ColouredFlow.Runner.Enactment.Workitem
-  alias ColouredFlow.Runner.Storage
 
   @typep enactment_state() :: Enactment.state()
 
   typed_structor enforce: true do
     field :state, enactment_state()
     field :to_withdraw, [Workitem.t()], default: []
+    field :to_produce, MultiSet.t(BindingElement.t()), default: []
   end
 
   @doc """
   Initial calibration on the enactment started just now.
   """
-  @spec initial_calibrate(enactment_state()) :: enactment_state()
-  def initial_calibrate(%Enactment{} = state) do
-    cpnet = Storage.get_flow_by_enactment(state.enactment_id)
-
+  @spec initial_calibrate(enactment_state(), ColouredPetriNet.t()) :: t()
+  def initial_calibrate(%Enactment{} = state, %ColouredPetriNet{} = cpnet) do
     binding_elements =
       cpnet.transitions
       |> Enum.flat_map(fn transition ->
@@ -55,10 +54,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
         end
       )
 
-    produced_workitems = Storage.produce_workitems(state.enactment_id, to_produce)
-    _withdrawn = Storage.transition_workitems(to_withdraw, :withdrawn)
-
-    %Enactment{state | workitems: existings ++ produced_workitems}
+    struct!(
+      __MODULE__,
+      state: %Enactment{state | workitems: existings},
+      to_withdraw: to_withdraw,
+      to_produce: to_produce
+    )
   end
 
   @doc """
@@ -93,10 +94,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
         end
       )
 
-    %__MODULE__{
+    struct!(
+      __MODULE__,
       state: %Enactment{state | workitems: workitems},
       to_withdraw: to_withdraw
-    }
+    )
   end
 
   @spec consume_markings(to_consume_markings :: [Marking.t()], place_tokens) :: place_tokens
