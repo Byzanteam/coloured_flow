@@ -42,14 +42,18 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
     %{to_produce: to_produce, to_withdraw: to_withdraw, existings: existings} =
       Enum.reduce(
         state.workitems,
-        %{to_produce: binding_elements, to_withdraw: [], existings: []},
-        fn %Workitem{} = workitem, ctx ->
+        %{to_produce: binding_elements, to_withdraw: [], existings: %{}},
+        fn {workitem_id, %Workitem{} = workitem}, ctx ->
           case MultiSet.pop(ctx.to_produce, workitem.binding_element) do
             {0, _binding_elements} ->
               %{ctx | to_withdraw: [workitem | ctx.to_withdraw]}
 
             {1, binding_elements} ->
-              %{ctx | to_produce: binding_elements, existings: [workitem | ctx.existings]}
+              %{
+                ctx
+                | to_produce: binding_elements,
+                  existings: Map.put(ctx.existings, workitem_id, workitem)
+              }
           end
         end
       )
@@ -74,30 +78,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   def calibrate(%Enactment{} = state, :allocate, allocated_workitems)
       when is_list(allocated_workitems) do
     to_consume_markings = Enum.flat_map(allocated_workitems, & &1.binding_element.to_consume)
-    place_tokens = Map.new(state.markings, &{&1.place, &1.tokens})
+    place_tokens = Map.new(state.markings, fn {place, marking} -> {place, marking.tokens} end)
     place_tokens = consume_markings(to_consume_markings, place_tokens)
 
     {workitems, to_withdraw} =
-      Enum.flat_map_reduce(
-        state.workitems,
-        [],
-        fn
-          %Workitem{state: :enabled} = workitem, to_withdraw ->
-            if binding_element_enabled?(workitem.binding_element, place_tokens) do
-              {[workitem], to_withdraw}
-            else
-              {[], [workitem | to_withdraw]}
-            end
+      Map.split_with(state.workitems, fn
+        # only enabled workitems should be re-check enabled
+        {_workitem_id, %Workitem{state: :enabled} = workitem} ->
+          binding_element_enabled?(workitem.binding_element, place_tokens)
 
-          %Workitem{} = workitem, to_withdraw ->
-            {[workitem], to_withdraw}
-        end
-      )
+        _other ->
+          true
+      end)
 
     struct!(
       __MODULE__,
       state: %Enactment{state | workitems: workitems},
-      to_withdraw: to_withdraw
+      to_withdraw: Map.values(to_withdraw)
     )
   end
 

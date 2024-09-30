@@ -33,34 +33,38 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
       pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
+      assert %Enactment{
+               enactment_id: ^enactment_id,
+               version: 0,
+               markings: markings,
+               workitems: workitems
+             } = get_enactment_state(pid)
+
+      assert [%Marking{place: "input", tokens: ~b[2**1]}] === Map.values(markings)
+
       assert match?(
-               %Enactment{
-                 enactment_id: ^enactment_id,
-                 version: 0,
-                 markings: [%Marking{place: "input", tokens: ~b[2**1]}],
-                 workitems: [
-                   %Enactment.Workitem{
-                     id: one_workitem_id,
-                     state: :enabled,
-                     binding_element: %BindingElement{
-                       transition: "pass_through",
-                       binding: [x: 1],
-                       to_consume: [%Marking{place: "input", tokens: ~b[1]}]
-                     }
-                   },
-                   %Enactment.Workitem{
-                     id: two_workitem_id,
-                     state: :enabled,
-                     binding_element: %BindingElement{
-                       transition: "pass_through",
-                       binding: [x: 1],
-                       to_consume: [%Marking{place: "input", tokens: ~b[1]}]
-                     }
+               [
+                 %Enactment.Workitem{
+                   id: one_workitem_id,
+                   state: :enabled,
+                   binding_element: %BindingElement{
+                     transition: "pass_through",
+                     binding: [x: 1],
+                     to_consume: [%Marking{place: "input", tokens: ~b[1]}]
                    }
-                 ]
-               }
+                 },
+                 %Enactment.Workitem{
+                   id: two_workitem_id,
+                   state: :enabled,
+                   binding_element: %BindingElement{
+                     transition: "pass_through",
+                     binding: [x: 1],
+                     to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                   }
+                 }
+               ]
                when one_workitem_id != two_workitem_id,
-               get_enactment_state(pid)
+               Map.values(workitems)
              )
 
       # Ensure that the workitems are produced
@@ -86,30 +90,31 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
       pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
-      assert match?(
-               %Enactment{
-                 enactment_id: ^enactment_id,
-                 version: 2,
-                 markings: [
-                   %Marking{place: "input", tokens: ~b[1]},
-                   %Marking{place: "output", tokens: ~b[1]}
-                 ],
-                 workitems: [
-                   %Enactment.Workitem{
-                     id: _workitem_id,
-                     state: :enabled,
-                     binding_element: %BindingElement{
-                       transition: "pass_through",
-                       binding: [x: 1],
-                       to_consume: [
-                         %Marking{place: "input", tokens: ~b[1]}
-                       ]
-                     }
-                   }
-                 ]
-               },
-               get_enactment_state(pid)
-             )
+      assert %Enactment{
+               enactment_id: ^enactment_id,
+               version: 2,
+               markings: markings,
+               workitems: workitems
+             } = get_enactment_state(pid)
+
+      assert [
+               %Marking{place: "input", tokens: ~b[1]},
+               %Marking{place: "output", tokens: ~b[1]}
+             ] === markings |> Map.values() |> Enum.sort_by(& &1.place)
+
+      assert [
+               %Enactment.Workitem{
+                 id: _workitem_id,
+                 state: :enabled,
+                 binding_element: %BindingElement{
+                   transition: "pass_through",
+                   binding: [x: 1],
+                   to_consume: [
+                     %Marking{place: "input", tokens: ~b[1]}
+                   ]
+                 }
+               }
+             ] = Map.values(workitems)
     end
 
     test "catchup", %{enactment: enactment} do
@@ -131,28 +136,29 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
       pid = start_link_supervised!({Enactment, enactment_id: enactment_id})
 
-      assert match?(
-               %Enactment{
-                 enactment_id: ^enactment_id,
-                 version: 1,
-                 markings: [
-                   %Marking{place: "input", tokens: ~b[1]},
-                   %Marking{place: "output", tokens: ~b[1]}
-                 ],
-                 workitems: [
-                   %Enactment.Workitem{
-                     id: _workitem_id,
-                     state: :enabled,
-                     binding_element: %BindingElement{
-                       transition: "pass_through",
-                       binding: [x: 1],
-                       to_consume: [%Marking{place: "input", tokens: ~b[1]}]
-                     }
-                   }
-                 ]
-               },
-               get_enactment_state(pid)
-             )
+      assert %Enactment{
+               enactment_id: ^enactment_id,
+               version: 1,
+               markings: markings,
+               workitems: workitems
+             } = get_enactment_state(pid)
+
+      assert [
+               %Marking{place: "input", tokens: ~b[1]},
+               %Marking{place: "output", tokens: ~b[1]}
+             ] === markings |> Map.values() |> Enum.sort_by(& &1.place)
+
+      assert [
+               %Enactment.Workitem{
+                 id: _workitem_id,
+                 state: :enabled,
+                 binding_element: %BindingElement{
+                   transition: "pass_through",
+                   binding: [x: 1],
+                   to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                 }
+               }
+             ] = Map.values(workitems)
 
       # Ensure that the snapshot is taken
       assert %{version: 1} =
@@ -233,7 +239,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
       assert %Enactment{
                enactment_id: ^enactment_id,
                version: 0,
-               markings: [%Marking{place: "input", tokens: ~b[2**1]}],
+               markings: %{"input" => %Marking{place: "input", tokens: ~b[2**1]}},
                workitems: workitems
              } = get_enactment_state(pid)
 
@@ -266,7 +272,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                    to_consume: [%Marking{place: "input", tokens: ~b[1]}]
                  }
                }
-             ] = Enum.sort_by(workitems, & &1.state)
+             ] = workitems |> Map.values() |> Enum.sort_by(& &1.state)
 
       # Ensure that the workitems are produced
       current_workitems = Repo.all(Schemas.Workitem)

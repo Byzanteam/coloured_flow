@@ -14,9 +14,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       cpnet = ColouredFlow.CpnetBuilder.build_cpnet(:simple_sequence)
 
       state = %Enactment{
-        enactment_id: Ecto.UUID.generate(),
-        markings: [],
-        workitems: []
+        enactment_id: Ecto.UUID.generate()
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -31,10 +29,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: [
-          %Marking{place: "input", tokens: ~b[2**1]}
-        ],
-        workitems: []
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[2**1]}
+          ])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -56,22 +54,24 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: [
-          %Marking{place: "input", tokens: ~b[2**1]}
-        ],
-        workitems: [
-          %Enactment.Workitem{
-            id: Ecto.UUID.generate(),
-            state: :enabled,
-            binding_element: %BindingElement{
-              transition: "pass_through",
-              binding: [x: 1],
-              to_consume: [
-                %Marking{place: "input", tokens: ~b[1]}
-              ]
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[2**1]}
+          ]),
+        workitems:
+          to_map([
+            %Enactment.Workitem{
+              id: Ecto.UUID.generate(),
+              state: :enabled,
+              binding_element: %BindingElement{
+                transition: "pass_through",
+                binding: [x: 1],
+                to_consume: [
+                  %Marking{place: "input", tokens: ~b[1]}
+                ]
+              }
             }
-          }
-        ]
+          ])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -105,17 +105,19 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: [
-          %Marking{place: "input", tokens: ~b[]}
-        ],
-        workitems: [
-          workitem
-        ]
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[]}
+          ]),
+        workitems:
+          to_map([
+            workitem
+          ])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
 
-      assert %{state | workitems: []} === calibration.state
+      assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
 
       assert ~b[] === calibration.to_produce
@@ -138,17 +140,19 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: [
-          %Marking{place: "input", tokens: ~b[1]}
-        ],
-        workitems: [
-          workitem
-        ]
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[1]}
+          ]),
+        workitems:
+          to_map([
+            workitem
+          ])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
 
-      assert %{state | workitems: []} === calibration.state
+      assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
 
       binding_elemnt = %BindingElement{
@@ -179,18 +183,20 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: [
-          %Marking{place: "input1", tokens: ~b[1]},
-          %Marking{place: "input2", tokens: ~b[1]}
-        ],
-        workitems: [
-          workitem
-        ]
+        markings:
+          to_map([
+            %Marking{place: "input1", tokens: ~b[1]},
+            %Marking{place: "input2", tokens: ~b[1]}
+          ]),
+        workitems:
+          to_map([
+            workitem
+          ])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
 
-      assert %{state | workitems: []} === calibration.state
+      assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
       assert ~b[] === calibration.to_produce
     end
@@ -259,23 +265,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings: [
-          %Marking{place: "input", tokens: ~b[3**1]}
-        ],
-        workitems: [
-          %Enactment.Workitem{
-            pt1_workitem_1
-            | state: :allocated
-          },
-          pt1_workitem_2,
-          pt1_workitem_3,
-          pt2_workitem
-        ]
-      }
-
-      expected_state = %Enactment{
-        state
-        | workitems: [
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[3**1]}
+          ]),
+        workitems:
+          to_map([
             %Enactment.Workitem{
               pt1_workitem_1
               | state: :allocated
@@ -283,7 +278,21 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             pt1_workitem_2,
             pt1_workitem_3,
             pt2_workitem
-          ]
+          ])
+      }
+
+      expected_state = %Enactment{
+        state
+        | workitems:
+            to_map([
+              %Enactment.Workitem{
+                pt1_workitem_1
+                | state: :allocated
+              },
+              pt1_workitem_2,
+              pt1_workitem_3,
+              pt2_workitem
+            ])
       }
 
       calibration = WorkitemCalibration.calibrate(state, :allocate, [pt1_workitem_1])
@@ -342,28 +351,31 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings: [
-          %Marking{place: "input", tokens: ~b[2**1]}
-        ],
-        workitems: [
-          %Enactment.Workitem{
-            pt1_workitem_1
-            | state: :allocated
-          },
-          pt1_workitem_2,
-          pt2_workitem
-        ]
-      }
-
-      expected_state = %Enactment{
-        state
-        | workitems: [
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[2**1]}
+          ]),
+        workitems:
+          to_map([
             %Enactment.Workitem{
               pt1_workitem_1
               | state: :allocated
             },
-            pt1_workitem_2
-          ]
+            pt1_workitem_2,
+            pt2_workitem
+          ])
+      }
+
+      expected_state = %Enactment{
+        state
+        | workitems:
+            to_map([
+              %Enactment.Workitem{
+                pt1_workitem_1
+                | state: :allocated
+              },
+              pt1_workitem_2
+            ])
       }
 
       calibration = WorkitemCalibration.calibrate(state, :allocate, [pt1_workitem_1])
@@ -416,28 +428,31 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings: [
-          %Marking{place: "input1", tokens: ~b[2**1]},
-          %Marking{place: "input2", tokens: ~b[1]},
-          %Marking{place: "input3", tokens: ~b[1]}
-        ],
-        workitems: [
-          %Enactment.Workitem{
-            aj_workitem_1
-            | state: :allocated
-          },
-          aj_workitem_2
-        ]
+        markings:
+          to_map([
+            %Marking{place: "input1", tokens: ~b[2**1]},
+            %Marking{place: "input2", tokens: ~b[1]},
+            %Marking{place: "input3", tokens: ~b[1]}
+          ]),
+        workitems:
+          to_map([
+            %Enactment.Workitem{
+              aj_workitem_1
+              | state: :allocated
+            },
+            aj_workitem_2
+          ])
       }
 
       expected_state = %Enactment{
         state
-        | workitems: [
-            %Enactment.Workitem{
-              aj_workitem_1
-              | state: :allocated
-            }
-          ]
+        | workitems:
+            to_map([
+              %Enactment.Workitem{
+                aj_workitem_1
+                | state: :allocated
+              }
+            ])
       }
 
       calibration = WorkitemCalibration.calibrate(state, :allocate, [aj_workitem_1])
@@ -445,5 +460,15 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       assert expected_state === calibration.state
       assert [aj_workitem_2] === calibration.to_withdraw
     end
+  end
+
+  defp to_map([]), do: %{}
+
+  defp to_map([%Enactment.Workitem{} | _rest] = workitems) do
+    Map.new(workitems, &{&1.id, &1})
+  end
+
+  defp to_map([%Marking{} | _rest] = markings) do
+    Map.new(markings, &{&1.place, &1})
   end
 end

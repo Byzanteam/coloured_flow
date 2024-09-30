@@ -6,6 +6,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.EnabledBindingElements.Binding
   alias ColouredFlow.Enactment.BindingElement
@@ -20,7 +21,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   @spec list(
           transition :: Transition.t(),
           cpnet :: ColouredPetriNet.t(),
-          markings :: [Marking.t()]
+          markings :: %{Place.name() => Marking.t()}
         ) :: [BindingElement.t()]
   def list(transition, cpnet, markings) do
     inputs = get_arcs_with_place(transition, :p_to_t, cpnet)

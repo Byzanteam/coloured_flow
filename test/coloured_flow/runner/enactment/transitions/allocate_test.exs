@@ -25,7 +25,8 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
     test "works", %{enactment: enactment} do
       pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
-      %Enactment{workitems: [workitem]} = get_enactment_state(pid)
+      %Enactment{workitems: workitems} = get_enactment_state(pid)
+      [workitem] = Map.values(workitems)
 
       assert {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [workitem.id]})
       assert :allocated === workitem.state
@@ -34,7 +35,8 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
     test "returns InvalidWorkitemTransition exception", %{enactment: enactment} do
       pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
-      %Enactment{workitems: [workitem]} = get_enactment_state(pid)
+      %Enactment{workitems: workitems} = get_enactment_state(pid)
+      [workitem] = Map.values(workitems)
 
       assert {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [workitem.id]})
       assert :allocated === workitem.state
@@ -76,7 +78,10 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
 
       pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
-      %Enactment{workitems: [workitem_1, _workitem_2, workitem_3]} = get_enactment_state(pid)
+      %Enactment{workitems: workitems} = get_enactment_state(pid)
+
+      [workitem_1, _workitem_2, workitem_3] =
+        workitems |> Map.values() |> Enum.sort_by(& &1.binding_element.transition)
 
       assert {:error, exception} =
                GenServer.call(pid, {:allocate_workitems, [workitem_1.id, workitem_3.id]})
@@ -99,7 +104,8 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
 
       pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
 
-      %Enactment{workitems: [workitem_1, workitem_2]} = get_enactment_state(pid)
+      %Enactment{workitems: workitems} = get_enactment_state(pid)
+      [workitem_1, workitem_2] = Map.values(workitems)
 
       assert {:ok, [workitem_1, workitem_2]} =
                GenServer.call(pid, {:allocate_workitems, [workitem_1.id, workitem_2.id]})
@@ -128,13 +134,18 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
       state = get_enactment_state(pid)
 
       [pt1_workitem_1, pt1_workitem_2, pt2_workitem] =
-        Enum.sort_by(state.workitems, fn workitem -> workitem.binding_element.transition end)
+        state.workitems
+        |> Map.values()
+        |> Enum.sort_by(fn workitem -> workitem.binding_element.transition end)
 
       assert {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [pt1_workitem_1.id]})
+
       assert :allocated === workitem.state
 
       new_state = get_enactment_state(pid)
-      [allocated_workitem, enabled_item] = Enum.sort_by(new_state.workitems, & &1.state)
+
+      [allocated_workitem, enabled_item] =
+        new_state.workitems |> Map.values() |> Enum.sort_by(& &1.state)
 
       assert allocated_workitem === workitem
       assert enabled_item === pt1_workitem_2

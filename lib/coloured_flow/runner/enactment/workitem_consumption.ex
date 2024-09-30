@@ -7,16 +7,20 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
 
   alias ColouredFlow.MultiSet
 
+  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
 
   alias ColouredFlow.Runner.Enactment.Workitem
 
+  @typep workitems(state) :: %{Workitem.id() => Workitem.t(state)}
+  @typep workitems() :: workitems(Workitem.state())
+
   @doc """
   Pop the workitems from the given list of workitems by the given list of workitem_ids and the expected state.
   """
-  @spec pop_workitems([Workitem.t()], [Workitem.id()], expected_state :: state) ::
-          {:ok, [Workitem.t(state)], [Workitem.t()]}
+  @spec pop_workitems(workitems(), [Workitem.id()], expected_state :: state) ::
+          {:ok, workitems(state), workitems()}
           | {
               :error,
               {:workitem_not_found, Workitem.id()}
@@ -24,88 +28,74 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
             }
         when state: Workitem.state()
   def pop_workitems(workitems, workitem_ids, expected_state) do
-    {found, remaining} = Enum.split_with(workitems, &(&1.id in workitem_ids))
-
     workitem_ids
-    |> Enum.reduce_while([], fn id, acc ->
-      case Enum.find(found, &(&1.id == id)) do
-        nil ->
-          {:halt, {:error, {:workitem_not_found, id}}}
+    |> Enum.reduce_while({%{}, workitems}, fn workitem_id, {poped, remaining} ->
+      case Map.pop(remaining, workitem_id) do
+        {%Workitem{state: ^expected_state} = workitem, remaining} ->
+          {:cont, {Map.put(poped, workitem_id, workitem), remaining}}
 
-        %Workitem{state: ^expected_state} = workitem ->
-          {:cont, [workitem | acc]}
-
-        %Workitem{} = workitem ->
+        {%Workitem{} = workitem, _remaining} ->
           {:halt, {:error, {:workitem_unexpected_state, workitem}}}
+
+        {nil, _remaining} ->
+          {:halt, {:error, {:workitem_not_found, workitem_id}}}
       end
     end)
     |> case do
       {:error, _reason} = error -> error
-      workitems -> {:ok, workitems, remaining}
+      {poped, remaining} -> {:ok, poped, remaining}
     end
   end
 
-  @spec consume_tokens([Marking.t()], [BindingElement.t()]) ::
-          {:ok, [Marking.t()]}
+  @typep markings() :: %{Place.name() => Marking.t()}
+
+  @spec consume_tokens(markings(), [BindingElement.t()]) ::
+          {:ok, markings()}
           | {:error, {:unsufficient_tokens, Marking.t()}}
   def consume_tokens(place_markings, binding_elements)
 
-  def consume_tokens(place_markings, []) when is_list(place_markings), do: {:ok, place_markings}
+  def consume_tokens(place_markings, []) when is_map(place_markings), do: {:ok, place_markings}
 
-  def consume_tokens([], [%BindingElement{} = binding_element | _rest]) do
+  def consume_tokens(place_markings, [%BindingElement{} = binding_element | _rest])
+      when map_size(place_markings) == 0 do
     {:error, {:unsufficient_tokens, binding_element.to_consume}}
   end
 
   def consume_tokens(place_markings, binding_elements)
-      when is_list(place_markings) and is_list(binding_elements) do
-    to_consume_tokens =
-      binding_elements
-      |> Stream.flat_map(& &1.to_consume)
-      |> Enum.reduce(%{}, fn %Marking{} = marking, acc ->
-        Map.update(acc, marking.place, marking.tokens, &MultiSet.union(&1, marking.tokens))
-      end)
-
-    place_markings
-    |> Enum.reduce_while(
-      {[], to_consume_tokens},
-      fn %Marking{} = place_marking, {markings, to_consume} ->
-        {tokens, to_consume_remaining} = Map.pop(to_consume, place_marking.place, MultiSet.new())
-
-        case MultiSet.safe_difference(place_marking.tokens, tokens) do
-          {:ok, remaining_tokens} when MultiSet.is_empty(remaining_tokens) ->
-            {:cont, {markings, to_consume_remaining}}
-
-          {:ok, remaining_tokens} ->
-            {
-              :cont,
-              {
-                [%Marking{place_marking | tokens: remaining_tokens} | markings],
-                to_consume_remaining
-              }
-            }
+      when is_map(place_markings) and is_list(binding_elements) do
+    binding_elements
+    |> Stream.flat_map(& &1.to_consume)
+    |> Enum.reduce(%{}, fn %Marking{} = marking, acc ->
+      Map.update(acc, marking.place, marking.tokens, &MultiSet.union(&1, marking.tokens))
+    end)
+    |> Enum.reduce_while(place_markings, fn {place, to_consume_tokens}, acc ->
+      place_marking =
+        case Map.fetch(acc, place) do
+          {:ok, marking} ->
+            marking
 
           :error ->
-            {:halt, {:error, {:unsufficient_tokens, place_marking}}}
+            raise """
+            The place (#{place}) making is absent in the given place markings.
+            There may be an issue on markings and workitems in the corresponding enactment state,
+            we should let it crash and restart the process to resolve it.
+            """
         end
+
+      case MultiSet.safe_difference(place_marking.tokens, to_consume_tokens) do
+        {:ok, remaining_tokens} when MultiSet.is_empty(remaining_tokens) ->
+          {:cont, Map.delete(acc, place)}
+
+        {:ok, remaining_tokens} ->
+          {:cont, Map.put(acc, place, remaining_tokens)}
+
+        :error ->
+          {:halt, {:error, {:unsufficient_tokens, place_marking}}}
       end
-    )
+    end)
     |> case do
-      {:error, _reason} = error ->
-        error
-
-      {markings, to_consume_remaining} ->
-        # Ensure that all tokens are consumed.
-        # If not, it indicates an issue, and we should let it crash
-        # and restart the process to resolve it.
-        unless 0 === map_size(to_consume_remaining) do
-          raise """
-          The tokens from the place (#{inspect(Map.keys(to_consume_remaining))}) are not consumed.
-          There may be an issue on markings and workitems in the corresponding enactment state,
-          we should let it crash and restart the process to resolve it.
-          """
-        end
-
-        {:ok, Enum.reverse(markings)}
+      {:error, _reason} = error -> error
+      markings -> {:ok, markings}
     end
   end
 end

@@ -8,6 +8,7 @@ defmodule ColouredFlow.Runner.Enactment do
   use GenServer
   use TypedStructor
 
+  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
 
   alias ColouredFlow.Runner.Enactment.Catchuping
@@ -21,6 +22,9 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @typep enactment_id() :: Storage.enactment_id()
 
+  @type markings() :: %{Place.name() => Marking.t()}
+  @type workitems() :: %{Workitem.id() => Workitem.t()}
+
   typed_structor type_name: :state, enforce: true do
     @typedoc "The state of the enactment."
 
@@ -32,8 +36,8 @@ defmodule ColouredFlow.Runner.Enactment do
       default: 0,
       doc: "The version of the enactment, incremented on each occurrence."
 
-    field :markings, [Marking.t()], default: [], doc: "The current markings of the enactment."
-    field :workitems, [Workitem.t()], default: [], doc: "The live workitems of the enactment."
+    field :markings, markings(), default: %{}, doc: "The current markings of the enactment."
+    field :workitems, workitems(), default: %{}, doc: "The live workitems of the enactment."
   end
 
   @typep init_arg() :: [enactment_id: enactment_id()]
@@ -80,8 +84,8 @@ defmodule ColouredFlow.Runner.Enactment do
       %__MODULE__{
         state
         | version: snapshot.version,
-          markings: snapshot.markings,
-          workitems: workitems
+          markings: Map.new(snapshot.markings, &{&1.place, &1}),
+          workitems: Map.new(workitems, &{&1.id, &1})
       },
       {:continue, :calibrate_workitems}
     }
@@ -118,9 +122,11 @@ defmodule ColouredFlow.Runner.Enactment do
     Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
 
     produced_workitems =
-      Storage.produce_workitems(state.enactment_id, calibration.to_produce)
+      state.enactment_id
+      |> Storage.produce_workitems(calibration.to_produce)
+      |> Map.new(&{&1.id, &1})
 
-    %__MODULE__{state | workitems: state.workitems ++ produced_workitems}
+    %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
   end
 
   @impl GenServer
@@ -129,14 +135,23 @@ defmodule ColouredFlow.Runner.Enactment do
     with(
       {:ok, enabled_workitems, workitems} <-
         WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, :enabled),
+      enabled_workitems = Map.values(enabled_workitems),
       binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
       allocated_workitems = Storage.transition_workitems(enabled_workitems, :allocated)
-      state = %__MODULE__{state | workitems: allocated_workitems ++ workitems}
 
-      {:reply, {:ok, allocated_workitems}, state,
-       {:continue, {:calibrate_workitems, :allocate, enabled_workitems}}}
+      state = %__MODULE__{
+        state
+        | workitems: Map.merge(Map.new(allocated_workitems, &{&1.id, &1}), workitems)
+      }
+
+      {
+        :reply,
+        {:ok, allocated_workitems},
+        state,
+        {:continue, {:calibrate_workitems, :allocate, enabled_workitems}}
+      }
     else
       {:error, {:workitem_not_found, workitem_id}} ->
         exception =

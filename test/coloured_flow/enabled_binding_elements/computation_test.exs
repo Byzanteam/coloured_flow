@@ -820,6 +820,8 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   end
 
   defp list_bindings(transition, cpnet, markings) do
+    markings = Map.new(markings, &{&1.place, &1})
+
     transition
     |> Computation.list(cpnet, markings)
     |> Enum.map(fn binding_element ->
