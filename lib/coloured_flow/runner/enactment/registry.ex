@@ -6,10 +6,7 @@ defmodule ColouredFlow.Runner.Enactment.Registry do
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_arg) do
-    %{
-      id: __MODULE__,
-      start: {Registry, :start_link, [keys: :unique, name: __MODULE__]}
-    }
+    Registry.child_spec(keys: :unique, name: __MODULE__)
   end
 
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType

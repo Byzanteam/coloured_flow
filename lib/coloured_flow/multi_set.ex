@@ -13,7 +13,7 @@ defmodule ColouredFlow.MultiSet do
 
   use TypedStructor
 
-  @opaque internal(value) :: %{value => pos_integer()}
+  @typep internal(value) :: %{value => pos_integer()}
 
   @type coefficient() :: non_neg_integer()
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
@@ -31,6 +31,19 @@ defmodule ColouredFlow.MultiSet do
 
     field :map, internal(value), default: %{}
   end
+
+  @doc """
+  Checks if `value` is an empty `multi_set`.
+
+  ## Examples
+
+      iex> ColouredFlow.MultiSet.is_empty(ColouredFlow.MultiSet.new())
+      true
+
+      iex> ColouredFlow.MultiSet.is_empty(ColouredFlow.MultiSet.new(["a", "b", "c"]))
+      false
+  """
+  defguard is_empty(value) when is_struct(value, __MODULE__) and map_size(value.map) === 0
 
   @doc """
   Returns a new `multi_set`.
@@ -312,8 +325,16 @@ defmodule ColouredFlow.MultiSet do
       iex> multi_set2 = ColouredFlow.MultiSet.new(["d", "e", "f"])
       iex> ColouredFlow.MultiSet.difference(multi_set1, multi_set2)
       ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}, {1, "c"}])
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new([])
+      iex> ColouredFlow.MultiSet.difference(multi_set1, multi_set2)
+      ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}, {1, "c"}])
   """
   @spec difference(t(), t()) :: t()
+  def difference(%__MODULE__{} = multi_set1, %__MODULE__{map: map2}) when map_size(map2) === 0,
+    do: multi_set1
+
   def difference(%__MODULE__{} = multi_set1, %__MODULE__{} = multi_set2) do
     map =
       Enum.reduce(multi_set1.map, %{}, fn {value, coefficient}, acc ->
@@ -329,6 +350,66 @@ defmodule ColouredFlow.MultiSet do
       end)
 
     %__MODULE__{map: map}
+  end
+
+  @doc """
+  Returns the difference of two `multi_set`s.
+
+  Behaves like `difference/2`, but returns `:error` if the `coefficient` of any `value`
+  in `multi_set2` is greater than the `coefficient` of the same `value` in `multi_set1`,
+  and if `multi_set2` contains a `value` that is not in `multi_set1`.
+  That is to say, `multi_set2` must be included in `multi_set1`.
+
+  ## Examples
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c", "a", "b", "a"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["a", "b", "c", "a"])
+      iex> ColouredFlow.MultiSet.safe_difference(multi_set1, multi_set2)
+      {:ok, ColouredFlow.MultiSet.from_pairs([{1, "a"}, {1, "b"}])}
+      iex> ColouredFlow.MultiSet.safe_difference(multi_set2, multi_set1)
+      :error
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a", "b", "c"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new(["d", "e", "f"])
+      iex> ColouredFlow.MultiSet.safe_difference(multi_set1, multi_set2)
+      :error
+
+      iex> multi_set1 = ColouredFlow.MultiSet.new(["a"])
+      iex> multi_set2 = ColouredFlow.MultiSet.new()
+      iex> ColouredFlow.MultiSet.safe_difference(multi_set1, multi_set2)
+      {:ok, ColouredFlow.MultiSet.from_pairs([{1, "a"}])}
+      iex> ColouredFlow.MultiSet.safe_difference(multi_set2, multi_set1)
+      :error
+  """
+  @spec safe_difference(t(), t()) :: {:ok, t()} | :error
+  def safe_difference(%__MODULE__{} = multi_set1, %__MODULE__{map: map2})
+      when map_size(map2) === 0,
+      do: {:ok, multi_set1}
+
+  def safe_difference(%__MODULE__{} = multi_set1, %__MODULE__{} = multi_set2) do
+    multi_set1.map
+    |> Enum.reduce_while(
+      {%{}, multi_set2.map},
+      fn {value, coefficient}, {map1, map2} ->
+        {coefficient2, map2} = Map.pop(map2, value, 0)
+
+        case coefficient - coefficient2 do
+          0 ->
+            {:cont, {map1, map2}}
+
+          new_coefficient when new_coefficient > 0 ->
+            {:cont, {Map.put(map1, value, new_coefficient), map2}}
+
+          _other ->
+            {:halt, :error}
+        end
+      end
+    )
+    |> case do
+      :error -> :error
+      {_map1, map2} when map_size(map2) > 0 -> :error
+      {map1, _map2} -> {:ok, %__MODULE__{map: map1}}
+    end
   end
 
   @doc """

@@ -5,19 +5,14 @@ defmodule ColouredFlow.Definition.Arc do
 
   use TypedStructor
 
-  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
-  alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Expression.Arc, as: ArcExpression
 
   @type label() :: binary()
   @type orientation() :: :p_to_t | :t_to_p
-  @type binding() :: {
-          non_neg_integer() | {:cpn_bind_variable, Variable.name()},
-          {:cpn_bind_variable, Variable.name()} | ColourSet.value()
-        }
+  @typep binding() :: ArcExpression.binding()
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
@@ -63,7 +58,7 @@ defmodule ColouredFlow.Definition.Arc do
       end
 
       # the bindings are:
-      # [{2, 1}, {1, {:cpn_bind_variable, :x}}]
+      # [{{:cpn_bind_literal, 2}, 1}, {{:cpn_bind_literal, 1}, {:x, [], nil}}]
       ```
       """
 
@@ -73,21 +68,21 @@ defmodule ColouredFlow.Definition.Arc do
           doc: """
           The result that are returned by the arc, is form of a multi-set of tokens.
 
-          - `[{1, {:cpn_bind_variable, :x}}]`: binds 1 token of colour `:x`
-          - `[{2, {:cpn_bind_variable, :x}}, {3, {:cpn_bind_variable, :y}}]`: binds 2 tokens of colour `:x` or 3 tokens of colour `:y`
-          - `[{:x, {:cpn_bind_variable, :y}}]`: binds `x` tokens of colour `:y`
-          - `[{0, {:cpn_bind_variable, :x}}]`: binds 0 tokens (empty tokens) of colour `:x`
+          - `[{{:cpn_bind_literal, 1}, {:x, [], nil}}]`: binds 1 token of colour `:x`
+          - `[{{:cpn_bind_literal, 2}, {:x, [], nil}}, {3, {:cpn_bind_variable, :y}}]`: binds 2 tokens of colour `:x` or 3 tokens of colour `:y`
+          - `[{{:cpn_bind_variable, :x}, {:y, [], nil}}]`: binds `x` tokens of colour `:y`
+          - `[{{:cpn_bind_literal, 0}, {:x, [], nil}}]`: binds 0 tokens (empty tokens) of colour `:x`
           """
   end
 
   @doc """
-  Build bindings from the expression of the arc.
+  Build bindings from the expression of the in-coming arc.
 
   ## Examples
 
       iex> expression = ColouredFlow.Definition.Expression.build!("bind {a, b}")
       iex> {:ok, binding} = build_bindings(expression)
-      iex> [{{:cpn_bind_variable, :a}, {:cpn_bind_variable, :b}}] = binding
+      iex> [{{:cpn_bind_variable, {:a, [line: 1, column: 7]}}, {:b, [line: 1, column: 10], nil}}] = binding
   """
   @spec build_bindings(Expression.t()) ::
           {:ok, list(binding())} | {:error, ColouredFlow.Expression.compile_error()}
@@ -123,7 +118,7 @@ defmodule ColouredFlow.Definition.Arc do
 
     case Map.to_list(diff) do
       [] ->
-        {:ok, Enum.map(bindings, &ArcExpression.prune_meta/1)}
+        {:ok, bindings}
 
       [{name, meta} | _rest] ->
         {

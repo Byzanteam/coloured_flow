@@ -30,7 +30,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColouredPetriNe
             place: "even",
             transition: "filter",
             orientation: :t_to_p,
-            expression: "bind {1, x}"
+            expression: "{1, x}"
           )
         ],
         variables: [

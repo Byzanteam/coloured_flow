@@ -6,10 +6,14 @@ defmodule ColouredFlow.Definition.ArcTest do
   alias ColouredFlow.Definition.Expression
 
   test "bindings" do
-    assert {:ok, [{1, {:cpn_bind_variable, :a}}]} =
+    assert {:ok, [{{:cpn_bind_literal, 1}, {:a, [line: 1, column: 10], nil}}]} =
              Arc.build_bindings(Expression.build!("bind {1, a}"))
 
-    assert {:ok, [{0, 1}, {1, {:cpn_bind_variable, :a}}]} =
+    assert {:ok,
+            [
+              {{:cpn_bind_literal, 0}, 1},
+              {{:cpn_bind_literal, 1}, {:a, [line: 2, column: 11], nil}}
+            ]} =
              Arc.build_bindings(
                Expression.build!("""
                if a > 1 do
@@ -34,18 +38,21 @@ defmodule ColouredFlow.Definition.ArcTest do
 
   describe "build_bindings/1" do
     test "works" do
-      assert {:ok, [{1, {:a, :b, :c}}]} =
+      assert {
+               :ok,
+               [{{:cpn_bind_literal, 1}, {:{}, [line: 1, column: 10], [:a, :b, :c]}}]
+             } =
                Arc.build_bindings(Expression.build!("bind {1, {:a, :b, :c}}"))
 
       assert {
                :ok,
-               [{1, {:cpn_bind_variable, :y}}]
+               [{{:cpn_bind_literal, 1}, {:y, [line: 1, column: 10], nil}}]
              } =
                Arc.build_bindings(Expression.build!("bind {1, y}"))
 
       assert {
                :ok,
-               [{{:cpn_bind_variable, :x}, true}]
+               [{{:cpn_bind_variable, {:x, [line: 1, column: 7]}}, true}]
              } =
                Arc.build_bindings(Expression.build!("bind {x, true}"))
 
@@ -53,8 +60,8 @@ defmodule ColouredFlow.Definition.ArcTest do
                :ok,
                [
                  {
-                   {:cpn_bind_variable, :x},
-                   {:cpn_bind_variable, :y}
+                   {:cpn_bind_variable, {:x, [line: 1, column: 7]}},
+                   {:y, [line: 1, column: 10], nil}
                  }
                ]
              } =

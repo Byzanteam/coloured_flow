@@ -2,6 +2,7 @@
 defmodule ColouredFlow.Factory do
   @moduledoc false
 
+  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
@@ -17,50 +18,16 @@ defmodule ColouredFlow.Factory do
       id: Ecto.UUID.generate(),
       name: sequence(:flow_name, &"flow-#{&1}"),
       version: 1,
-      data: fn -> %{definition: build_cpnet(:simple_sequence)} end
+      data: fn -> %{definition: ColouredFlow.CpnetBuilder.build_cpnet(:simple_sequence)} end
     }
   end
 
-  def flow_with_cpnet(flow, :simple_sequence) do
-    Map.put(flow, :data, %{definition: build_cpnet(:simple_sequence)})
+  def flow_with_cpnet(flow, %ColouredPetriNet{} = cpnet) do
+    Map.put(flow, :data, %{definition: cpnet})
   end
 
-  defp build_cpnet(:simple_sequence) do
-    import ColouredFlow.Notation.Colset
-
-    use ColouredFlow.DefinitionHelpers
-
-    %ColouredPetriNet{
-      colour_sets: [
-        colset(int() :: integer())
-      ],
-      places: [
-        %Place{name: "input", colour_set: :int},
-        %Place{name: "output", colour_set: :int}
-      ],
-      transitions: [
-        %Transition{name: "pass_through", guard: nil}
-      ],
-      arcs: [
-        build_arc!(
-          label: "in",
-          place: "input",
-          transition: "pass_through",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          label: "out",
-          place: "output",
-          transition: "pass_through",
-          orientation: :t_to_p,
-          expression: "bind {1, x}"
-        )
-      ],
-      variables: [
-        %Variable{name: :x, colour_set: :int}
-      ]
-    }
+  def flow_with_cpnet(flow, flow_name) when is_atom(flow_name) do
+    Map.put(flow, :data, %{definition: ColouredFlow.CpnetBuilder.build_cpnet(flow_name)})
   end
 
   def enactment_factory do
@@ -105,7 +72,7 @@ defmodule ColouredFlow.Factory do
     %Schemas.Workitem{
       id: Ecto.UUID.generate(),
       enactment: fn -> build(:enactment) end,
-      state: :offered,
+      state: :enabled,
       data: fn ->
         %{
           binding_element:

@@ -43,7 +43,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -113,7 +113,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "unit",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, {}}"
+              expression: "{1, {}}"
             )
           ],
           variables: [
@@ -130,6 +130,30 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
       ebes = list_bindings(transition, cpnet, markings)
 
       assert [
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [],
+                 to_consume: [
+                   %Marking{place: "a", tokens: ~b[2**{}]},
+                   %Marking{place: "b", tokens: ~b[{}]}
+                 ]
+               },
                %BindingElement{
                  transition: "merge",
                  binding: [],
@@ -189,7 +213,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: "bind {1, c}"
+              expression: "{1, c}"
             )
           ],
           variables: [
@@ -305,7 +329,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "c",
               transition: "a + b",
               orientation: :t_to_p,
-              expression: "bind {1, c}"
+              expression: "{1, c}"
             )
           ],
           variables: [
@@ -432,7 +456,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -547,7 +571,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -615,7 +639,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -675,7 +699,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "number",
               transition: "merge",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -773,7 +797,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
               place: "even",
               transition: "filter",
               orientation: :t_to_p,
-              expression: "bind {1, x}"
+              expression: "{1, x}"
             )
           ],
           variables: [
@@ -796,6 +820,8 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   end
 
   defp list_bindings(transition, cpnet, markings) do
+    markings = Map.new(markings, &{&1.place, &1})
+
     transition
     |> Computation.list(cpnet, markings)
     |> Enum.map(fn binding_element ->

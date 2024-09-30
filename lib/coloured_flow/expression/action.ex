@@ -9,7 +9,7 @@ defmodule ColouredFlow.Expression.Action do
   @output_tag :cpn_output_variable
 
   @typep output() ::
-           {:cpn_bind_variable, {Variable.name(), meta :: Keyword.t()}} | ColourSet.value()
+           {:cpn_output_variable, {Variable.name(), meta :: Keyword.t()}} | ColourSet.value()
 
   @doc """
   A macro that return the value as is,

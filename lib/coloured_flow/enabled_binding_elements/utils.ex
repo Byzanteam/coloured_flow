@@ -40,12 +40,12 @@ defmodule ColouredFlow.EnabledBindingElements.Utils do
     end)
   end
 
-  @spec get_marking(Place.t(), [Marking.t()]) :: Marking.t()
+  @spec get_marking(Place.t(), %{Place.name() => Marking.t()}) :: Marking.t()
   def get_marking(%Place{} = place, markings) do
-    Enum.find(
+    Map.get(
       markings,
-      %Marking{place: place.name, tokens: MultiSet.new()},
-      fn %Marking{place: place_name} -> place_name == place.name end
+      place.name,
+      %Marking{place: place.name, tokens: MultiSet.new()}
     )
   end
 

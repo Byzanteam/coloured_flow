@@ -6,6 +6,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.EnabledBindingElements.Binding
   alias ColouredFlow.Enactment.BindingElement
@@ -20,7 +21,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   @spec list(
           transition :: Transition.t(),
           cpnet :: ColouredPetriNet.t(),
-          markings :: [Marking.t()]
+          markings :: %{Place.name() => Marking.t()}
         ) :: [BindingElement.t()]
   def list(transition, cpnet, markings) do
     inputs = get_arcs_with_place(transition, :p_to_t, cpnet)
@@ -29,8 +30,8 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
       Enum.map(inputs, fn {arc, place} ->
         marking = get_marking(place, markings)
 
-        Enum.flat_map(arc.bindings, fn pattern ->
-          get_bindings(pattern, MultiSet.to_pairs(marking.tokens))
+        Enum.flat_map(arc.bindings, fn arc_binding ->
+          Binding.match_bag(marking.tokens, arc_binding)
         end)
       end)
 
@@ -61,77 +62,6 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           [BindingElement.new(transition.name, binding, to_consume)]
       end
     end)
-  end
-
-  defp get_bindings(pattern, marking, acc \\ [])
-
-  defp get_bindings(_pattern, [], acc) do
-    acc
-  end
-
-  defp get_bindings(
-         {0, {:cpn_bind_variable, value_var}} = pattern,
-         [{_coefficient, value} | rest],
-         acc
-       ) do
-    get_bindings(
-      pattern,
-      rest,
-      [[{value_var, value}] | acc]
-    )
-  end
-
-  defp get_bindings(
-         {expected_coefficient, {:cpn_bind_variable, value_var}} = pattern,
-         [{coefficient, value} | rest],
-         acc
-       )
-       when is_integer(expected_coefficient) and expected_coefficient > 0 do
-    case coefficient - expected_coefficient do
-      result when result < 0 ->
-        get_bindings(pattern, rest, acc)
-
-      0 ->
-        get_bindings(pattern, rest, [[{value_var, value}] | acc])
-
-      result when result > 0 ->
-        get_bindings(
-          pattern,
-          [{result, value} | rest],
-          [[{value_var, value}] | acc]
-        )
-    end
-  end
-
-  defp get_bindings(
-         {{:cpn_bind_variable, coefficient_name}, {:cpn_bind_variable, value_var}} =
-           pattern,
-         [{coefficient, value} | rest],
-         acc
-       ) do
-    bindings =
-      for coeff <- 0..coefficient do
-        [{coefficient_name, coeff}, {value_var, value}]
-      end
-
-    get_bindings(pattern, rest, bindings ++ acc)
-  end
-
-  defp get_bindings(
-         {{:cpn_bind_variable, coefficient_name}, value} = pattern,
-         [{coefficient, value} | rest],
-         acc
-       ) do
-    bindings =
-      for coeff <- 0..coefficient do
-        [{coefficient_name, coeff}]
-      end
-
-    get_bindings(pattern, rest, bindings ++ acc)
-  end
-
-  defp get_bindings(_pattern, _marking, acc) do
-    [[] | acc]
   end
 
   defp eval_arc(%Arc{} = arc, binding) do

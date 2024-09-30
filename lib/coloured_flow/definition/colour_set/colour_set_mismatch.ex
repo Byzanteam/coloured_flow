@@ -3,17 +3,19 @@ defmodule ColouredFlow.Definition.ColourSet.ColourSetMismatch do
   The value of a colour set does not match the expected type.
   """
 
-  defexception [:message, :colour_set, :value]
+  use TypedStructor
 
   @message "The value of the colour set does not match the expected type."
 
-  @impl Exception
-  def exception(opts) do
-    colour_set = Keyword.fetch!(opts, :colour_set)
-    value = Keyword.fetch!(opts, :value)
-    message = Keyword.get(opts, :message, @message)
+  typed_structor definer: :defexception, enforce: true do
+    field :message, String.t(), default: @message
+    field :colour_set, ColouredFlow.Definition.ColourSet.t()
+    field :value, term()
+  end
 
-    %__MODULE__{message: message, colour_set: colour_set, value: value}
+  @impl Exception
+  def exception(arguments) do
+    struct!(__MODULE__, arguments)
   end
 
   @impl Exception

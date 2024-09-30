@@ -3,13 +3,12 @@ defmodule ColouredFlow.Runner.Enactment.Catchuping do
   Catchuping is used to update the marking of an enactment to the latest marking.
   """
 
-  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
   alias ColouredFlow.MultiSet
 
-  @typep tokens() :: MultiSet.t(ColourSet.value())
+  @typep tokens() :: Marking.tokens()
   @typep place_tokens() :: {:consume | :produce, Place.name(), tokens()}
   @typep markings_map() :: %{Place.name() => tokens()}
 
