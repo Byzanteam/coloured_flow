@@ -29,10 +29,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
         when state: Workitem.state()
   def pop_workitems(workitems, workitem_ids, expected_state) do
     workitem_ids
-    |> Enum.reduce_while({%{}, workitems}, fn workitem_id, {poped, remaining} ->
+    |> Enum.reduce_while({%{}, workitems}, fn workitem_id, {popped, remaining} ->
       case Map.pop(remaining, workitem_id) do
         {%Workitem{state: ^expected_state} = workitem, remaining} ->
-          {:cont, {Map.put(poped, workitem_id, workitem), remaining}}
+          {:cont, {Map.put(popped, workitem_id, workitem), remaining}}
 
         {%Workitem{} = workitem, _remaining} ->
           {:halt, {:error, {:workitem_unexpected_state, workitem}}}
@@ -43,7 +43,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
     end)
     |> case do
       {:error, _reason} = error -> error
-      {poped, remaining} -> {:ok, poped, remaining}
+      {popped, remaining} -> {:ok, popped, remaining}
     end
   end
 
