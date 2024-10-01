@@ -134,7 +134,7 @@ defmodule ColouredFlow.Runner.Enactment do
       when is_list(workitem_ids) do
     with(
       {:ok, enabled_workitems, workitems} <-
-        WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, :enabled),
+        pop_workitems(state, workitem_ids, :allocate, :enabled),
       enabled_workitems = Map.values(enabled_workitems),
       binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
@@ -153,24 +153,7 @@ defmodule ColouredFlow.Runner.Enactment do
         {:continue, {:calibrate_workitems, :allocate, enabled_workitems}}
       }
     else
-      {:error, {:workitem_not_found, workitem_id}} ->
-        exception =
-          Exceptions.NonLiveWorkitem.exception(
-            id: workitem_id,
-            enactment_id: state.enactment_id
-          )
-
-        {:reply, {:error, exception}, state}
-
-      {:error, {:workitem_unexpected_state, workitem}} ->
-        exception =
-          Exceptions.InvalidWorkitemTransition.exception(
-            id: workitem.id,
-            enactment_id: state.enactment_id,
-            state: workitem.state,
-            transition: :allocate
-          )
-
+      {:error, exception} when is_exception(exception) ->
         {:reply, {:error, exception}, state}
 
       {:error, {:unsufficient_tokens, %Marking{} = marking}} ->
@@ -182,6 +165,33 @@ defmodule ColouredFlow.Runner.Enactment do
           )
 
         {:reply, {:error, exception}, state}
+    end
+  end
+
+  defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition, expected_state) do
+    case WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, expected_state) do
+      {:ok, _popped_workitems, _workitems} = ok ->
+        ok
+
+      {:error, {:workitem_not_found, workitem_id}} ->
+        exception =
+          Exceptions.NonLiveWorkitem.exception(
+            id: workitem_id,
+            enactment_id: state.enactment_id
+          )
+
+        {:error, exception}
+
+      {:error, {:workitem_unexpected_state, workitem}} ->
+        exception =
+          Exceptions.InvalidWorkitemTransition.exception(
+            id: workitem.id,
+            enactment_id: state.enactment_id,
+            state: workitem.state,
+            transition: transition
+          )
+
+        {:error, exception}
     end
   end
 end
