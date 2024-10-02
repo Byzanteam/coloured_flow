@@ -55,11 +55,11 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
       }
 
-      free_assignments = []
+      free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
 
-      assert [] === occurrence.free_assignments
+      assert [] === occurrence.free_binding
       assert [%Marking{place: "even", tokens: ~b[1**2]}] === occurrence.to_produce
     end
 
@@ -118,11 +118,11 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ]
         }
 
-      free_assignments = []
+      free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
 
-      assert [] === occurrence.free_assignments
+      assert [] === occurrence.free_binding
       assert [%Marking{place: "unit", tokens: ~b[1**{}]}] === occurrence.to_produce
     end
 
@@ -182,11 +182,11 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ]
         }
 
-      free_assignments = []
+      free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
 
-      assert [] === occurrence.free_assignments
+      assert [] === occurrence.free_binding
 
       assert [
                %Marking{place: "one", tokens: ~b[1]},
@@ -195,7 +195,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
                occurrence.to_produce
     end
 
-    test "set free_assignments" do
+    test "set free_binding" do
       # (dividend, divisor) -> [div and mod] -> (quotient, modulo)
       colour_sets = [
         colset(int() :: integer())
@@ -276,11 +276,11 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           ]
         }
 
-      free_assignments = [quotient: 2, modulo: 1]
+      free_binding = [quotient: 2, modulo: 1]
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
 
-      assert [modulo: 1, quotient: 2] === sort_assignments(occurrence.free_assignments)
+      assert [modulo: 1, quotient: 2] === sort_binding(occurrence.free_binding)
 
       assert [
                %Marking{place: "modulo", tokens: ~b[1]},
@@ -336,9 +336,9 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
       }
 
-      free_assignments = []
+      free_binding = []
 
-      {:error, exceptions} = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:error, exceptions} = Occurrence.occur(binding_element, free_binding, cpnet)
 
       assert [%ArithmeticError{}] = exceptions
     end
@@ -388,9 +388,9 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
       }
 
-      free_assignments = []
+      free_binding = []
 
-      {:error, exceptions} = Occurrence.occur(binding_element, free_assignments, cpnet)
+      {:error, exceptions} = Occurrence.occur(binding_element, free_binding, cpnet)
 
       assert [
                %ColouredFlow.Definition.ColourSet.ColourSetMismatch{
@@ -401,8 +401,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
     end
   end
 
-  defp sort_assignments(assignments) do
-    Enum.sort_by(assignments, &elem(&1, 0))
+  defp sort_binding(binding) do
+    Enum.sort_by(binding, &elem(&1, 0))
   end
 
   defp sort_markings(markings) do

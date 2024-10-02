@@ -9,7 +9,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.Occurrence do
       Occurrence,
       [
         binding_element: {:codec, Codec.BindingElement},
-        free_assignments: {:list, Codec.BindingElement.binding_codec_spec()},
+        free_binding: {:list, Codec.BindingElement.binding_codec_spec()},
         to_produce: {:list, {:codec, Codec.Marking}}
       ]
     }

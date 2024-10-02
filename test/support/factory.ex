@@ -56,7 +56,7 @@ defmodule ColouredFlow.Factory do
                 [x: 1],
                 [%Marking{place: "integer", tokens: ~b[1]}]
               ),
-            free_assignments: [],
+            free_binding: [],
             to_produce: [%Marking{place: "output", tokens: ~b[1**2]}]
           }
         }
