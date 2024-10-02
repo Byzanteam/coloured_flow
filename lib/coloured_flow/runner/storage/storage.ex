@@ -135,7 +135,8 @@ defmodule ColouredFlow.Runner.Storage do
   @doc """
   Transition the workitems from one state to another in accordance with the state machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
   """
-  @spec transition_workitems([Workitem.t()], target_state :: Workitem.state()) :: [Workitem.t()]
+  @spec transition_workitems([Workitem.t()], target_state) :: [Workitem.t(target_state)]
+        when target_state: Workitem.state()
   def transition_workitems([], _target_state), do: []
 
   valid_transitions = Enum.group_by(Workitem.__transitions__(), &elem(&1, 2), &elem(&1, 0))
