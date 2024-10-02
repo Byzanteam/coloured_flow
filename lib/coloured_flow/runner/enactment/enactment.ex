@@ -84,8 +84,8 @@ defmodule ColouredFlow.Runner.Enactment do
       %__MODULE__{
         state
         | version: snapshot.version,
-          markings: Map.new(snapshot.markings, &{&1.place, &1}),
-          workitems: Map.new(workitems, &{&1.id, &1})
+          markings: to_map(snapshot.markings),
+          workitems: to_map(workitems)
       },
       {:continue, :calibrate_workitems}
     }
@@ -124,7 +124,7 @@ defmodule ColouredFlow.Runner.Enactment do
     produced_workitems =
       state.enactment_id
       |> Storage.produce_workitems(calibration.to_produce)
-      |> Map.new(&{&1.id, &1})
+      |> to_map()
 
     %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
   end
@@ -135,7 +135,7 @@ defmodule ColouredFlow.Runner.Enactment do
     with(
       {:ok, enabled_workitems, workitems} <-
         pop_workitems(state, workitem_ids, :allocate, :enabled),
-      enabled_workitems = Map.values(enabled_workitems),
+      enabled_workitems = to_list(enabled_workitems),
       binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
@@ -143,7 +143,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
       state = %__MODULE__{
         state
-        | workitems: Map.merge(Map.new(allocated_workitems, &{&1.id, &1}), workitems)
+        | workitems: merge_maps(allocated_workitems, workitems)
       }
 
       {
@@ -172,12 +172,12 @@ defmodule ColouredFlow.Runner.Enactment do
       when is_list(workitem_ids) do
     case pop_workitems(state, workitem_ids, :start, :allocated) do
       {:ok, allocated_workitems, workitems} ->
-        allocated_workitems = Map.values(allocated_workitems)
+        allocated_workitems = to_list(allocated_workitems)
         started_workitems = Storage.transition_workitems(allocated_workitems, :started)
 
         state = %__MODULE__{
           state
-          | workitems: Map.merge(Map.new(started_workitems, &{&1.id, &1}), workitems)
+          | workitems: merge_maps(started_workitems, workitems)
         }
 
         {:reply, {:ok, started_workitems}, state}
@@ -213,4 +213,21 @@ defmodule ColouredFlow.Runner.Enactment do
         {:error, exception}
     end
   end
+
+  @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
+  @spec to_map(Enumerable.t(item)) :: %{Workitem.id() => item} when item: Workitem.t()
+  defp to_map([]), do: %{}
+  defp to_map([%Workitem{} = workitem | rest]), do: Map.put(to_map(rest), workitem.id, workitem)
+  defp to_map([%Marking{} = marking | rest]), do: Map.put(to_map(rest), marking.place, marking)
+
+  @spec to_list(%{Place.name() => item}) :: [item] when item: Marking.t()
+  @spec to_list(%{Workitem.id() => item}) :: [item] when item: Workitem.t()
+  defp to_list(map) when is_map(map), do: Map.values(map)
+
+  @spec merge_maps(Enumerable.t(item) | amap, amap) :: amap
+        when item: Marking.t(), amap: %{Place.name() => item}
+  @spec merge_maps(Enumerable.t(item) | amap, amap) :: amap
+        when item: Workitem.t(), amap: %{Workitem.id() => item}
+  defp merge_maps(map1, map2) when is_map(map1) and is_map(map2), do: Map.merge(map1, map2)
+  defp merge_maps(list, map) when is_list(list) and is_map(map), do: merge_maps(to_map(list), map)
 end
