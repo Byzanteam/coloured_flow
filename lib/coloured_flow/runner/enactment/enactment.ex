@@ -168,6 +168,25 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  def handle_call({:start_workitems, workitem_ids}, _from, %__MODULE__{} = state)
+      when is_list(workitem_ids) do
+    case pop_workitems(state, workitem_ids, :start, :allocated) do
+      {:ok, allocated_workitems, workitems} ->
+        allocated_workitems = Map.values(allocated_workitems)
+        started_workitems = Storage.transition_workitems(allocated_workitems, :started)
+
+        state = %__MODULE__{
+          state
+          | workitems: Map.merge(Map.new(started_workitems, &{&1.id, &1}), workitems)
+        }
+
+        {:reply, {:ok, started_workitems}, state}
+
+      {:error, exception} when is_exception(exception) ->
+        {:reply, {:error, exception}, state}
+    end
+  end
+
   defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition, expected_state) do
     case WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, expected_state) do
       {:ok, _popped_workitems, _workitems} = ok ->

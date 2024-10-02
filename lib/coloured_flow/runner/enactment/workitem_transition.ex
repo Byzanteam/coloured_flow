@@ -27,6 +27,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
     GenServer.call(enactment, {:allocate_workitems, workitem_ids})
   end
 
+  @spec start_workitem(enactment_id(), workitem_id()) ::
+          {:ok, Workitem.t(:started)} | {:error, Exception.t()}
+  def start_workitem(enactment_id, workitem_id) do
+    case start_workitems(enactment_id, [workitem_id]) do
+      {:ok, [workitem]} -> {:ok, workitem}
+      {:error, exception} -> {:error, exception}
+    end
+  end
+
+  @spec start_workitems(enactment_id(), [workitem_id()]) ::
+          {:ok, [Workitem.t(:started)]} | {:error, Exception.t()}
+  def start_workitems(enactment_id, workitem_ids) when is_list(workitem_ids) do
+    enactment = via_name(enactment_id)
+
+    GenServer.call(enactment, {:start_workitems, workitem_ids})
+  end
+
   defp via_name(enactment_id) do
     Registry.via_name({:enactment, enactment_id})
   end
