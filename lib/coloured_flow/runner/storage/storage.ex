@@ -80,6 +80,41 @@ defmodule ColouredFlow.Runner.Storage do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
+  @doc """
+  Appends the occurrences to the enactment, and returns the new version and the occurrences.
+  """
+  @spec append_occurrences(
+          enactment_id(),
+          current_version :: non_neg_integer(),
+          occurrences :: Enumerable.t(Occurrence.t())
+        ) :: {non_neg_integer(), [Occurrence.t()]}
+  def append_occurrences(enactment_id, current_version, occurrences) do
+    {occurrences, version} =
+      Enum.map_reduce(occurrences, current_version, fn occurrence, last_version ->
+        version = last_version + 1
+
+        {
+          %{
+            enactment_id: enactment_id,
+            step_number: version,
+            data: %Schemas.Occurrence.Data{
+              occurrence: occurrence
+            },
+            inserted_at: {:placeholder, :now}
+          },
+          version
+        }
+      end)
+
+    Repo.insert_all(
+      Schemas.Occurrence,
+      occurrences,
+      placeholders: %{now: DateTime.utc_now()}
+    )
+
+    version
+  end
+
   @live_states Workitem.__live_states__()
 
   @doc """
@@ -200,12 +235,12 @@ defmodule ColouredFlow.Runner.Storage do
   defp update_all(ids, expected_length, target_state) do
     Ecto.Multi.new()
     |> Ecto.Multi.update_all(
-      :withdraw,
+      :update,
       where(Schemas.Workitem, [wi], wi.id in ^ids),
       set: [state: target_state, updated_at: DateTime.utc_now()]
     )
-    |> Ecto.Multi.run(:result, fn _repo, %{withdraw: withdraw} ->
-      case withdraw do
+    |> Ecto.Multi.run(:result, fn _repo, %{update: update} ->
+      case update do
         {^expected_length, nil} ->
           {:ok, :ok}
 
