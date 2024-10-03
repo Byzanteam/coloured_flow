@@ -3,6 +3,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
   Workitem transition functions, which are dispatched to the corresponding enactment gen_server.
   """
 
+  alias ColouredFlow.Enactment.Occurrence
+
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Storage
@@ -42,6 +44,27 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
     enactment = via_name(enactment_id)
 
     GenServer.call(enactment, {:start_workitems, workitem_ids})
+  end
+
+  @spec complete_workitem(
+          enactment_id(),
+          workitem_id_and_free_binding :: {workitem_id(), Occurrence.free_binding()}
+        ) :: {:ok, Workitem.t(:completed)} | {:error, Exception.t()}
+  def complete_workitem(enactment_id, {workitem_id, free_binding}) do
+    case complete_workitems(enactment_id, %{workitem_id => free_binding}) do
+      {:ok, [workitem]} -> {:ok, workitem}
+      {:error, exception} -> {:error, exception}
+    end
+  end
+
+  @spec complete_workitems(
+          enactment_id(),
+          Enumerable.t({workitem_id(), Occurrence.free_binding()})
+        ) :: {:ok, [Workitem.t(:completed)]} | {:error, Exception.t()}
+  def complete_workitems(enactment_id, workitem_id_and_free_bindings) do
+    enactment = via_name(enactment_id)
+
+    GenServer.call(enactment, {:complete_workitems, workitem_id_and_free_bindings})
   end
 
   defp via_name(enactment_id) do

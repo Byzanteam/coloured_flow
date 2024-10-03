@@ -16,6 +16,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Enactment.WorkitemCalibration
+  alias ColouredFlow.Runner.Enactment.WorkitemCompletion
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
   alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage
@@ -182,6 +183,46 @@ defmodule ColouredFlow.Runner.Enactment do
 
         {:reply, {:ok, started_workitems}, state}
 
+      {:error, exception} when is_exception(exception) ->
+        {:reply, {:error, exception}, state}
+    end
+  end
+
+  def handle_call(
+        {:complete_workitems, workitem_id_and_free_bindings},
+        _from,
+        %__MODULE__{} = state
+      ) do
+    workitem_ids = Enum.map(workitem_id_and_free_bindings, &elem(&1, 0))
+
+    with(
+      {:ok, started_workitems, workitems} <-
+        pop_workitems(state, workitem_ids, :complete, :started),
+      workitem_and_free_bindings =
+        Enum.map(workitem_id_and_free_bindings, fn {workitem_id, free_binding} ->
+          {Map.fetch!(started_workitems, workitem_id), free_binding}
+        end),
+      cpnet = Storage.get_flow_by_enactment(state.enactment_id),
+      {:ok, occurrences} <- WorkitemCompletion.complete(workitem_and_free_bindings, cpnet)
+    ) do
+      started_workitems = to_list(started_workitems)
+      completed_workitems = Storage.transition_workitems(started_workitems, :completed)
+      version = Storage.append_occurrences(state.enactment_id, state.version, occurrences)
+
+      {_steps, markings} =
+        state.markings
+        |> to_list()
+        |> Catchuping.apply(occurrences)
+
+      state = %__MODULE__{
+        state
+        | workitems: workitems,
+          markings: to_map(markings),
+          version: version
+      }
+
+      {:reply, {:ok, completed_workitems}, state}
+    else
       {:error, exception} when is_exception(exception) ->
         {:reply, {:error, exception}, state}
     end
