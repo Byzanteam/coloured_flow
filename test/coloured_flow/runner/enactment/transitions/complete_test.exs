@@ -198,6 +198,123 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
   end
 
+  describe "with outputs" do
+    setup do
+      import ColouredFlow.Notation.Colset
+
+      use ColouredFlow.DefinitionHelpers
+
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: [
+            colset(int() :: integer())
+          ],
+          places: [
+            %Place{name: "input", colour_set: :int},
+            %Place{name: "output", colour_set: :int}
+          ],
+          transitions: [
+            %Transition{
+              name: "pass_through",
+              guard: nil,
+              action: %Action{
+                code: Expression.build!("{1 + x}"),
+                inputs: [:x],
+                outputs: [:y]
+              }
+            }
+          ],
+          arcs: [
+            build_arc!(
+              label: "in",
+              place: "input",
+              transition: "pass_through",
+              orientation: :p_to_t,
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
+              label: "out",
+              place: "output",
+              transition: "pass_through",
+              orientation: :t_to_p,
+              expression: "{y, x}"
+            )
+          ],
+          variables: [
+            %Variable{name: :x, colour_set: :int},
+            %Variable{name: :y, colour_set: :int}
+          ]
+        }
+
+      flow = :flow |> build() |> flow_with_cpnet(cpnet) |> insert()
+
+      [flow: flow]
+    end
+
+    setup :setup_enactment
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
+    test "works", %{pid: pid} do
+      [workitem] = get_workitems(pid)
+      workitem = start_workitem(workitem, pid)
+      outputs = [y: 2]
+
+      assert {:ok, [completed_workitem]} =
+               GenServer.call(pid, {:complete_workitems, %{workitem.id => outputs}})
+
+      assert %{workitem | state: :completed} === completed_workitem
+
+      assert [
+               %Occurrence{
+                 binding_element: %BindingElement{
+                   transition: "pass_through",
+                   binding: [x: 1],
+                   to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                 },
+                 free_binding: [y: 2],
+                 to_produce: [%Marking{place: "output", tokens: ~b[2**1]}]
+               }
+             ] ===
+               Schemas.Occurrence
+               |> Repo.all()
+               |> Enum.map(&Schemas.Occurrence.to_occurrence/1)
+
+      assert [%Marking{place: "output", tokens: ~b[2**1]}] === get_markings(pid)
+    end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
+    test "returns UnboundActionOutput", %{pid: pid} do
+      [workitem] = get_workitems(pid)
+      workitem = start_workitem(workitem, pid)
+      outputs = []
+
+      assert {:error, exception} =
+               GenServer.call(pid, {:complete_workitems, %{workitem.id => outputs}})
+
+      assert %Exceptions.UnboundActionOutput{
+               transition: "pass_through",
+               output: :y
+             } = exception
+    end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
+    test "returns ColourSetMismatch", %{pid: pid} do
+      alias ColouredFlow.Definition.ColourSet
+
+      [workitem] = get_workitems(pid)
+      workitem = start_workitem(workitem, pid)
+      outputs = [y: "foo"]
+
+      assert {:error, exception} =
+               GenServer.call(pid, {:complete_workitems, %{workitem.id => outputs}})
+
+      assert %ColourSet.ColourSetMismatch{
+               colour_set: %ColourSet{name: :int, type: {:integer, []}},
+               value: "foo"
+             } = exception
+    end
+  end
+
   defp get_workitems(pid) do
     pid |> get_enactment_state() |> Map.fetch!(:workitems) |> Map.values()
   end

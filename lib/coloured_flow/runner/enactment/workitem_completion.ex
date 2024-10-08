@@ -3,8 +3,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
   Workitem completion functions.
   """
 
+  alias ColouredFlow.Definition.Action
+  alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Enactment.Occurrence
+
+  alias ColouredFlow.EnabledBindingElements.Utils
 
   alias ColouredFlow.Runner.Enactment.Workitem
 
@@ -12,31 +17,106 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
   Complete the workitems with the given free bindings, and return the occurrences.
 
   ## Parameters
-    * `workitem_and_free_bindings` - The workitems and their free binding map
+    * `workitem_and_outputs` - The workitems and their free binding (outputs)
     * `cpnet` - The coloured petri net
   """
   @spec complete(
-          workitem_and_free_bindings :: Enumerable.t({Workitem.t(), Occurrence.free_binding()}),
+          workitem_and_outputs :: Enumerable.t({Workitem.t(), Occurrence.free_binding()}),
           ColouredPetriNet.t()
         ) :: {:ok, [Occurrence.t()]} | {:error, Exception.t()}
-  def complete(workitem_and_free_bindings, cpnet) do
-    workitem_and_free_bindings
+  def complete(workitem_and_outputs, cpnet) do
+    workitem_and_outputs
     |> Enum.reduce_while(
       [],
-      fn {%Workitem{} = workitem, free_binding}, acc ->
-        case ColouredFlow.EnabledBindingElements.Occurrence.occur(
-               workitem.binding_element,
-               free_binding,
-               cpnet
-             ) do
-          {:ok, occurrence} -> {:cont, [occurrence | acc]}
-          {:error, [exception | _rest]} -> {:halt, {:error, exception}}
+      fn {%Workitem{} = workitem, ouputs}, acc ->
+        transition = fetch_transition!(workitem, cpnet)
+
+        with(
+          {:ok, ouputs} <- validate_outputs(transition, ouputs, cpnet),
+          {:ok, occurrence} <- occur(workitem, ouputs, cpnet)
+        ) do
+          {:cont, [occurrence | acc]}
+        else
+          {:error, {:unbound_action_output, args}} ->
+            alias ColouredFlow.Runner.Exceptions.UnboundActionOutput
+
+            exception = UnboundActionOutput.exception([{:transition, transition.name} | args])
+
+            {:halt, {:error, exception}}
+
+          {:error, {:colour_set_mismatch, args}} ->
+            exception = ColourSet.ColourSetMismatch.exception(args)
+
+            {:halt, {:error, exception}}
+
+          {:error, exception} when is_exception(exception) ->
+            {:halt, {:error, exception}}
         end
       end
     )
     |> case do
       {:error, _exception} = error -> error
       occurrences -> {:ok, occurrences}
+    end
+  end
+
+  defp fetch_transition!(%Workitem{} = workitem, %ColouredPetriNet{} = cpnet) do
+    Utils.fetch_transition!(workitem.binding_element.transition, cpnet)
+  end
+
+  @spec validate_outputs(Transition.t(), Occurrence.free_binding(), ColouredPetriNet.t()) ::
+          {:ok, [Occurrence.free_binding()]}
+          | {:error, {:unbound_action_output | :colour_set_mismatch, Keyword.t()}}
+  defp validate_outputs(%Transition{action: nil}, _outputs, _cpnet) do
+    {:ok, []}
+  end
+
+  defp validate_outputs(%Transition{action: %Action{outputs: output_vars}}, outputs, cpnet) do
+    output_vars
+    |> Enum.reduce_while([], fn output_var, acc ->
+      with(
+        {:ok, value} <- fetch_output(outputs, output_var),
+        output_var = fetch_variable!(output_var, cpnet),
+        colour_set = fetch_colour_set!(output_var.colour_set, cpnet),
+        {:ok, value} <- check_output_type(value, colour_set)
+      ) do
+        {:cont, [{output_var.name, value} | acc]}
+      else
+        {:error, _exception} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:error, _reason} = error -> error
+      outputs -> {:ok, outputs}
+    end
+  end
+
+  defp fetch_output(outputs, output_var) do
+    with :error <- Keyword.fetch(outputs, output_var) do
+      {:error, {:unbound_action_output, output: output_var}}
+    end
+  end
+
+  defp fetch_variable!(colour_set, %ColouredPetriNet{} = cpnet) do
+    Utils.fetch_variable!(colour_set, cpnet)
+  end
+
+  defp fetch_colour_set!(colour_set, %ColouredPetriNet{} = cpnet) do
+    Utils.fetch_colour_set!(colour_set, cpnet)
+  end
+
+  defp check_output_type(value, %ColourSet{} = colour_set) do
+    with :error <- ColourSet.Of.of_type(value, colour_set.type) do
+      {:error, {:colour_set_mismatch, colour_set: colour_set, value: value}}
+    end
+  end
+
+  defp occur(%Workitem{} = workitem, free_binding, cpnet) do
+    alias ColouredFlow.EnabledBindingElements.Occurrence
+
+    with {:error, [exception | _rest]} <-
+           Occurrence.occur(workitem.binding_element, free_binding, cpnet) do
+      {:error, exception}
     end
   end
 end
