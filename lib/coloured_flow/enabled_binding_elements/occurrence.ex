@@ -16,18 +16,18 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
   import ColouredFlow.EnabledBindingElements.Utils
 
   @doc """
-  Occurs the binding element with the free assignments and the CPNet,
+  Occurs the binding element with the free variables' binding and the CPNet,
   returns the occurrence of the binding element.
   """
   @spec occur(
           binding_element :: BindingElement.t(),
-          free_assignments :: [{Variable.name(), ColourSet.value()}],
+          free_binding :: [{Variable.name(), ColourSet.value()}],
           cpnet :: ColouredPetriNet.t()
         ) :: {:ok, Occurrence.t()} | {:error, [Exception.t()]}
-  def occur(binding_element, free_assignments, cpnet) do
+  def occur(binding_element, free_binding, cpnet) do
     transition = fetch_transition!(binding_element.transition, cpnet)
 
-    binding = Enum.concat(binding_element.binding, free_assignments)
+    binding = Enum.concat(binding_element.binding, free_binding)
 
     outputs = get_arcs_with_place(transition, :t_to_p, cpnet)
 
@@ -46,7 +46,7 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
         :ok,
         %Occurrence{
           binding_element: binding_element,
-          free_assignments: free_assignments,
+          free_binding: free_binding,
           to_produce: to_produce
         }
       }

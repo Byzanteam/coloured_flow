@@ -16,7 +16,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.OccurrenceTest 
             binding: [x: 1],
             to_consume: [%Marking{place: "p1", tokens: ~b[1]}]
           },
-          free_assignments: [x: 1],
+          free_binding: [x: 1],
           to_produce: [
             %Marking{place: "p2", tokens: ~b[2**1]}
           ]

@@ -1,12 +1,11 @@
 defmodule ColouredFlow.Enactment.BindingElement do
   @moduledoc """
-  A binding element comprises a transition and a set of bound and free assignments.
+  A binding element comprises a transition, a set of bound assignments,
+  and a set of markings to be consumed while firing the transition.
 
   A binding element is considered enabled if:
   1. The guard of the transition is satisfied.
   2. There are sufficient tokens on the input places of the transition.
-
-  The sets of bound_assignments and free_assignments are mutually exclusive.
   """
 
   use TypedStructor

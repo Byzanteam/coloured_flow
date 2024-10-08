@@ -29,7 +29,7 @@ defmodule ColouredFlow.Runner.Enactment.CatchupingTest do
             %Marking{place: "a", tokens: ~b[2**:a]}
           ]
         },
-        free_assignments: [],
+        free_binding: [],
         to_produce: [%Marking{place: "b", tokens: ~b[2**:b 1**:c]}]
       }
 
@@ -51,7 +51,7 @@ defmodule ColouredFlow.Runner.Enactment.CatchupingTest do
             %Marking{place: "b", tokens: ~b[2**:b 1**:c]}
           ]
         },
-        free_assignments: [],
+        free_binding: [],
         to_produce: [%Marking{place: "c", tokens: ~b[1**:c]}]
       }
 

@@ -292,10 +292,15 @@ defmodule ColouredFlow.ExpressionTest do
              )
 
       assert match?(
-               {:error, [compile_error, exception]}
-               when is_exception(compile_error, CompileError) and
-                      is_exception(exception, EvalDiagnostic),
+               {:error, [exception]}
+               when is_exception(exception, EvalDiagnostic),
                Expression.eval(compile!("a + b"), a: 1)
+             )
+
+      assert match?(
+               {:error, [exception]}
+               when is_exception(exception, UndefinedFunctionError),
+               Expression.eval(compile!("a a "), a: 1)
              )
     end
   end

@@ -129,7 +129,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
             [x: 1],
             [%Marking{place: "input", tokens: ~b[1]}]
           ),
-        free_assignments: [],
+        free_binding: [],
         to_produce: [%Marking{place: "output", tokens: ~b[1]}]
       })
       |> insert()

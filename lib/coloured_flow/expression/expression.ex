@@ -240,6 +240,12 @@ defmodule ColouredFlow.Expression do
 
   defp merge_diagnostics({:ok, result}, _diagnostics), do: {:ok, result}
 
+  # omits the compile error, for the diagnostics include the details
+  defp merge_diagnostics({:error, error}, all_errors_and_warnings)
+       when is_exception(error, CompileError) do
+    {:error, Enum.map(all_errors_and_warnings, &EvalDiagnostic.exception/1)}
+  end
+
   defp merge_diagnostics({:error, error}, all_errors_and_warnings) do
     {:error, [error | Enum.map(all_errors_and_warnings, &EvalDiagnostic.exception/1)]}
   end
