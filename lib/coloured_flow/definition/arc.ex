@@ -45,7 +45,8 @@ defmodule ColouredFlow.Definition.Arc do
       but they can refer to variables bound by other incoming arcs
       (see <https://cpntools.org/2018/01/09/resource-allocation-example/>).
       However, outgoing arcs are allowed to refer to an unbound variable
-      that will be updated during the transition action.
+      that will be updated during the transition action; that is,
+      it will be bound by the action outputs.
 
       Examples:
 

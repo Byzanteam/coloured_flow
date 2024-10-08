@@ -24,8 +24,10 @@ defmodule ColouredFlow.Enactment.BindingElement do
 
     field :binding, [binding()],
       doc: """
-      A bound assignments(aka binding) is an output arc variable
-      that has been bound to an input arc or to the guard.
+      The binding is a list of variable assignments that are bound to
+      the input places of the transition, or to the guard. The binding
+      may be referred to in the action of the transition, and the
+      out-going arcs of the transition.
       """
 
     field :to_consume, [Marking.t()],

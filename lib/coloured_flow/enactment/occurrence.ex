@@ -17,8 +17,8 @@ defmodule ColouredFlow.Enactment.Occurrence do
 
     field :free_binding, free_binding(),
       doc: """
-      A free assignments(aka binding) is an output arc variable,
-      that has not been bound to an input arc or to the guard.
+      The free assignment(aka binding) are bound by the transition action outputs,
+      which they aren't bound to an input arc or to the guard.
 
       The free assignments must be bound after the transition is fired,
       and they are bound to the outputs of the transition action.
