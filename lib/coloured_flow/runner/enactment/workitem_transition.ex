@@ -48,10 +48,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
 
   @spec complete_workitem(
           enactment_id(),
-          workitem_id_and_free_binding :: {workitem_id(), Occurrence.free_binding()}
+          workitem_id_and_outputs :: {workitem_id(), Occurrence.free_binding()}
         ) :: {:ok, Workitem.t(:completed)} | {:error, Exception.t()}
-  def complete_workitem(enactment_id, {workitem_id, free_binding}) do
-    case complete_workitems(enactment_id, %{workitem_id => free_binding}) do
+  def complete_workitem(enactment_id, {workitem_id, outputs}) do
+    case complete_workitems(enactment_id, [{workitem_id, outputs}]) do
       {:ok, [workitem]} -> {:ok, workitem}
       {:error, exception} -> {:error, exception}
     end
@@ -61,10 +61,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
           enactment_id(),
           Enumerable.t({workitem_id(), Occurrence.free_binding()})
         ) :: {:ok, [Workitem.t(:completed)]} | {:error, Exception.t()}
-  def complete_workitems(enactment_id, workitem_id_and_free_bindings) do
+  def complete_workitems(enactment_id, workitem_id_and_outputs_list) do
     enactment = via_name(enactment_id)
 
-    GenServer.call(enactment, {:complete_workitems, workitem_id_and_free_bindings})
+    GenServer.call(enactment, {:complete_workitems, workitem_id_and_outputs_list})
   end
 
   defp via_name(enactment_id) do

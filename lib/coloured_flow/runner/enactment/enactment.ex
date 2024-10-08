@@ -189,21 +189,21 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def handle_call(
-        {:complete_workitems, workitem_id_and_free_bindings},
+        {:complete_workitems, workitem_id_and_outputs},
         _from,
         %__MODULE__{} = state
       ) do
-    workitem_ids = Enum.map(workitem_id_and_free_bindings, &elem(&1, 0))
+    workitem_ids = Enum.map(workitem_id_and_outputs, &elem(&1, 0))
 
     with(
       {:ok, started_workitems, workitems} <-
         pop_workitems(state, workitem_ids, :complete, :started),
-      workitem_and_free_bindings =
-        Enum.map(workitem_id_and_free_bindings, fn {workitem_id, free_binding} ->
+      workitem_and_outputs =
+        Enum.map(workitem_id_and_outputs, fn {workitem_id, free_binding} ->
           {Map.fetch!(started_workitems, workitem_id), free_binding}
         end),
       cpnet = Storage.get_flow_by_enactment(state.enactment_id),
-      {:ok, occurrences} <- WorkitemCompletion.complete(workitem_and_free_bindings, cpnet)
+      {:ok, occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
     ) do
       started_workitems = to_list(started_workitems)
       completed_workitems = Storage.transition_workitems(started_workitems, :completed)

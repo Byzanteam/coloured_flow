@@ -8,6 +8,7 @@ defmodule ColouredFlow.EnabledBindingElements.Utils do
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
+  alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
 
@@ -18,6 +19,15 @@ defmodule ColouredFlow.EnabledBindingElements.Utils do
       cpnet.colour_sets,
       &match?(%ColourSet{name: ^colour_set}, &1)
     ) || raise "Colour set with name #{inspect(colour_set)} not found in the petri net."
+  end
+
+  @spec fetch_variable!(variable :: Variable.name(), cpnet :: ColouredPetriNet.t()) ::
+          Variable.t()
+  def fetch_variable!(variable, %ColouredPetriNet{} = cpnet) do
+    Enum.find(
+      cpnet.variables,
+      &match?(%Variable{name: ^variable}, &1)
+    ) || raise "Variable with name #{inspect(variable)} not found in the petri net."
   end
 
   @spec get_arcs_with_place(Transition.t(), Arc.orientation(), ColouredPetriNet.t()) ::

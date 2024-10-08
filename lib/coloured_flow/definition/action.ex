@@ -8,14 +8,9 @@ defmodule ColouredFlow.Definition.Action do
 
   use TypedStructor
 
-  alias ColouredFlow.Definition.ColourSet
+  alias ColouredFlow.Definition.Constant
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Variable
-  alias ColouredFlow.Expression.Action, as: ActionExpression
-
-  # TODO: meta is necessary?
-  @type output() ::
-          {:cpn_output_variable, {Variable.name(), meta :: keyword()}} | ColourSet.value()
 
   typed_structor do
     plugin TypedStructor.Plugins.DocFields
@@ -30,80 +25,28 @@ defmodule ColouredFlow.Definition.Action do
       quotient = div(dividend, divisor)
       modulo = Integer.mod(dividend, divisor)
 
-      # use `output` keyword to mark outputs
-      output {quotient, modulo}
-
-      # the outputs are:
-      [
-        [
-          cpn_output_variable: {:quotient, [line: 4, column: 9]},
-          cpn_output_variable: {:modulo, [line: 4, column: 19]}
-        ]
-      ]
-
+      # The outputs are bound to two variables specified in the outputs field
+      {quotient, modulo}
       ```
 
       ```
-      output {1, x}
-
-      # the outpus are:
-      [
-        [
-          1,
-          {:cpn_output_variable, {:x, [line: 1, column: 12]}}
-        ]
-      ]
+      # The outputs are empty
+      {}
       ```
       """
 
-    field :outputs, [[output()]],
-      enforce: true,
+    field :inputs, [Variable.name() | Constant.name()],
+      default: [],
       doc: """
-      The return values of the action will be bound to the free variables.
-
-      - `[1, {:cpn_output_variable, :x}]`: outputs [1, x]
-      - `[{:cpn_output_variable, :x}, {:cpn_output_variable, :x}]`: outputs [x, x]
+      The CPNet variables or constants listed in inputs can be used in the code expression.
+      The variables will be bound and passed to the action when the transition is fired.
       """
-  end
 
-  @spec build_outputs(Expression.t()) ::
-          {:ok, list(list(output()))} | {:error, ColouredFlow.Expression.compile_error()}
-  def build_outputs(%Expression{} = expression) do
-    outputs = extract_outputs(expression.expr)
-    check_outputs(outputs)
-  end
-
-  @spec build_outputs!(Expression.t()) :: list(list(output()))
-  def build_outputs!(%Expression{} = expression) do
-    case build_outputs(expression) do
-      {:ok, outputs} -> outputs
-      {:error, reason} -> raise inspect(reason)
-    end
-  end
-
-  defp extract_outputs(quoted) do
-    quoted
-    |> Macro.prewalk([], fn
-      {:output, _meta, [result]} = ast, acc ->
-        {ast, [ActionExpression.extract_output(result) | acc]}
-
-      ast, acc ->
-        {ast, acc}
-    end)
-    |> elem(1)
-  end
-
-  defp check_outputs([]), do: {:ok, []}
-  defp check_outputs([output]), do: {:ok, [output]}
-
-  defp check_outputs(outputs) do
-    # OPTIMIZE: check output types at the corresponding position
-    outputs
-    |> Enum.group_by(&Enum.count/1)
-    |> map_size()
-    |> case do
-      1 -> {:ok, outputs}
-      _other -> {:error, {[], "All outputs must have the same length", ""}}
-    end
+    field :outputs, [Variable.name()],
+      default: [],
+      doc: """
+      The CPNet variables listed in outputs must be **free variables**,
+      that are not bound by the incoming arcs, but are bound by the outgoing arcs.
+      """
   end
 end
