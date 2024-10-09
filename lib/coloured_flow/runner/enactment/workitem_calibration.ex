@@ -13,8 +13,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
+  alias ColouredFlow.Enactment.Occurrence
 
   alias ColouredFlow.EnabledBindingElements.Computation
+  alias ColouredFlow.EnabledBindingElements.Utils
 
   alias ColouredFlow.Runner.Enactment
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -77,8 +79,17 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   ## Allocate options
 
     * `workitems`: The **original** workitems (before the transition) that are affected by the `allocate` transition.
+
+  ## Complete options
+
+    * `cpnet`: The coloured petri net.
+    * `occurrences`: The occurrences that are appened after the `complete` transition.
   """
   @spec calibrate(enactment_state(), :allocate, workitems: [Workitem.t()]) :: t()
+  @spec calibrate(enactment_state(), :complete,
+          cpnet: ColouredPetriNet.t(),
+          occurrences: [Occurrence.t()]
+        ) :: t()
   def calibrate(state, transition, options)
 
   def calibrate(%Enactment{} = state, :allocate, options)
@@ -102,6 +113,39 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       __MODULE__,
       state: %Enactment{state | workitems: workitems},
       to_withdraw: Map.values(to_withdraw)
+    )
+  end
+
+  def calibrate(%Enactment{} = state, :complete, options)
+      when is_list(options) do
+    cpnet = Keyword.fetch!(options, :cpnet)
+
+    affected_transitions =
+      options
+      |> Keyword.fetch!(:occurrences)
+      |> Stream.flat_map(& &1.to_produce)
+      |> Enum.map(& &1.place)
+      |> Utils.list_transitions(cpnet)
+
+    binding_elements =
+      affected_transitions
+      |> Enum.flat_map(fn transition ->
+        Computation.list(transition, cpnet, state.markings)
+      end)
+      |> MultiSet.new()
+
+    existing_binding_elements =
+      state.workitems
+      |> Stream.map(fn {_workitem_id, %Workitem{} = workitem} -> workitem end)
+      |> Stream.map(& &1.binding_element)
+      |> MultiSet.new()
+
+    to_produce = MultiSet.difference(binding_elements, existing_binding_elements)
+
+    struct!(
+      __MODULE__,
+      state: state,
+      to_produce: MultiSet.to_list(to_produce)
     )
   end
 

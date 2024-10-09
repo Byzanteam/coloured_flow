@@ -222,7 +222,12 @@ defmodule ColouredFlow.Runner.Enactment do
           version: version
       }
 
-      {:reply, {:ok, completed_workitems}, state}
+      {
+        :reply,
+        {:ok, completed_workitems},
+        state,
+        {:continue, {:calibrate_workitems, :complete, [cpnet: cpnet, occurrences: occurrences]}}
+      }
     else
       {:error, exception} when is_exception(exception) ->
         {:reply, {:error, exception}, state}
