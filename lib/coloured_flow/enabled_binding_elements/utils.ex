@@ -61,10 +61,33 @@ defmodule ColouredFlow.EnabledBindingElements.Utils do
 
   @spec fetch_transition!(name :: Transition.name(), cpnet :: ColouredPetriNet.t()) ::
           Transition.t()
-  def fetch_transition!(name, cpnet) do
+  def fetch_transition!(name, %ColouredPetriNet{} = cpnet) do
     case Enum.find(cpnet.transitions, &(&1.name == name)) do
       nil -> raise "Transition not found: #{name}"
       transition -> transition
     end
+  end
+
+  @spec list_transitions(in_places :: Enumerable.t(Place.name()), cpnet :: ColouredPetriNet.t()) ::
+          Enumerable.t(Transition.t())
+  def list_transitions(in_places, %ColouredPetriNet{} = cpnet) when is_list(in_places) do
+    in_places = MapSet.new(in_places)
+
+    cpnet.arcs
+    |> Enum.flat_map(fn
+      %Arc{orientation: :p_to_t} = arc ->
+        if arc.place in in_places do
+          [arc.transition]
+        else
+          []
+        end
+
+      %Arc{} ->
+        []
+    end)
+    |> MapSet.new()
+    |> then(fn transition_names ->
+      Enum.filter(cpnet.transitions, &MapSet.member?(transition_names, &1.name))
+    end)
   end
 end
