@@ -1,51 +1,38 @@
 defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
   use ColouredFlow.RepoCase
+  use ColouredFlow.RunnerHelpers
 
-  alias ColouredFlow.Enactment.Marking
-
-  alias ColouredFlow.Runner.Enactment
   alias ColouredFlow.Runner.Exceptions
 
-  import ColouredFlow.MultiSet
-
   describe "start workitems" do
-    setup do
-      flow = :flow |> build() |> flow_with_cpnet(:simple_sequence) |> insert()
-      initial_markings = [%Marking{place: "input", tokens: ~b[1]}]
+    @describetag cpnet: :simple_sequence
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
 
-      enactment =
-        :enactment
-        |> build(flow: flow)
-        |> enactment_with_initial_markings(initial_markings)
-        |> insert()
+    setup :setup_flow
+    setup :setup_enactment
+    setup :start_enactment
 
-      [flow: flow, enactment: enactment]
-    end
+    test "works", %{enactment_server: enactment_server} do
+      [workitem] = get_enactment_workitems(enactment_server)
 
-    test "works", %{enactment: enactment} do
-      pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
-
-      %Enactment{workitems: workitems} = get_enactment_state(pid)
-      [workitem] = Map.values(workitems)
-
-      {:ok, [workitem]} = GenServer.call(pid, {:allocate_workitems, [workitem.id]})
+      {:ok, [workitem]} = GenServer.call(enactment_server, {:allocate_workitems, [workitem.id]})
 
       assert :allocated === workitem.state
 
-      {:ok, [workitem]} = GenServer.call(pid, {:start_workitems, [workitem.id]})
+      {:ok, [workitem]} = GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
 
       assert :started === workitem.state
 
-      %Enactment{workitems: workitems} = get_enactment_state(pid)
-      assert [workitem] === Map.values(workitems)
+      assert [workitem] === get_enactment_workitems(enactment_server)
     end
 
-    test "returns NonLiveWorkitem exception", %{enactment: enactment} do
-      pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
-
+    test "returns NonLiveWorkitem exception", %{
+      enactment_server: enactment_server,
+      enactment: enactment
+    } do
       workitem_id = Ecto.UUID.generate()
 
-      {:error, exception} = GenServer.call(pid, {:start_workitems, [workitem_id]})
+      {:error, exception} = GenServer.call(enactment_server, {:start_workitems, [workitem_id]})
 
       assert %Exceptions.NonLiveWorkitem{
                id: workitem_id,
@@ -53,13 +40,14 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
              } === exception
     end
 
-    test "returns InvalidWorkitemTransition", %{enactment: enactment} do
-      pid = start_link_supervised!({Enactment, enactment_id: enactment.id})
+    test "returns InvalidWorkitemTransition", %{
+      enactment_server: enactment_server,
+      enactment: enactment
+    } do
+      [workitem] = get_enactment_workitems(enactment_server)
 
-      %Enactment{workitems: workitems} = get_enactment_state(pid)
-      [workitem] = Map.values(workitems)
-
-      assert {:error, exception} = GenServer.call(pid, {:start_workitems, [workitem.id]})
+      assert {:error, exception} =
+               GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
 
       assert %Exceptions.InvalidWorkitemTransition{
                id: workitem.id,
@@ -68,9 +56,5 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
                transition: :start
              } === exception
     end
-  end
-
-  defp get_enactment_state(pid) do
-    :sys.get_state(pid)
   end
 end
