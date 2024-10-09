@@ -474,90 +474,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
   end
 
   describe "calibrate after complete" do
-    import ColouredFlow.Notation.Colset
-
-    use ColouredFlow.DefinitionHelpers
+    import ColouredFlow.CpnetBuilder
 
     alias ColouredFlow.Enactment.Occurrence
 
-    # ```mermaid
-    # flowchart TB
-    #   %% colset int() :: integer()
-    #
-    #   i((input))
-    #   m((merge))
-    #   o((output))
-    #
-    #   b1[branch_1]
-    #   b2[branch_2]
-    #   tm[thread_merge]
-    #
-    #   i --{1,x}--> b1
-    #   i --{2,x}--> b2
-    #   b1 & b2 --{1,x}--> m
-    #   m --{2,1}--> tm
-    #   tm --{1,1}--> o
-    # ```
-
-    @cpnet %ColouredPetriNet{
-      colour_sets: [
-        colset(int() :: integer())
-      ],
-      places: [
-        %Place{name: "input", colour_set: :int},
-        %Place{name: "merge", colour_set: :int},
-        %Place{name: "output", colour_set: :int}
-      ],
-      transitions: [
-        %Transition{name: "branch_1", guard: nil},
-        %Transition{name: "branch_2", guard: nil},
-        %Transition{name: "thread_merge", guard: nil}
-      ],
-      arcs: [
-        build_arc!(
-          transition: "branch_1",
-          place: "input",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "branch_2",
-          place: "input",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "branch_1",
-          place: "merge",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "branch_2",
-          place: "merge",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "thread_merge",
-          place: "merge",
-          orientation: :p_to_t,
-          expression: "bind {2, 1}"
-        ),
-        build_arc!(
-          transition: "thread_merge",
-          place: "output",
-          orientation: :t_to_p,
-          expression: "{1, 1}"
-        )
-      ],
-      variables: [
-        %Variable{name: :x, colour_set: :int}
-      ]
-    }
-
     test "produces no workitems when no new binding_elements enabled" do
-      enactment_id = Ecto.UUID.generate()
+      cpnet = build_cpnet(:thread_merge)
 
       b2_workitem = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
@@ -578,20 +500,20 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       state = %Enactment{
-        enactment_id: enactment_id,
+        enactment_id: Ecto.UUID.generate(),
         version: 1,
         markings: to_map([%Marking{place: "merge", tokens: ~b[1]}]),
         workitems: to_map([])
       }
 
       calibration =
-        WorkitemCalibration.calibrate(state, :complete, cpnet: @cpnet, occurrences: [occurrence])
+        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
 
       assert [] === calibration.to_produce
     end
 
     test "produces new workitems when there is some live workitems at the transition" do
-      enactment_id = Ecto.UUID.generate()
+      cpnet = build_cpnet(:thread_merge)
 
       b1_workitem = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
@@ -624,20 +546,20 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       state = %Enactment{
-        enactment_id: enactment_id,
+        enactment_id: Ecto.UUID.generate(),
         version: 1,
         markings: to_map([%Marking{place: "merge", tokens: ~b[3**1]}]),
         workitems: to_map([tm_workitem])
       }
 
       calibration =
-        WorkitemCalibration.calibrate(state, :complete, cpnet: @cpnet, occurrences: [occurrence])
+        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
 
       assert [] === calibration.to_produce
     end
 
     test "completes mulitple workitems and produces new workitems for mulitple transitions" do
-      enactment_id = Ecto.UUID.generate()
+      cpnet = build_cpnet(:thread_merge)
 
       b1_workitem_1 = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
@@ -676,7 +598,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       state = %Enactment{
-        enactment_id: enactment_id,
+        enactment_id: Ecto.UUID.generate(),
         version: 2,
         markings:
           to_map([
@@ -687,7 +609,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: @cpnet,
+          cpnet: cpnet,
           occurrences: [b1_occurrence_1, b1_occurrence_2]
         )
 
@@ -701,7 +623,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
     end
 
     test "produces new workitems for one transition" do
-      enactment_id = Ecto.UUID.generate()
+      cpnet = build_cpnet(:thread_merge)
 
       b1_workitem = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
@@ -722,7 +644,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       state = %Enactment{
-        enactment_id: enactment_id,
+        enactment_id: Ecto.UUID.generate(),
         version: 1,
         markings: to_map([%Marking{place: "merge", tokens: ~b[2**1]}]),
         workitems: to_map([])
@@ -730,7 +652,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: @cpnet,
+          cpnet: cpnet,
           occurrences: [b1_occurrence]
         )
 
@@ -743,85 +665,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
              ] === calibration.to_produce
     end
 
-    # ```mermaid
-    # flowchart TB
-    #   %% colset int() :: integer()
-    #
-    #   %% ~b[1]
-    #   i((input))
-    #   p((place))
-    #   o1((output_1))
-    #   o2((output_2))
-    #
-    #   pt[pass_through]
-    #   dc1[deferred_choice_1]
-    #   dc2[deferred_choice_2]
-    #
-    #   i --{1,x}--> pt
-    #   pt --{1,x}--> p
-    #   p --{1,x}--> dc1 & dc2
-    #   dc1 --{1,x}--> o1
-    #   dc2 --{1,x}--> o2
-    @cpnet %ColouredPetriNet{
-      colour_sets: [
-        colset(int() :: integer())
-      ],
-      places: [
-        %Place{name: "input", colour_set: :int},
-        %Place{name: "place", colour_set: :int},
-        %Place{name: "output_1", colour_set: :int},
-        %Place{name: "output_2", colour_set: :int}
-      ],
-      transitions: [
-        %Transition{name: "pass_through", guard: nil},
-        %Transition{name: "deferred_choice_1", guard: nil},
-        %Transition{name: "deferred_choice_2", guard: nil}
-      ],
-      arcs: [
-        build_arc!(
-          transition: "pass_through",
-          place: "input",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "pass_through",
-          place: "place",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "deferred_choice_1",
-          place: "place",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "deferred_choice_2",
-          place: "place",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "deferred_choice_1",
-          place: "output_1",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "deferred_choice_2",
-          place: "output_2",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        )
-      ],
-      variables: [
-        %Variable{name: :x, colour_set: :int}
-      ]
-    }
-
     test "produces new workitems for mulitple transitions" do
-      enactment_id = Ecto.UUID.generate()
+      cpnet = build_cpnet(:deferred_choice)
 
       pt_workitem = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
@@ -842,7 +687,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       state = %Enactment{
-        enactment_id: enactment_id,
+        enactment_id: Ecto.UUID.generate(),
         version: 1,
         markings: to_map([%Marking{place: "place", tokens: ~b[1]}]),
         workitems: to_map([])
@@ -850,7 +695,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: @cpnet,
+          cpnet: cpnet,
           occurrences: [pt_occurrence]
         )
 
@@ -868,94 +713,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
              ] === calibration.to_produce
     end
 
-    # ```mermaid
-    # flowchart TB
-    #   %% colset int() :: integer()
-    #
-    #   %% ~b[1]
-    #   i((input))
-    #   p1((place_1))
-    #   p2((place_2))
-    #   o1((output_1))
-    #   o2((output_2))
-    #
-    #   ps[parallel_split]
-    #   pt1[pass_through_1]
-    #   pt2[pass_through_2]
-    #
-    #   i --{1,x}--> ps
-    #   ps --{1,x}--> p1 & p2
-    #   p1 --{1,x}--> pt1
-    #   p2 --{1,x}--> pt2
-    #   pt1 --{1,x}--> o1
-    #   pt2 --{1,x}--> o2
-    @cpnet %ColouredPetriNet{
-      colour_sets: [
-        colset(int() :: integer())
-      ],
-      places: [
-        %Place{name: "input", colour_set: :int},
-        %Place{name: "place_1", colour_set: :int},
-        %Place{name: "place_2", colour_set: :int},
-        %Place{name: "output_1", colour_set: :int},
-        %Place{name: "output_2", colour_set: :int}
-      ],
-      transitions: [
-        %Transition{name: "parallel_split", guard: nil},
-        %Transition{name: "pass_through_1", guard: nil},
-        %Transition{name: "pass_through_2", guard: nil}
-      ],
-      arcs: [
-        build_arc!(
-          transition: "parallel_split",
-          place: "input",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "parallel_split",
-          place: "place_1",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "parallel_split",
-          place: "place_2",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "pass_through_1",
-          place: "place_1",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "pass_through_2",
-          place: "place_2",
-          orientation: :p_to_t,
-          expression: "bind {1, x}"
-        ),
-        build_arc!(
-          transition: "pass_through_1",
-          place: "output_1",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        ),
-        build_arc!(
-          transition: "pass_through_2",
-          place: "output_2",
-          orientation: :t_to_p,
-          expression: "{1, x}"
-        )
-      ],
-      variables: [
-        %Variable{name: :x, colour_set: :int}
-      ]
-    }
-
     test "produces new workitems into mulitple places for mulitple transitions" do
-      enactment_id = Ecto.UUID.generate()
+      cpnet = build_cpnet(:parallel_split)
 
       ps_workitem = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
@@ -979,7 +738,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       state = %Enactment{
-        enactment_id: enactment_id,
+        enactment_id: Ecto.UUID.generate(),
         version: 0,
         markings:
           to_map([
@@ -991,7 +750,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: @cpnet,
+          cpnet: cpnet,
           occurrences: [ps_occurrence]
         )
 

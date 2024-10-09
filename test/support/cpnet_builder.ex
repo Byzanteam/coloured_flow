@@ -1,22 +1,25 @@
 defmodule ColouredFlow.CpnetBuilder do
+  use ColouredFlow.DefinitionHelpers
+
+  import ColouredFlow.Notation.Colset
+
   alias ColouredFlow.Definition.ColouredPetriNet
 
   @spec build_cpnet(name :: atom()) :: ColouredPetriNet.t()
   def build_cpnet(name)
 
-  # ```mermad
+  # ```mermaid
   # flowchart TB
   #   %% colset int() :: integer()
+  #
   #   i((input))
   #   o((output))
+  #
   #   pt[pass_through]
-  #   i --> pt --> o
+  #
+  #   i --{1,x}--> pt --{1,x}--> o
   # ```
   def build_cpnet(:simple_sequence) do
-    import ColouredFlow.Notation.Colset
-
-    use ColouredFlow.DefinitionHelpers
-
     %ColouredPetriNet{
       colour_sets: [
         colset(int() :: integer())
@@ -50,60 +53,77 @@ defmodule ColouredFlow.CpnetBuilder do
     }
   end
 
-  # ```mermad
+  # ```mermaid
   # flowchart TB
   #   %% colset int() :: integer()
+  #
   #   i((input))
-  #   o((output))
-  #   pt1[pass_through_1]
-  #   pt2[pass_through_2]
-  #   i --> pt1 & pt2 --> o
+  #   p((place))
+  #   o1((output_1))
+  #   o2((output_2))
+  #
+  #   pt[pass_through]
+  #   dc1[deferred_choice_1]
+  #   dc2[deferred_choice_2]
+  #
+  #   i --{1,x}--> pt
+  #   pt --{1,x}--> p
+  #   p --{1,x}--> dc1 & dc2
+  #   dc1 --{1,x}--> o1
+  #   dc2 --{1,x}--> o2
   # ```
   def build_cpnet(:deferred_choice) do
-    import ColouredFlow.Notation.Colset
-
-    use ColouredFlow.DefinitionHelpers
-
     %ColouredPetriNet{
       colour_sets: [
         colset(int() :: integer())
       ],
       places: [
         %Place{name: "input", colour_set: :int},
-        %Place{name: "output", colour_set: :int}
+        %Place{name: "place", colour_set: :int},
+        %Place{name: "output_1", colour_set: :int},
+        %Place{name: "output_2", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "pass_through_1", guard: nil},
-        %Transition{name: "pass_through_2", guard: nil}
+        %Transition{name: "pass_through", guard: nil},
+        %Transition{name: "deferred_choice_1", guard: nil},
+        %Transition{name: "deferred_choice_2", guard: nil}
       ],
       arcs: [
         build_arc!(
-          label: "in",
+          transition: "pass_through",
           place: "input",
-          transition: "pass_through_1",
           orientation: :p_to_t,
           expression: "bind {1, x}"
         ),
         build_arc!(
-          label: "in",
-          place: "input",
-          transition: "pass_through_2",
-          orientation: :p_to_t,
-          expression: "bind {2, x}"
-        ),
-        build_arc!(
-          label: "out",
-          place: "output",
-          transition: "pass_through_1",
+          transition: "pass_through",
+          place: "place",
           orientation: :t_to_p,
           expression: "{1, x}"
         ),
         build_arc!(
-          label: "out",
-          place: "output",
-          transition: "pass_through_2",
+          transition: "deferred_choice_1",
+          place: "place",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "deferred_choice_2",
+          place: "place",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "deferred_choice_1",
+          place: "output_1",
           orientation: :t_to_p,
-          expression: "{2, x}"
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          transition: "deferred_choice_2",
+          place: "output_2",
+          orientation: :t_to_p,
+          expression: "{1, x}"
         )
       ],
       variables: [
@@ -112,21 +132,108 @@ defmodule ColouredFlow.CpnetBuilder do
     }
   end
 
-  # ```mermad
+  # ```mermaid
   # flowchart TB
   #   %% colset int() :: integer()
+  #
+  #   i((input))
+  #   p1((place_1))
+  #   p2((place_2))
+  #   o1((output_1))
+  #   o2((output_2))
+  #
+  #   ps[parallel_split]
+  #   pt1[pass_through_1]
+  #   pt2[pass_through_2]
+  #
+  #   i --{1,x}--> ps
+  #   ps --{1,x}--> p1 & p2
+  #   p1 --{1,x}--> pt1
+  #   p2 --{1,x}--> pt2
+  #   pt1 --{1,x}--> o1
+  #   pt2 --{1,x}--> o2
+  # ```
+  def build_cpnet(:parallel_split) do
+    %ColouredPetriNet{
+      colour_sets: [
+        colset(int() :: integer())
+      ],
+      places: [
+        %Place{name: "input", colour_set: :int},
+        %Place{name: "place_1", colour_set: :int},
+        %Place{name: "place_2", colour_set: :int},
+        %Place{name: "output_1", colour_set: :int},
+        %Place{name: "output_2", colour_set: :int}
+      ],
+      transitions: [
+        %Transition{name: "parallel_split", guard: nil},
+        %Transition{name: "pass_through_1", guard: nil},
+        %Transition{name: "pass_through_2", guard: nil}
+      ],
+      arcs: [
+        build_arc!(
+          transition: "parallel_split",
+          place: "input",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "parallel_split",
+          place: "place_1",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          transition: "parallel_split",
+          place: "place_2",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          transition: "pass_through_1",
+          place: "place_1",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "pass_through_2",
+          place: "place_2",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "pass_through_1",
+          place: "output_1",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          transition: "pass_through_2",
+          place: "output_2",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        )
+      ],
+      variables: [
+        %Variable{name: :x, colour_set: :int}
+      ]
+    }
+  end
+
+  # ```mermaid
+  # flowchart TB
+  #   %% colset int() :: integer()
+  #
   #   i1((input1))
   #   i2((input2))
   #   i3((input3))
   #   o((output))
+  #
   #   join[And Join]
-  #   i1 & i2 & i3 --> join --> o
+  #
+  #   i1 & i2 & i3 --{1,x}--> join --{1,x}--> o
   # ```
   def build_cpnet(:generalized_and_join) do
-    import ColouredFlow.Notation.Colset
-
-    use ColouredFlow.DefinitionHelpers
-
     %ColouredPetriNet{
       colour_sets: [
         colset(int() :: integer())
@@ -173,12 +280,86 @@ defmodule ColouredFlow.CpnetBuilder do
     }
   end
 
+  # ```mermaid
+  # flowchart TB
+  #   %% colset int() :: integer()
+  #
+  #   i((input))
+  #   m((merge))
+  #   o((output))
+  #
+  #   b1[branch_1]
+  #   b2[branch_2]
+  #   tm[thread_merge]
+  #
+  #   i --{1,x}--> b1
+  #   i --{2,x}--> b2
+  #   b1 & b2 --{1,x}--> m
+  #   m --{2,1}--> tm
+  #   tm --{1,1}--> o
+  # ```
+
+  def build_cpnet(:thread_merge) do
+    %ColouredPetriNet{
+      colour_sets: [
+        colset(int() :: integer())
+      ],
+      places: [
+        %Place{name: "input", colour_set: :int},
+        %Place{name: "merge", colour_set: :int},
+        %Place{name: "output", colour_set: :int}
+      ],
+      transitions: [
+        %Transition{name: "branch_1", guard: nil},
+        %Transition{name: "branch_2", guard: nil},
+        %Transition{name: "thread_merge", guard: nil}
+      ],
+      arcs: [
+        build_arc!(
+          transition: "branch_1",
+          place: "input",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "branch_2",
+          place: "input",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          transition: "branch_1",
+          place: "merge",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          transition: "branch_2",
+          place: "merge",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        build_arc!(
+          transition: "thread_merge",
+          place: "merge",
+          orientation: :p_to_t,
+          expression: "bind {2, 1}"
+        ),
+        build_arc!(
+          transition: "thread_merge",
+          place: "output",
+          orientation: :t_to_p,
+          expression: "{1, 1}"
+        )
+      ],
+      variables: [
+        %Variable{name: :x, colour_set: :int}
+      ]
+    }
+  end
+
   # from Coloured Petri Nets.pdf, p. 80, Fig 4.1.
   def build_cpnet(:transmission_protocol) do
-    import ColouredFlow.Notation.Colset
-
-    use ColouredFlow.DefinitionHelpers
-
     %ColouredPetriNet{
       colour_sets: [
         colset(no() :: integer()),
