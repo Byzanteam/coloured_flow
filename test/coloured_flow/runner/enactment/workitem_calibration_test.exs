@@ -203,13 +203,17 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
   end
 
   describe "calibrate after allocate" do
-    # ```mermad
+    # ```mermaid
     # flowchart LR
+    #   %% colset int() :: integer()
+    #   %% ~b[3**1]
     #   i((input))
     #   o((output))
     #   pt1[pass_through_1]
     #   pt2[pass_through_2]
-    #   i --> pt1 & pt2 --> o
+    #   i --{1,x}--> pt1
+    #   i --{2,x}--> pt2
+    #   pt1 & pt2 --> o
     # ```
     test "works when there isn't any workitems to be withdrawn" do
       enactment_id = Ecto.UUID.generate()
@@ -295,19 +299,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, [pt1_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [pt1_workitem_1])
 
       assert expected_state === calibration.state
       assert [] === calibration.to_withdraw
     end
 
-    # ```mermad
+    # ```mermaid
     # flowchart LR
+    #   %% colset int() :: integer()
+    #   %% ~b[2**1]
     #   i((input))
     #   o((output))
     #   pt1[pass_through_1]
     #   pt2[pass_through_2]
-    #   i --> pt1 & pt2 --> o
+    #   i --{1,x}--> pt1
+    #   i --{2,x}--> pt2
+    #   pt1 & pt2 --> o
     # ```
     test "withdraws non-enabled workitems from the transition that is derived from the input places" do
       enactment_id = Ecto.UUID.generate()
@@ -378,21 +386,24 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, [pt1_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [pt1_workitem_1])
 
       assert expected_state === calibration.state
       assert [pt2_workitem] === calibration.to_withdraw
     end
 
-    # ```mermad
+    # ```mermaid
     # flowchart TB
     #   %% colset int() :: integer()
+    #   %% ~b[2**1]
     #   i1((input1))
+    #   %% ~b[1]
     #   i2((input2))
+    #   %% ~b[1]
     #   i3((input3))
     #   o((output))
     #   join[And Join]
-    #   i1 & i2 & i3 --> join --> o
+    #   i1 & i2 & i3 --{1,x}--> join --> o
     # ```
     test "works with mulitple input places" do
       enactment_id = Ecto.UUID.generate()
@@ -455,7 +466,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, [aj_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [aj_workitem_1])
 
       assert expected_state === calibration.state
       assert [aj_workitem_2] === calibration.to_withdraw

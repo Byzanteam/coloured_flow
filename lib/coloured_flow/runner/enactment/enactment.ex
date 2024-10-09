@@ -101,10 +101,11 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def handle_continue(
-        {:calibrate_workitems, transition, affected_workitems},
+        {:calibrate_workitems, transition, options},
         %__MODULE__{} = state
-      ) do
-    calibration = WorkitemCalibration.calibrate(state, transition, affected_workitems)
+      )
+      when is_list(options) do
+    calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
 
     {:noreply, state}
@@ -151,7 +152,7 @@ defmodule ColouredFlow.Runner.Enactment do
         :reply,
         {:ok, allocated_workitems},
         state,
-        {:continue, {:calibrate_workitems, :allocate, enabled_workitems}}
+        {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
       }
     else
       {:error, exception} when is_exception(exception) ->

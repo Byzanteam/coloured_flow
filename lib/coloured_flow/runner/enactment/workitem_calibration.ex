@@ -72,12 +72,19 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   ## Parameters
     * `state` : The enactment struct.
     * `transition` : The transition that caused the calibration. See at `ColouredFlow.Runner.Enactment.Workitem.__transitions__/0`
-    * `affected_workitems`: The **original** workitems (before the transition) that are affected by the transition.
+    * `options` : The transition specefied options. See below options.
+
+  ## Allocate options
+
+    * `workitems`: The **original** workitems (before the transition) that are affected by the `allocate` transition.
   """
-  @spec calibrate(enactment_state(), :allocate, affected_workitems :: [Workitem.t()]) :: t()
-  def calibrate(%Enactment{} = state, :allocate, allocated_workitems)
-      when is_list(allocated_workitems) do
-    to_consume_markings = Enum.flat_map(allocated_workitems, & &1.binding_element.to_consume)
+  @spec calibrate(enactment_state(), :allocate, workitems: [Workitem.t()]) :: t()
+  def calibrate(state, transition, options)
+
+  def calibrate(%Enactment{} = state, :allocate, options)
+      when is_list(options) do
+    workitems = Keyword.fetch!(options, :workitems)
+    to_consume_markings = Enum.flat_map(workitems, & &1.binding_element.to_consume)
     place_tokens = Map.new(state.markings, fn {place, marking} -> {place, marking.tokens} end)
     place_tokens = consume_markings(to_consume_markings, place_tokens)
 
