@@ -1,41 +1,31 @@
 defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
   use ColouredFlow.RepoCase
+  use ColouredFlow.RunnerHelpers
 
   alias ColouredFlow.Enactment.BindingElement
-  alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
 
-  alias ColouredFlow.Runner.Enactment
   alias ColouredFlow.Runner.Exceptions
 
-  import ColouredFlow.MultiSet
-
   describe "complete workitems" do
-    setup do
-      flow = :flow |> build() |> flow_with_cpnet(:simple_sequence) |> insert()
-      initial_markings = [%Marking{place: "input", tokens: ~b[3**1]}]
+    setup :setup_flow
+    setup :setup_enactment
+    setup :start_enactment
 
-      enactment =
-        :enactment
-        |> build(flow: flow)
-        |> enactment_with_initial_markings(initial_markings)
-        |> insert()
+    @describetag cpnet: :simple_sequence
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~b[3**1]}]
 
-      pid = start_link_supervised!({Enactment, enactment_id: enactment.id}, id: enactment.id)
-
+    setup %{enactment_server: enactment_server} do
       [
         %Enactment.Workitem{state: :enabled} = workitem_1,
         %Enactment.Workitem{state: :enabled} = workitem_2,
         %Enactment.Workitem{state: :enabled} = workitem_3
-      ] = get_workitems(pid)
+      ] = get_enactment_workitems(enactment_server)
 
-      workitem_2 = allocate_workitem(workitem_2, pid)
-      workitem_3 = start_workitem(workitem_3, pid)
+      workitem_2 = allocate_workitem(workitem_2, enactment_server)
+      workitem_3 = start_workitem(workitem_3, enactment_server)
 
       [
-        flow: flow,
-        enactment: enactment,
-        pid: pid,
         enabled_workitem: workitem_1,
         allocated_workitem: workitem_2,
         started_workitem: workitem_3
@@ -43,18 +33,18 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
 
     test "works", %{
-      pid: pid,
+      enactment_server: enactment_server,
       enabled_workitem: enabled_workitem,
       allocated_workitem: allocated_workitem,
       started_workitem: started_workitem
     } do
       {:ok, [completed_workitem]} =
-        GenServer.call(pid, {:complete_workitems, %{started_workitem.id => []}})
+        GenServer.call(enactment_server, {:complete_workitems, %{started_workitem.id => []}})
 
       assert :completed === completed_workitem.state
 
       assert [allocated_workitem, enabled_workitem] ===
-               pid |> get_workitems() |> Enum.sort_by(& &1.state)
+               enactment_server |> get_enactment_workitems() |> Enum.sort_by(& &1.state)
 
       assert [allocated_workitem, completed_workitem, enabled_workitem] ===
                Schemas.Workitem
@@ -64,22 +54,22 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
 
     test "persists occurrences", %{
-      pid: pid,
+      enactment_server: enactment_server,
       enactment: enactment,
       started_workitem: started_workitem
     } do
       {:ok, [completed_workitem]} =
-        GenServer.call(pid, {:complete_workitems, %{started_workitem.id => []}})
+        GenServer.call(enactment_server, {:complete_workitems, %{started_workitem.id => []}})
 
       assert :completed === completed_workitem.state
 
-      enactment_state = get_enactment_state(pid)
+      enactment_state = get_enactment_state(enactment_server)
 
       stop_supervised!(enactment.id)
 
-      new_pid = start_link_supervised!({Enactment, enactment_id: enactment.id}, id: enactment.id)
+      [enactment_server: new_genactment_server] = start_enactment(%{enactment: enactment})
 
-      assert enactment_state === get_enactment_state(new_pid)
+      assert enactment_state === get_enactment_state(new_genactment_server)
 
       assert [
                %Occurrence{
@@ -99,11 +89,14 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
     test "returns InvalidWorkitemTransition exception", %{
       enactment: enactment,
-      pid: pid,
+      enactment_server: enactment_server,
       allocated_workitem: allocated_workitem
     } do
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{allocated_workitem.id => []}})
+               GenServer.call(
+                 enactment_server,
+                 {:complete_workitems, %{allocated_workitem.id => []}}
+               )
 
       assert %Exceptions.InvalidWorkitemTransition{
                id: allocated_workitem.id,
@@ -115,12 +108,12 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
     test "returns NonLiveWorkitem exception", %{
       enactment: enactment,
-      pid: pid
+      enactment_server: enactment_server
     } do
       workitem_id = Ecto.UUID.generate()
 
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{workitem_id => []}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem_id => []}})
 
       assert %Exceptions.NonLiveWorkitem{
                id: workitem_id,
@@ -130,22 +123,27 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
   end
 
   describe "tokens changed" do
+    setup :setup_cpnet
+    setup :update_out_arc_expression
     setup :setup_flow
     setup :setup_enactment
+    setup :start_enactment
 
+    @tag cpnet: :simple_sequence
     @tag out_arc_expression: ~S[{2, x}]
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "consumes and produces tokens", %{pid: pid} do
-      previous_markings = get_markings(pid)
+    test "consumes and produces tokens", %{enactment_server: enactment_server} do
+      previous_markings = get_enactment_markings(enactment_server)
 
-      workitem = pid |> get_workitems() |> hd() |> start_workitem(pid)
+      workitem =
+        enactment_server |> get_enactment_workitems() |> hd() |> start_workitem(enactment_server)
 
       {:ok, [completed_workitem]} =
-        GenServer.call(pid, {:complete_workitems, %{workitem.id => []}})
+        GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}})
 
       assert :completed === completed_workitem.state
 
-      markings = get_markings(pid)
+      markings = get_enactment_markings(enactment_server)
 
       assert [%Marking{place: "input", tokens: ~b[1]}] === previous_markings
       assert [%Marking{place: "output", tokens: ~b[2**1]}] === markings
@@ -153,29 +151,34 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
   end
 
   describe "returns errors on occur" do
+    setup :setup_cpnet
+    setup :update_out_arc_expression
     setup :setup_flow
     setup :setup_enactment
+    setup :start_enactment
+
+    @describetag cpnet: :simple_sequence
 
     @tag out_arc_expression: ~S[raise ArgumentError, "Bad out arc"]
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "returns user raised exception", %{pid: pid} do
-      [workitem] = get_workitems(pid)
-      workitem = start_workitem(workitem, pid)
+    test "returns user raised exception", %{enactment_server: enactment_server} do
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
 
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{workitem.id => []}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}})
 
       assert %ArgumentError{message: "Bad out arc"} = exception
     end
 
     @tag out_arc_expression: ~S[{1, a + b}]
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "returns EvalDiagnostic", %{pid: pid} do
-      [workitem] = get_workitems(pid)
-      workitem = start_workitem(workitem, pid)
+    test "returns EvalDiagnostic", %{enactment_server: enactment_server} do
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
 
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{workitem.id => []}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}})
 
       assert %ColouredFlow.Expression.EvalDiagnostic{
                message: ~S[undefined variable "a"]
@@ -184,12 +187,12 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
     @tag out_arc_expression: ~S[{x, "hello"}]
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "returns ColourSetMismatch", %{pid: pid} do
-      [workitem] = get_workitems(pid)
-      workitem = start_workitem(workitem, pid)
+    test "returns ColourSetMismatch", %{enactment_server: enactment_server} do
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
 
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{workitem.id => []}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}})
 
       assert %ColouredFlow.Definition.ColourSet.ColourSetMismatch{
                colour_set: %ColouredFlow.Definition.ColourSet{name: :int, type: {:integer, []}},
@@ -246,21 +249,21 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
           ]
         }
 
-      flow = :flow |> build() |> flow_with_cpnet(cpnet) |> insert()
-
-      [flow: flow]
+      [cpnet: cpnet]
     end
 
+    setup :setup_flow
     setup :setup_enactment
+    setup :start_enactment
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "works", %{pid: pid} do
-      [workitem] = get_workitems(pid)
-      workitem = start_workitem(workitem, pid)
+    test "works", %{enactment_server: enactment_server} do
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
       outputs = [y: 2]
 
       assert {:ok, [completed_workitem]} =
-               GenServer.call(pid, {:complete_workitems, %{workitem.id => outputs}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => outputs}})
 
       assert %{workitem | state: :completed} === completed_workitem
 
@@ -279,17 +282,18 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
                |> Repo.all()
                |> Enum.map(&Schemas.Occurrence.to_occurrence/1)
 
-      assert [%Marking{place: "output", tokens: ~b[2**1]}] === get_markings(pid)
+      assert [%Marking{place: "output", tokens: ~b[2**1]}] ===
+               get_enactment_markings(enactment_server)
     end
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "returns UnboundActionOutput", %{pid: pid} do
-      [workitem] = get_workitems(pid)
-      workitem = start_workitem(workitem, pid)
+    test "returns UnboundActionOutput", %{enactment_server: enactment_server} do
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
       outputs = []
 
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{workitem.id => outputs}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => outputs}})
 
       assert %Exceptions.UnboundActionOutput{
                transition: "pass_through",
@@ -298,15 +302,15 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
-    test "returns ColourSetMismatch", %{pid: pid} do
+    test "returns ColourSetMismatch", %{enactment_server: enactment_server} do
       alias ColouredFlow.Definition.ColourSet
 
-      [workitem] = get_workitems(pid)
-      workitem = start_workitem(workitem, pid)
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
       outputs = [y: "foo"]
 
       assert {:error, exception} =
-               GenServer.call(pid, {:complete_workitems, %{workitem.id => outputs}})
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => outputs}})
 
       assert %ColourSet.ColourSetMismatch{
                colour_set: %ColourSet{name: :int, type: {:integer, []}},
@@ -315,46 +319,9 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
   end
 
-  defp get_workitems(pid) do
-    pid |> get_enactment_state() |> Map.fetch!(:workitems) |> Map.values()
-  end
-
-  defp get_markings(pid) do
-    pid |> get_enactment_state() |> Map.fetch!(:markings) |> Map.values()
-  end
-
-  defp get_enactment_state(pid) do
-    :sys.get_state(pid)
-  end
-
-  defp allocate_workitem(%Enactment.Workitem{state: :enabled} = workitem, server)
-       when is_pid(server) do
-    {:ok, [%Enactment.Workitem{state: :allocated} = workitem]} =
-      GenServer.call(server, {:allocate_workitems, [workitem.id]})
-
-    workitem
-  end
-
-  defp start_workitem(%Enactment.Workitem{state: :enabled} = workitem, server)
-       when is_pid(server) do
-    workitem
-    |> allocate_workitem(server)
-    |> start_workitem(server)
-  end
-
-  defp start_workitem(%Enactment.Workitem{state: :allocated} = workitem, server)
-       when is_pid(server) do
-    {:ok, [%Enactment.Workitem{state: :started} = workitem]} =
-      GenServer.call(server, {:start_workitems, [workitem.id]})
-
-    workitem
-  end
-
-  defp setup_flow(%{out_arc_expression: out_arc_expression}) do
+  defp update_out_arc_expression(%{cpnet: cpnet, out_arc_expression: out_arc_expression}) do
     cpnet =
-      :simple_sequence
-      |> ColouredFlow.CpnetBuilder.build_cpnet()
-      |> Map.update!(:arcs, fn [in_arc, out_arc] ->
+      Map.update!(cpnet, :arcs, fn [in_arc, out_arc] ->
         out_arc_params =
           out_arc
           |> Map.from_struct()
@@ -368,20 +335,6 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
         ]
       end)
 
-    flow = :flow |> build() |> flow_with_cpnet(cpnet) |> insert()
-
-    [flow: flow]
-  end
-
-  defp setup_enactment(%{initial_markings: initial_markings, flow: flow}) do
-    enactment =
-      :enactment
-      |> build(flow: flow)
-      |> enactment_with_initial_markings(initial_markings)
-      |> insert()
-
-    pid = start_link_supervised!({Enactment, enactment_id: enactment.id}, id: enactment.id)
-
-    [pid: pid, enactment: enactment]
+    [cpnet: cpnet]
   end
 end
