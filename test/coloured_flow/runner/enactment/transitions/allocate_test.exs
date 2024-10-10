@@ -59,23 +59,23 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
     end
 
     @tag cpnet: :deferred_choice
-    @tag initial_markings: [%Marking{place: "input", tokens: ~b[2**1]}]
+    @tag initial_markings: [%Marking{place: "place", tokens: ~b[1]}]
     test "returns UnsufficientTokensToConsume exception", %{
       enactment_server: enactment_server,
       enactment: enactment
     } do
-      [workitem_1, _workitem_2, workitem_3] = get_enactment_workitems(enactment_server)
+      [workitem_1, workitem_2] = get_enactment_workitems(enactment_server)
 
       assert {:error, exception} =
                GenServer.call(
                  enactment_server,
-                 {:allocate_workitems, [workitem_1.id, workitem_3.id]}
+                 {:allocate_workitems, [workitem_1.id, workitem_2.id]}
                )
 
       assert %Exceptions.UnsufficientTokensToConsume{
                enactment_id: enactment.id,
-               place: "input",
-               tokens: ~b[2**1]
+               place: "place",
+               tokens: ~b[1]
              } === exception
     end
 
@@ -95,42 +95,30 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
   end
 
   describe "calibrates workitems" do
-    setup do
-      flow = :flow |> build() |> flow_with_cpnet(:deferred_choice) |> insert()
-      initial_markings = [%Marking{place: "input", tokens: ~b[2**1]}]
+    setup :setup_flow
+    setup :setup_enactment
+    setup :start_enactment
 
-      enactment =
-        :enactment
-        |> build(flow: flow)
-        |> enactment_with_initial_markings(initial_markings)
-        |> insert()
-
-      [flow: flow, enactment: enactment]
-    end
-
-    test "works", %{enactment: enactment} do
-      enactment_server = start_link_supervised!({Enactment, enactment_id: enactment.id})
+    @tag cpnet: :deferred_choice
+    @tag initial_markings: [%Marking{place: "place", tokens: ~b[1]}]
+    test "works", %{enactment_server: enactment_server} do
       state = get_enactment_state(enactment_server)
 
-      [pt1_workitem_1, pt1_workitem_2, pt2_workitem] =
+      [dc1_workitem, dc2_workitem] =
         state.workitems
         |> Map.values()
         |> Enum.sort_by(fn workitem -> workitem.binding_element.transition end)
 
       assert {:ok, [workitem]} =
-               GenServer.call(enactment_server, {:allocate_workitems, [pt1_workitem_1.id]})
+               GenServer.call(enactment_server, {:allocate_workitems, [dc1_workitem.id]})
 
       assert :allocated === workitem.state
 
-      new_state = get_enactment_state(enactment_server)
-
-      [allocated_workitem, enabled_item] =
-        new_state.workitems |> Map.values() |> Enum.sort_by(& &1.state)
+      [allocated_workitem] = get_enactment_workitems(enactment_server)
 
       assert allocated_workitem === workitem
-      assert enabled_item === pt1_workitem_2
 
-      assert :withdrawn === Repo.get!(Schemas.Workitem, pt2_workitem.id).state
+      assert :withdrawn === Repo.get!(Schemas.Workitem, dc2_workitem.id).state
     end
   end
 end

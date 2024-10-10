@@ -110,6 +110,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
                ])
     end
 
+    test "tokens are consumed partially" do
+      place_markings = [
+        %Marking{place: "a", tokens: ~b[2**1]}
+      ]
+
+      binding_element = %BindingElement{
+        transition: "t",
+        binding: [],
+        to_consume: [
+          %Marking{place: "a", tokens: ~b[1]}
+        ]
+      }
+
+      assert {:ok, %{"a" => %Marking{place: "a", tokens: ~b[1]}}} ===
+               WorkitemConsumption.consume_tokens(to_map(place_markings), [binding_element])
+    end
+
     test "empty markings or binding_elements" do
       place_markings =
         to_map([

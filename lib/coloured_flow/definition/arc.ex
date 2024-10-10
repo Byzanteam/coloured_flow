@@ -84,12 +84,17 @@ defmodule ColouredFlow.Definition.Arc do
       iex> expression = ColouredFlow.Definition.Expression.build!("bind {a, b}")
       iex> {:ok, binding} = build_bindings(expression)
       iex> [{{:cpn_bind_variable, {:a, [line: 1, column: 7]}}, {:b, [line: 1, column: 10], nil}}] = binding
+
+      iex> expression = ColouredFlow.Definition.Expression.build!("{a, b}")
+      iex> {:error, {[], "missing `bind` in expression", "{a, b}"}} = build_bindings(expression)
   """
   @spec build_bindings(Expression.t()) ::
           {:ok, list(binding())} | {:error, ColouredFlow.Expression.compile_error()}
   def build_bindings(%Expression{} = expression) do
-    bindings = extract_bindings(expression.expr)
-    check_binding_vars(expression.vars, bindings)
+    case extract_bindings(expression.expr) do
+      [] -> {:error, {[], "missing `bind` in expression", expression.code}}
+      bindings -> check_binding_vars(expression.vars, bindings)
+    end
   end
 
   @spec build_bindings!(Expression.t()) :: list(binding())

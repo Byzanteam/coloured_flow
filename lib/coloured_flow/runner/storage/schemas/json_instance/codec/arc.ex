@@ -26,7 +26,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.Arc do
 
   @impl Codec
   def decode(data) when is_map(data) do
-    arc = super(data)
-    %Arc{arc | bindings: Arc.build_bindings!(arc.expression)}
+    case super(data) do
+      %Arc{orientation: :p_to_t} = arc ->
+        %Arc{arc | bindings: Arc.build_bindings!(arc.expression)}
+
+      %Arc{orientation: :t_to_p} = arc ->
+        arc
+    end
   end
 end

@@ -101,10 +101,11 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def handle_continue(
-        {:calibrate_workitems, transition, affected_workitems},
+        {:calibrate_workitems, transition, options},
         %__MODULE__{} = state
-      ) do
-    calibration = WorkitemCalibration.calibrate(state, transition, affected_workitems)
+      )
+      when is_list(options) do
+    calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
 
     {:noreply, state}
@@ -120,6 +121,8 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
+    # We don't need to ensure `transition_workitems` and `produce_workitems` are atomic,
+    # because the gen_server will restart if the process crashes.
     Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
 
     produced_workitems =
@@ -138,6 +141,9 @@ defmodule ColouredFlow.Runner.Enactment do
         pop_workitems(state, workitem_ids, :allocate, :enabled),
       enabled_workitems = to_list(enabled_workitems),
       binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
+      # We don't need to remove the markings of the allocated workitems before `consume_tokens`,
+      # because we withdraw workitems that are not enabled any more
+      # after each `allocated_workitems` step by `calibrate_workitems`.
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
       allocated_workitems = Storage.transition_workitems(enabled_workitems, :allocated)
@@ -151,7 +157,7 @@ defmodule ColouredFlow.Runner.Enactment do
         :reply,
         {:ok, allocated_workitems},
         state,
-        {:continue, {:calibrate_workitems, :allocate, enabled_workitems}}
+        {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
       }
     else
       {:error, exception} when is_exception(exception) ->
@@ -206,22 +212,21 @@ defmodule ColouredFlow.Runner.Enactment do
       {:ok, occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
     ) do
       started_workitems = to_list(started_workitems)
-      completed_workitems = Storage.transition_workitems(started_workitems, :completed)
-      version = Storage.append_occurrences(state.enactment_id, state.version, occurrences)
 
-      {_steps, markings} =
-        state.markings
-        |> to_list()
-        |> Catchuping.apply(occurrences)
+      #  wrapped in a transaction
+      completed_workitems =
+        Storage.complete_workitems(
+          state.enactment_id,
+          started_workitems,
+          {state.version, occurrences}
+        )
 
-      state = %__MODULE__{
-        state
-        | workitems: workitems,
-          markings: to_map(markings),
-          version: version
+      {
+        :reply,
+        {:ok, completed_workitems},
+        %__MODULE__{state | workitems: workitems},
+        {:continue, {:calibrate_workitems, :complete, [cpnet: cpnet, occurrences: occurrences]}}
       }
-
-      {:reply, {:ok, completed_workitems}, state}
     else
       {:error, exception} when is_exception(exception) ->
         {:reply, {:error, exception}, state}
@@ -257,13 +262,13 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
   @spec to_map(Enumerable.t(item)) :: %{Workitem.id() => item} when item: Workitem.t()
-  defp to_map([]), do: %{}
-  defp to_map([%Workitem{} = workitem | rest]), do: Map.put(to_map(rest), workitem.id, workitem)
-  defp to_map([%Marking{} = marking | rest]), do: Map.put(to_map(rest), marking.place, marking)
+  def to_map([]), do: %{}
+  def to_map([%Workitem{} = workitem | rest]), do: Map.put(to_map(rest), workitem.id, workitem)
+  def to_map([%Marking{} = marking | rest]), do: Map.put(to_map(rest), marking.place, marking)
 
   @spec to_list(%{Place.name() => item}) :: [item] when item: Marking.t()
   @spec to_list(%{Workitem.id() => item}) :: [item] when item: Workitem.t()
-  defp to_list(map) when is_map(map), do: Map.values(map)
+  def to_list(map) when is_map(map), do: Map.values(map)
 
   @spec merge_maps(Enumerable.t(item) | amap, amap) :: amap
         when item: Marking.t(), amap: %{Place.name() => item}

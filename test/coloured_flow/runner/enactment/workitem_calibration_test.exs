@@ -29,10 +29,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings:
-          to_map([
-            %Marking{place: "input", tokens: ~b[2**1]}
-          ])
+        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -54,10 +51,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings:
-          to_map([
-            %Marking{place: "input", tokens: ~b[2**1]}
-          ]),
+        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
         workitems:
           to_map([
             %Enactment.Workitem{
@@ -66,9 +60,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
               binding_element: %BindingElement{
                 transition: "pass_through",
                 binding: [x: 1],
-                to_consume: [
-                  %Marking{place: "input", tokens: ~b[1]}
-                ]
+                to_consume: [%Marking{place: "input", tokens: ~b[1]}]
               }
             }
           ])
@@ -97,22 +89,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings:
-          to_map([
-            %Marking{place: "input", tokens: ~b[]}
-          ]),
-        workitems:
-          to_map([
-            workitem
-          ])
+        markings: to_map([%Marking{place: "input", tokens: ~b[]}]),
+        workitems: to_map([workitem])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -132,22 +116,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [x: 2],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[2]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[2]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings:
-          to_map([
-            %Marking{place: "input", tokens: ~b[1]}
-          ]),
-        workitems:
-          to_map([
-            workitem
-          ])
+        markings: to_map([%Marking{place: "input", tokens: ~b[1]}]),
+        workitems: to_map([workitem])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -188,10 +164,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             %Marking{place: "input1", tokens: ~b[1]},
             %Marking{place: "input2", tokens: ~b[1]}
           ]),
-        workitems:
-          to_map([
-            workitem
-          ])
+        workitems: to_map([workitem])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -203,13 +176,17 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
   end
 
   describe "calibrate after allocate" do
-    # ```mermad
+    # ```mermaid
     # flowchart LR
+    #   %% colset int() :: integer()
+    #   %% ~b[3**1]
     #   i((input))
     #   o((output))
     #   pt1[pass_through_1]
     #   pt2[pass_through_2]
-    #   i --> pt1 & pt2 --> o
+    #   i --{1,x}--> pt1
+    #   i --{2,x}--> pt2
+    #   pt1 & pt2 --> o
     # ```
     test "works when there isn't any workitems to be withdrawn" do
       enactment_id = Ecto.UUID.generate()
@@ -220,9 +197,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
         }
       }
 
@@ -232,9 +207,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
         }
       }
 
@@ -244,9 +217,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
         }
       }
 
@@ -256,19 +227,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_2",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[2**1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[2**1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings:
-          to_map([
-            %Marking{place: "input", tokens: ~b[3**1]}
-          ]),
+        markings: to_map([%Marking{place: "input", tokens: ~b[3**1]}]),
         workitems:
           to_map([
             %Enactment.Workitem{
@@ -295,19 +261,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, [pt1_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [pt1_workitem_1])
 
       assert expected_state === calibration.state
       assert [] === calibration.to_withdraw
     end
 
-    # ```mermad
+    # ```mermaid
     # flowchart LR
+    #   %% colset int() :: integer()
+    #   %% ~b[2**1]
     #   i((input))
     #   o((output))
     #   pt1[pass_through_1]
     #   pt2[pass_through_2]
-    #   i --> pt1 & pt2 --> o
+    #   i --{1,x}--> pt1
+    #   i --{2,x}--> pt2
+    #   pt1 & pt2 --> o
     # ```
     test "withdraws non-enabled workitems from the transition that is derived from the input places" do
       enactment_id = Ecto.UUID.generate()
@@ -318,9 +288,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
         }
       }
 
@@ -330,9 +298,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
         }
       }
 
@@ -342,19 +308,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_2",
           binding: [x: 1],
-          to_consume: [
-            %Marking{place: "input", tokens: ~b[2**1]}
-          ]
+          to_consume: [%Marking{place: "input", tokens: ~b[2**1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings:
-          to_map([
-            %Marking{place: "input", tokens: ~b[2**1]}
-          ]),
+        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
         workitems:
           to_map([
             %Enactment.Workitem{
@@ -378,21 +339,24 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, [pt1_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [pt1_workitem_1])
 
       assert expected_state === calibration.state
       assert [pt2_workitem] === calibration.to_withdraw
     end
 
-    # ```mermad
+    # ```mermaid
     # flowchart TB
     #   %% colset int() :: integer()
+    #   %% ~b[2**1]
     #   i1((input1))
+    #   %% ~b[1]
     #   i2((input2))
+    #   %% ~b[1]
     #   i3((input3))
     #   o((output))
     #   join[And Join]
-    #   i1 & i2 & i3 --> join --> o
+    #   i1 & i2 & i3 --{1,x}--> join --> o
     # ```
     test "works with mulitple input places" do
       enactment_id = Ecto.UUID.generate()
@@ -455,10 +419,407 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, [aj_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [aj_workitem_1])
 
       assert expected_state === calibration.state
       assert [aj_workitem_2] === calibration.to_withdraw
+    end
+  end
+
+  describe "calibrate after complete" do
+    import ColouredFlow.CpnetBuilder
+
+    alias ColouredFlow.Enactment.Occurrence
+
+    test "produces no workitems when no new binding_elements enabled" do
+      cpnet = build_cpnet(:thread_merge)
+
+      b2_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "branch_2",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[2**1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
+        workitems: to_map([])
+      }
+
+      occurrence = %Occurrence{
+        binding_element: b2_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings: to_map([%Marking{place: "merge", tokens: ~b[1]}])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+
+      assert expected_state === calibration.state
+      assert [] === calibration.to_produce
+    end
+
+    test "produces new workitems without considering the in-progress workitems" do
+      cpnet =
+        :deferred_choice
+        |> ColouredFlow.CpnetBuilder.build_cpnet()
+        |> ColouredFlow.CpnetBuilder.update_arc!(
+          {:p_to_t, "deferred_choice_2", "place"},
+          expression: "bind {2,x}"
+        )
+
+      pt_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "pass_through",
+          binding: [],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      dc1_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "deferred_choice_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[1]},
+            %Marking{place: "place", tokens: ~b[1]}
+          ]),
+        workitems: to_map([dc1_workitem])
+      }
+
+      occurrence = %Occurrence{
+        binding_element: pt_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "place", tokens: ~b[1]}]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings: to_map([%Marking{place: "place", tokens: ~b[2**1]}])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+
+      assert expected_state === calibration.state
+
+      assert [
+               %BindingElement{
+                 transition: "deferred_choice_1",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+               }
+             ] === calibration.to_produce
+    end
+
+    test "produces new workitems when there is some live workitems at the transition" do
+      cpnet = build_cpnet(:thread_merge)
+
+      b1_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "branch_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      tm_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "thread_merge",
+          binding: [],
+          to_consume: [%Marking{place: "merge", tokens: ~b[2**1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[1]},
+            %Marking{place: "merge", tokens: ~b[2**1]}
+          ]),
+        workitems: to_map([tm_workitem])
+      }
+
+      occurrence = %Occurrence{
+        binding_element: b1_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings: to_map([%Marking{place: "merge", tokens: ~b[3**1]}])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+
+      assert expected_state === calibration.state
+      assert [] === calibration.to_produce
+    end
+
+    test "completes mulitple workitems and produces new workitems for mulitple transitions" do
+      cpnet = build_cpnet(:thread_merge)
+
+      b1_workitem_1 = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "branch_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      b1_workitem_2 = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "branch_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
+        workitems: to_map([])
+      }
+
+      b1_occurrence_1 = %Occurrence{
+        binding_element: b1_workitem_1.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+      }
+
+      b1_occurrence_2 = %Occurrence{
+        binding_element: b1_workitem_2.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 2,
+          markings: to_map([%Marking{place: "merge", tokens: ~b[2**1]}])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          occurrences: [b1_occurrence_1, b1_occurrence_2]
+        )
+
+      assert expected_state === calibration.state
+
+      assert [
+               %BindingElement{
+                 transition: "thread_merge",
+                 binding: [],
+                 to_consume: [%Marking{place: "merge", tokens: ~b[2**1]}]
+               }
+             ] === calibration.to_produce
+    end
+
+    test "produces new workitems for one transition" do
+      cpnet = build_cpnet(:thread_merge)
+
+      b1_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "branch_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~b[1]},
+            %Marking{place: "merge", tokens: ~b[1]}
+          ]),
+        workitems: to_map([])
+      }
+
+      b1_occurrence = %Occurrence{
+        binding_element: b1_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings: to_map([%Marking{place: "merge", tokens: ~b[2**1]}])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          occurrences: [b1_occurrence]
+        )
+
+      assert expected_state === calibration.state
+
+      assert [
+               %BindingElement{
+                 transition: "thread_merge",
+                 binding: [],
+                 to_consume: [%Marking{place: "merge", tokens: ~b[2**1]}]
+               }
+             ] === calibration.to_produce
+    end
+
+    test "produces new workitems for mulitple transitions" do
+      cpnet = build_cpnet(:deferred_choice)
+
+      pt_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "pass_through",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings: to_map([%Marking{place: "input", tokens: ~b[1]}]),
+        workitems: to_map([])
+      }
+
+      pt_occurrence = %Occurrence{
+        binding_element: pt_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "place", tokens: ~b[1]}]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings: to_map([%Marking{place: "place", tokens: ~b[1]}])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          occurrences: [pt_occurrence]
+        )
+
+      assert expected_state === calibration.state
+
+      assert [
+               %BindingElement{
+                 transition: "deferred_choice_1",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+               },
+               %BindingElement{
+                 transition: "deferred_choice_2",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+               }
+             ] === calibration.to_produce
+    end
+
+    test "produces new workitems into mulitple places for mulitple transitions" do
+      cpnet = build_cpnet(:parallel_split)
+
+      ps_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "parallel_split",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings: to_map([%Marking{place: "input", tokens: ~b[1]}]),
+        workitems: to_map([])
+      }
+
+      ps_occurrence = %Occurrence{
+        binding_element: ps_workitem.binding_element,
+        free_binding: [],
+        to_produce: [
+          %Marking{place: "place_1", tokens: ~b[1]},
+          %Marking{place: "place_2", tokens: ~b[1]}
+        ]
+      }
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings:
+            to_map([
+              %Marking{place: "place_1", tokens: ~b[1]},
+              %Marking{place: "place_2", tokens: ~b[1]}
+            ])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          occurrences: [ps_occurrence]
+        )
+
+      assert expected_state === calibration.state
+
+      assert [
+               %BindingElement{
+                 transition: "pass_through_1",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "place_1", tokens: ~b[1]}]
+               },
+               %BindingElement{
+                 transition: "pass_through_2",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "place_2", tokens: ~b[1]}]
+               }
+             ] === calibration.to_produce
     end
   end
 

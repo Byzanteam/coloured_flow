@@ -22,7 +22,8 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
     {:started, :withdraw_s, :withdrawn}
   ]
 
-  @type live_state() :: :enabled | :allocated | :started
+  @type in_progress_state() :: :allocated | :started
+  @type live_state() :: :enabled | in_progress_state()
   @type completed_state() :: :completed | :withdrawn
 
   @typedoc """
@@ -63,8 +64,11 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   | `completed` | The workitem has been completed normally. |
   | `withdrawn` | The workitem has been withdrawn, perhaps because other workitem has been allocated. |
 
-  Among these states, `enabled`, `allocated`, and `started` are the `live` states,
-  and `completed` and `withdrawn` are the `completed` states.
+  Among these states, `enabled`, `allocated`, and `started` are the live states.
+  Specifically, `allocated` and `started` are the `in-progress` states,
+  meaning the workitem is being handled by resources. `completed` and `withdrawn`
+  are the `completed` states.
+
 
   > #### INFO {: .info}
   > Note: The workitem should not be *failed*, because the failure should be handled by handlers.
@@ -110,7 +114,13 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   The live states of the workitem. See more at `t:state/0`.
   """
   @spec __live_states__() :: [live_state()]
-  def __live_states__, do: ~w[enabled allocated started]a
+  def __live_states__, do: ~w[enabled]a ++ __in_progress_states__()
+
+  @doc """
+  The in-progress states of the workitem. See more at `t:state/0`.
+  """
+  @spec __in_progress_states__() :: [in_progress_state()]
+  def __in_progress_states__, do: ~w[allocated started]a
 
   @doc """
   The completed states of the workitem. See more at `t:state/0`.

@@ -87,7 +87,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
           {:cont, Map.delete(acc, place)}
 
         {:ok, remaining_tokens} ->
-          {:cont, Map.put(acc, place, remaining_tokens)}
+          {:cont, Map.put(acc, place, %Marking{place_marking | tokens: remaining_tokens})}
 
         :error ->
           {:halt, {:error, {:unsufficient_tokens, place_marking}}}

@@ -166,7 +166,7 @@ defmodule ColouredFlow.RunnerHelpers do
   @doc """
   Get the live workitems of the enactment ordered by state and transition name.
   """
-  @spec get_enactment_workitems(Enactment.t()) :: Enumerable.t(Enactment.Workitem.t())
+  @spec get_enactment_workitems(Enactment.t()) :: [Enactment.Workitem.t()]
   def get_enactment_workitems(enactment_server) do
     enactment_server
     |> get_enactment_state()
