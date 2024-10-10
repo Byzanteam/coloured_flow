@@ -122,6 +122,53 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
   end
 
+  describe "persists occurrences sequentially" do
+    setup :setup_flow
+    setup :setup_enactment
+    setup :start_enactment
+
+    @tag cpnet: :deferred_choice
+    @tag initial_markings: [
+           %Marking{place: "input", tokens: ~b[1]},
+           %Marking{place: "place", tokens: ~b[1]}
+         ]
+    test "works", %{enactment_server: enactment_server} do
+      [
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "deferred_choice_1"}
+        } = dc1_workitem,
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "deferred_choice_2"}
+        } = dc2_workitem,
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "pass_through"}
+        } = pt_workitem
+      ] = get_enactment_workitems(enactment_server)
+
+      dc1_workitem = start_workitem(dc1_workitem, enactment_server)
+      pt_workitem = start_workitem(pt_workitem, enactment_server)
+
+      assert {:ok, completed_workitems} =
+               GenServer.call(
+                 enactment_server,
+                 {:complete_workitems, %{dc1_workitem.id => [], pt_workitem.id => []}}
+               )
+
+      assert Enum.sort([
+               %Enactment.Workitem{dc1_workitem | state: :completed},
+               %Enactment.Workitem{pt_workitem | state: :completed}
+             ]) === Enum.sort(completed_workitems)
+
+      assert %{version: 2} = get_enactment_state(enactment_server)
+
+      assert :withdrawn === Repo.get(Schemas.Workitem, dc2_workitem.id).state
+
+      occurrence_steps = Schemas.Occurrence |> Repo.all() |> Enum.map(& &1.step_number)
+
+      assert [1, 2] === occurrence_steps
+    end
+  end
+
   describe "tokens changed" do
     setup :setup_cpnet
     setup :update_out_arc_expression

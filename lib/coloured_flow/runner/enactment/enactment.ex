@@ -211,24 +211,12 @@ defmodule ColouredFlow.Runner.Enactment do
     ) do
       started_workitems = to_list(started_workitems)
       completed_workitems = Storage.transition_workitems(started_workitems, :completed)
-      version = Storage.append_occurrences(state.enactment_id, state.version, occurrences)
-
-      {_steps, markings} =
-        state.markings
-        |> to_list()
-        |> Catchuping.apply(occurrences)
-
-      state = %__MODULE__{
-        state
-        | workitems: workitems,
-          markings: to_map(markings),
-          version: version
-      }
+      _version = Storage.append_occurrences(state.enactment_id, state.version, occurrences)
 
       {
         :reply,
         {:ok, completed_workitems},
-        state,
+        %__MODULE__{state | workitems: workitems},
         {:continue, {:calibrate_workitems, :complete, [cpnet: cpnet, occurrences: occurrences]}}
       }
     else
@@ -266,13 +254,13 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
   @spec to_map(Enumerable.t(item)) :: %{Workitem.id() => item} when item: Workitem.t()
-  defp to_map([]), do: %{}
-  defp to_map([%Workitem{} = workitem | rest]), do: Map.put(to_map(rest), workitem.id, workitem)
-  defp to_map([%Marking{} = marking | rest]), do: Map.put(to_map(rest), marking.place, marking)
+  def to_map([]), do: %{}
+  def to_map([%Workitem{} = workitem | rest]), do: Map.put(to_map(rest), workitem.id, workitem)
+  def to_map([%Marking{} = marking | rest]), do: Map.put(to_map(rest), marking.place, marking)
 
   @spec to_list(%{Place.name() => item}) :: [item] when item: Marking.t()
   @spec to_list(%{Workitem.id() => item}) :: [item] when item: Workitem.t()
-  defp to_list(map) when is_map(map), do: Map.values(map)
+  def to_list(map) when is_map(map), do: Map.values(map)
 
   @spec merge_maps(Enumerable.t(item) | amap, amap) :: amap
         when item: Marking.t(), amap: %{Place.name() => item}

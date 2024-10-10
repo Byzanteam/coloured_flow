@@ -19,6 +19,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   alias ColouredFlow.EnabledBindingElements.Utils
 
   alias ColouredFlow.Runner.Enactment
+  alias ColouredFlow.Runner.Enactment.Catchuping
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
 
@@ -120,31 +121,41 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   def calibrate(%Enactment{} = state, :complete, options)
       when is_list(options) do
     cpnet = Keyword.fetch!(options, :cpnet)
+    occurrences = Keyword.fetch!(options, :occurrences)
 
-    affected_transitions =
-      options
-      |> Keyword.fetch!(:occurrences)
+    {steps, markings} =
+      state.markings
+      |> Enactment.to_list()
+      |> Catchuping.apply(occurrences)
+
+    markings = Enactment.to_map(markings)
+
+    available_markings = apply_in_progress_workitems!(state.workitems, markings)
+
+    # find affected transitions, and then find the binding elements
+    binding_elements =
+      occurrences
       |> Stream.flat_map(& &1.to_produce)
       |> Enum.map(& &1.place)
       |> Utils.list_transitions(cpnet)
-
-    markings = apply_in_progress_workitems!(state)
-
-    binding_elements =
-      affected_transitions
       |> Enum.flat_map(fn transition ->
-        Computation.list(transition, cpnet, markings)
+        Computation.list(transition, cpnet, available_markings)
       end)
       |> MultiSet.new()
 
     enabled_binding_elements =
       state.workitems
-      |> Stream.map(fn {_workitem_id, %Workitem{} = workitem} -> workitem end)
+      |> Enactment.to_list()
       |> Stream.reject(in_progress_workitems_filter())
       |> Stream.map(& &1.binding_element)
       |> MultiSet.new()
 
     to_produce = MultiSet.difference(binding_elements, enabled_binding_elements)
+
+    state =
+      state
+      |> Map.update!(:version, &(&1 + steps))
+      |> Map.put(:markings, markings)
 
     struct!(
       __MODULE__,
@@ -181,17 +192,18 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   end
 
   # consume tokens from in-progress workitems
-  @spec apply_in_progress_workitems!(enactment_state()) :: Enactment.markings()
-  defp apply_in_progress_workitems!(%Enactment{} = enactment_state) do
+  @spec apply_in_progress_workitems!(Enactment.workitems(), Enactment.markings()) ::
+          Enactment.markings()
+  defp apply_in_progress_workitems!(workitems, markings) do
     allocated_binding_elements =
-      enactment_state.workitems
-      |> Stream.map(fn {_workitem_id, %Workitem{} = workitem} -> workitem end)
+      workitems
+      |> Enactment.to_list()
       |> Stream.filter(in_progress_workitems_filter())
       |> Stream.map(& &1.binding_element)
       |> Enum.to_list()
 
     {:ok, markings} =
-      WorkitemConsumption.consume_tokens(enactment_state.markings, allocated_binding_elements)
+      WorkitemConsumption.consume_tokens(markings, allocated_binding_elements)
 
     markings
   end
