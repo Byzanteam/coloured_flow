@@ -319,6 +319,98 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     end
   end
 
+  describe "calibrate workitems" do
+    setup do
+      cpnet =
+        :deferred_choice
+        |> ColouredFlow.CpnetBuilder.build_cpnet()
+        |> ColouredFlow.CpnetBuilder.update_arc!(
+          {:p_to_t, "deferred_choice_2", "place"},
+          expression: "bind {2,x}"
+        )
+
+      [cpnet: cpnet]
+    end
+
+    setup :setup_flow
+    setup :setup_enactment
+    setup :start_enactment
+
+    @tag initial_markings: [
+           %Marking{place: "input", tokens: ~b[1]},
+           %Marking{place: "place", tokens: ~b[1]}
+         ]
+    test "produces new workitems", %{enactment_server: enactment_server} do
+      [
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "deferred_choice_1"}
+        } = dc1_workitem,
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "pass_through"}
+        } = pt_workitem
+      ] = get_enactment_workitems(enactment_server)
+
+      pt_workitem = start_workitem(pt_workitem, enactment_server)
+
+      assert {:ok, [completed_workitem]} =
+               GenServer.call(enactment_server, {:complete_workitems, %{pt_workitem.id => []}})
+
+      assert %Enactment.Workitem{pt_workitem | state: :completed} === completed_workitem
+
+      assert match?(
+               [
+                 %Enactment.Workitem{
+                   state: :enabled,
+                   binding_element: %BindingElement{transition: "deferred_choice_1"}
+                 } = dc_workitem_1,
+                 %Enactment.Workitem{
+                   state: :enabled,
+                   binding_element: %BindingElement{transition: "deferred_choice_1"}
+                 } = dc_workitem_2,
+                 %Enactment.Workitem{
+                   state: :enabled,
+                   binding_element: %BindingElement{transition: "deferred_choice_2"}
+                 }
+               ]
+               when dc1_workitem in [dc_workitem_1, dc_workitem_2],
+               get_enactment_workitems(enactment_server)
+             )
+    end
+
+    @tag initial_markings: [
+           %Marking{place: "input", tokens: ~b[1]},
+           %Marking{place: "place", tokens: ~b[1]}
+         ]
+    test "produces new workitems when there is non-enabled workitems", %{
+      enactment_server: enactment_server
+    } do
+      [
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "deferred_choice_1"}
+        } = dc1_workitem,
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "pass_through"}
+        } = pt_workitem
+      ] = get_enactment_workitems(enactment_server)
+
+      dc1_workitem = allocate_workitem(dc1_workitem, enactment_server)
+      pt_workitem = start_workitem(pt_workitem, enactment_server)
+
+      assert {:ok, [completed_workitem]} =
+               GenServer.call(enactment_server, {:complete_workitems, %{pt_workitem.id => []}})
+
+      assert %Enactment.Workitem{pt_workitem | state: :completed} === completed_workitem
+
+      assert [
+               %Enactment.Workitem{
+                 state: :enabled,
+                 binding_element: %BindingElement{transition: "deferred_choice_1"}
+               },
+               ^dc1_workitem
+             ] = get_enactment_workitems(enactment_server)
+    end
+  end
+
   defp update_out_arc_expression(%{cpnet: cpnet, out_arc_expression: out_arc_expression}) do
     cpnet =
       Map.update!(cpnet, :arcs, fn [in_arc, out_arc] ->

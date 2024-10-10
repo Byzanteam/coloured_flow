@@ -20,6 +20,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   alias ColouredFlow.Runner.Enactment
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Enactment.WorkitemConsumption
 
   @typep enactment_state() :: Enactment.state()
 
@@ -127,20 +128,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       |> Enum.map(& &1.place)
       |> Utils.list_transitions(cpnet)
 
+    markings = apply_in_progress_workitems!(state)
+
     binding_elements =
       affected_transitions
       |> Enum.flat_map(fn transition ->
-        Computation.list(transition, cpnet, state.markings)
+        Computation.list(transition, cpnet, markings)
       end)
       |> MultiSet.new()
 
-    existing_binding_elements =
+    enabled_binding_elements =
       state.workitems
       |> Stream.map(fn {_workitem_id, %Workitem{} = workitem} -> workitem end)
+      |> Stream.reject(in_progress_workitems_filter())
       |> Stream.map(& &1.binding_element)
       |> MultiSet.new()
 
-    to_produce = MultiSet.difference(binding_elements, existing_binding_elements)
+    to_produce = MultiSet.difference(binding_elements, enabled_binding_elements)
 
     struct!(
       __MODULE__,
@@ -174,5 +178,30 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
         {:ok, tokens} -> MultiSet.include?(tokens, marking.tokens)
       end
     end)
+  end
+
+  # consume tokens from in-progress workitems
+  @spec apply_in_progress_workitems!(enactment_state()) :: Enactment.markings()
+  defp apply_in_progress_workitems!(%Enactment{} = enactment_state) do
+    allocated_binding_elements =
+      enactment_state.workitems
+      |> Stream.map(fn {_workitem_id, %Workitem{} = workitem} -> workitem end)
+      |> Stream.filter(in_progress_workitems_filter())
+      |> Stream.map(& &1.binding_element)
+      |> Enum.to_list()
+
+    {:ok, markings} =
+      WorkitemConsumption.consume_tokens(enactment_state.markings, allocated_binding_elements)
+
+    markings
+  end
+
+  @spec in_progress_workitems_filter() :: (Workitem.t() -> boolean())
+  defp in_progress_workitems_filter do
+    in_progress_states = Workitem.__in_progress_states__()
+
+    fn %Workitem{} = workitem ->
+      workitem.state in in_progress_states
+    end
   end
 end

@@ -139,6 +139,9 @@ defmodule ColouredFlow.Runner.Enactment do
         pop_workitems(state, workitem_ids, :allocate, :enabled),
       enabled_workitems = to_list(enabled_workitems),
       binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
+      # We don't need to remove the markings of the allocated workitems before `consume_tokens`,
+      # because we withdraw workitems that are not enabled any more
+      # after each `allocated_workitems` step by `calibrate_workitems`.
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
       allocated_workitems = Storage.transition_workitems(enabled_workitems, :allocated)

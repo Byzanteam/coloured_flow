@@ -512,6 +512,69 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       assert [] === calibration.to_produce
     end
 
+    test "produces new workitems without considering the in-progress workitems" do
+      cpnet =
+        :deferred_choice
+        |> ColouredFlow.CpnetBuilder.build_cpnet()
+        |> ColouredFlow.CpnetBuilder.update_arc!(
+          {:p_to_t, "deferred_choice_2", "place"},
+          expression: "bind {2,x}"
+        )
+
+      pt_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "pass_through",
+          binding: [],
+          to_consume: [
+            %Marking{place: "input", tokens: ~b[1]}
+          ]
+        }
+      }
+
+      dc1_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "deferred_choice_1",
+          binding: [x: 1],
+          to_consume: [
+            %Marking{place: "place", tokens: ~b[1]}
+          ]
+        }
+      }
+
+      occurrence = %Occurrence{
+        binding_element: pt_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "place", tokens: ~b[1]}]
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 1,
+        markings:
+          to_map([
+            %Marking{place: "place", tokens: ~b[2**1]}
+          ]),
+        workitems: to_map([dc1_workitem])
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+
+      assert [
+               %BindingElement{
+                 transition: "deferred_choice_1",
+                 binding: [x: 1],
+                 to_consume: [
+                   %Marking{place: "place", tokens: ~b[1]}
+                 ]
+               }
+             ] === calibration.to_produce
+    end
+
     test "produces new workitems when there is some live workitems at the transition" do
       cpnet = build_cpnet(:thread_merge)
 
