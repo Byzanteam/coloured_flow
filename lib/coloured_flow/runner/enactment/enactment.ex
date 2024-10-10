@@ -121,6 +121,8 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
+    # We don't need to ensure `transition_workitems` and `produce_workitems` are atomic,
+    # because the gen_server will restart if the process crashes.
     Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
 
     produced_workitems =
@@ -210,8 +212,14 @@ defmodule ColouredFlow.Runner.Enactment do
       {:ok, occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
     ) do
       started_workitems = to_list(started_workitems)
-      completed_workitems = Storage.transition_workitems(started_workitems, :completed)
-      _version = Storage.append_occurrences(state.enactment_id, state.version, occurrences)
+
+      #  wrapped in a transaction
+      completed_workitems =
+        Storage.complete_workitems(
+          state.enactment_id,
+          started_workitems,
+          {state.version, occurrences}
+        )
 
       {
         :reply,

@@ -80,41 +80,6 @@ defmodule ColouredFlow.Runner.Storage do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
-  @doc """
-  Appends the occurrences to the enactment, and returns the new version and the occurrences.
-  """
-  @spec append_occurrences(
-          enactment_id(),
-          current_version :: non_neg_integer(),
-          occurrences :: Enumerable.t(Occurrence.t())
-        ) :: {non_neg_integer(), [Occurrence.t()]}
-  def append_occurrences(enactment_id, current_version, occurrences) do
-    {occurrences, version} =
-      Enum.map_reduce(occurrences, current_version, fn occurrence, last_version ->
-        version = last_version + 1
-
-        {
-          %{
-            enactment_id: enactment_id,
-            step_number: version,
-            data: %Schemas.Occurrence.Data{
-              occurrence: occurrence
-            },
-            inserted_at: {:placeholder, :now}
-          },
-          version
-        }
-      end)
-
-    Repo.insert_all(
-      Schemas.Occurrence,
-      occurrences,
-      placeholders: %{now: DateTime.utc_now()}
-    )
-
-    version
-  end
-
   @live_states Workitem.__live_states__()
 
   @doc """
@@ -187,20 +152,22 @@ defmodule ColouredFlow.Runner.Storage do
        when is_list(workitems) do
     {ids, length} = check_state!(workitems, valid_states)
 
-    case update_all(ids, length, target_state) do
+    ids
+    |> update_all_multi(length, target_state)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, :result, reason, _changes_so_far} ->
+        {:error, reason}
+    end
+    |> case do
       :ok ->
         Enum.map(workitems, &Map.put(&1, :state, target_state))
 
       {:error, {:unexpected_updated_rows, [expected: length, actual: actual]}} ->
-        # When the actual number is not equal to the expected number,
-        # it means the workitems in the gen_server are not consistent with the database.
-        # So we just raise an error to crash the process, and let the supervisor
-        # restart the gen_server and retry.
-        raise """
-        The number of workitems to transition to #{inspect(target_state)} is not equal to the actual number.
-        Expected: #{length}, Actual: #{actual}
-        Workitems: #{Enum.join(ids, ", ")}
-        """
+        unexpected_updated_rows!(workitems, target_state, {length, actual})
     end
   end
 
@@ -222,17 +189,17 @@ defmodule ColouredFlow.Runner.Storage do
     end)
   end
 
-  @spec update_all(
+  # Operations
+  # `:update` returns {updated_rows, nil}
+  # `:result` returns:
+  #     - `:ok`
+  #     - `{:error, {:unexpected_updated_rows, [expected: pos_integer(), actual: pos_integer()]}}`
+  @spec update_all_multi(
           ids :: [Workitem.id()],
           expected_length :: pos_integer(),
           target_state :: Workitem.state()
-        ) ::
-          :ok
-          | {
-              :error,
-              {:unexpected_updated_rows, [expected: pos_integer(), actual: pos_integer()]}
-            }
-  defp update_all(ids, expected_length, target_state) do
+        ) :: Ecto.Multi.t()
+  defp update_all_multi(ids, expected_length, target_state) do
     Ecto.Multi.new()
     |> Ecto.Multi.update_all(
       :update,
@@ -248,14 +215,80 @@ defmodule ColouredFlow.Runner.Storage do
           {:error, {:unexpected_updated_rows, expected: expected_length, actual: actual}}
       end
     end)
+  end
+
+  defp unexpected_updated_rows!(workitems, target_state, {expected, actual}) do
+    # When the actual number is not equal to the expected number,
+    # it means the workitems in the gen_server are not consistent with the database.
+    # So we just raise an error to crash the process, and let the supervisor
+    # restart the gen_server and retry.
+    raise """
+    The number of workitems to transition to #{inspect(target_state)} is not equal to the actual number.
+    Expected: #{expected}, Actual: #{actual}
+    Workitems: #{Enum.map_join(workitems, ", ", & &1.id)}
+    """
+  end
+
+  target_state = :completed
+  valid_states = Map.fetch!(valid_transitions, target_state)
+
+  @spec complete_workitems(
+          enactment_id(),
+          [Workitem.t(:started)],
+          {current_version :: non_neg_integer(), occurrences :: [Occurrence.t()]}
+        ) :: [Workitem.t(unquote(target_state))]
+  def complete_workitems(enactment_id, started_workitems, {current_version, occurrences}) do
+    {ids, length} = check_state!(started_workitems, unquote(valid_states))
+
+    {occurrence_entries, _version} = build_occurrence_entries(occurrences, current_version)
+
+    ids
+    |> update_all_multi(length, unquote(target_state))
+    |> Ecto.Multi.put(:occurrence_entries, occurrence_entries)
+    |> Ecto.Multi.insert_all(
+      :occurrences,
+      Schemas.Occurrence,
+      fn %{occurrence_entries: occurrence_entries} -> occurrence_entries end,
+      placeholders: %{
+        enactment_id: enactment_id,
+        now: DateTime.utc_now()
+      }
+    )
     |> Repo.transaction()
     |> case do
-      {:ok, _changes} ->
-        :ok
+      {:ok, _result} ->
+        Enum.map(started_workitems, &Map.put(&1, :state, unquote(target_state)))
 
-      {:error, :result, reason, _changes_so_far} ->
-        {:error, reason}
+      {
+        :error,
+        :result,
+        {:unexpected_updated_rows, [expected: length, actual: actual]},
+        _changes_so_far
+      } ->
+        unexpected_updated_rows!(started_workitems, unquote(target_state), {length, actual})
     end
+  end
+
+  @spec build_occurrence_entries(
+          occurrences :: Enumerable.t(Occurrence.t()),
+          current_version :: non_neg_integer()
+        ) :: {[Occurrence.t()], non_neg_integer()}
+  defp build_occurrence_entries(occurrences, current_version) do
+    Enum.map_reduce(occurrences, current_version, fn occurrence, last_version ->
+      version = last_version + 1
+
+      {
+        %{
+          enactment_id: {:placeholder, :enactment_id},
+          step_number: version,
+          data: %Schemas.Occurrence.Data{
+            occurrence: occurrence
+          },
+          inserted_at: {:placeholder, :now}
+        },
+        version
+      }
+    end)
   end
 
   @spec take_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok
