@@ -3,8 +3,6 @@ defmodule ColouredFlow.CpnetBuilder do
 
   import ColouredFlow.Notation.Colset
 
-  alias ColouredFlow.Definition.ColouredPetriNet
-
   @spec build_cpnet(name :: atom()) :: ColouredPetriNet.t()
   def build_cpnet(name)
 
@@ -500,5 +498,40 @@ defmodule ColouredFlow.CpnetBuilder do
           ])
         ])
     }
+  end
+
+  @spec update_arc!(
+          ColouredPetriNet.t(),
+          {
+            orientation :: Arc.orientation(),
+            transition :: Transition.name(),
+            place :: Place.name()
+          },
+          label: Arc.label(),
+          expression: binary()
+        ) :: ColouredPetriNet.t()
+  def update_arc!(%ColouredPetriNet{} = cpnet, {orientation, transition, place}, params) do
+    Map.update!(cpnet, :arcs, fn arcs ->
+      arcs
+      |> Enum.map_reduce(false, fn
+        %Arc{orientation: ^orientation, transition: ^transition, place: ^place}, _acc ->
+          arc =
+            build_arc!(
+              Keyword.merge(
+                [orientation: orientation, transition: transition, place: place],
+                params
+              )
+            )
+
+          {arc, true}
+
+        other, acc ->
+          {other, acc}
+      end)
+      |> case do
+        {arcs, true} -> arcs
+        {_arcs, false} -> raise "Arc not found"
+      end
+    end)
   end
 end
