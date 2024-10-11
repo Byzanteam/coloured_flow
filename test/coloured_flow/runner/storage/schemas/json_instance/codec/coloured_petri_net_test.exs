@@ -15,7 +15,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColouredPetriNe
           %Place{name: "even", colour_set: :int}
         ],
         transitions: [
-          %Transition{name: "filter", guard: Expression.build!("Integer.mod(integer, 2) === 0")}
+          build_transition!(name: "filter", guard: "Integer.mod(integer, 2) === 0")
         ],
         arcs: [
           build_arc!(

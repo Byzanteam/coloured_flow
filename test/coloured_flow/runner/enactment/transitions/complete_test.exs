@@ -264,15 +264,14 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
             %Place{name: "output", colour_set: :int}
           ],
           transitions: [
-            %Transition{
+            build_transition!(
               name: "pass_through",
-              guard: nil,
-              action: %Action{
-                code: Expression.build!("{1 + x}"),
+              action: [
+                code: "{1 + x}",
                 inputs: [:x],
                 outputs: [:y]
-              }
-            }
+              ]
+            )
           ],
           arcs: [
             build_arc!(

@@ -85,11 +85,11 @@ defmodule ColouredFlow.DefinitionHelpers do
           action: Action.t()
         ) :: Transition.t()
   def build_transition!(params) do
-    params = Keyword.validate!(params, [:name, :guard, :action])
-
-    params
-    |> Keyword.update(:guard, nil, &Expression.build!/1)
-    |> Keyword.update!(:action, &build_action!/1)
+    params =
+      params
+      |> Keyword.validate!([:name, :guard, :action])
+      |> Keyword.update(:guard, nil, &Expression.build!/1)
+      |> Keyword.update(:action, nil, &build_action!/1)
 
     struct!(Transition, params)
   end
