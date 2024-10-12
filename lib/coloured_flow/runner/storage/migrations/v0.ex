@@ -51,22 +51,20 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
     end
 
     create table("occurrences", table_options) do
-      add :id, :binary_id, primary_key: true
-
       add :enactment_id, references("enactments", type: :binary_id, on_delete: :delete_all),
-        null: false
+        null: false,
+        primary_key: true
 
-      # we don't expect to delete workitems that have been occurred
+      add :step_number, :integer, null: false, primary_key: true
+
+      # We don’t expect to delete work items that have already occurred
       add :workitem_id, references("workitems", type: :binary_id, on_delete: :nothing),
         null: false
 
-      add :step_number, :integer, null: false
       add :data, :jsonb, null: false
 
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
-
-    create unique_index("occurrences", [:enactment_id, :step_number], prefix: prefix)
 
     create table("snapshots", table_options) do
       add :enactment_id, references("enactments", type: :binary_id, on_delete: :delete_all),

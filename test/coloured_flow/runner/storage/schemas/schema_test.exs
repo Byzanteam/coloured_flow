@@ -38,7 +38,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
 
     occurrence =
       Schemas.Occurrence
-      |> Repo.get(inserted.id)
+      |> Repo.get_by(enactment_id: inserted.enactment_id, step_number: inserted.step_number)
       |> Repo.preload(workitem: [enactment: [:flow]], enactment: [:flow])
 
     assert inserted === occurrence
@@ -62,7 +62,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
 
     occurrence =
       Schemas.Occurrence
-      |> Repo.get(inserted.id)
+      |> Repo.get_by(enactment_id: inserted.enactment_id, step_number: inserted.step_number)
       |> Repo.preload(workitem: [enactment: [:flow]], enactment: [:flow])
 
     assert inserted === occurrence

@@ -44,7 +44,6 @@ defmodule ColouredFlow.Factory do
 
   def occurrence_factory do
     %Schemas.Occurrence{
-      id: Ecto.UUID.generate(),
       enactment: fn -> build(:enactment) end,
       workitem: fn -> build(:workitem) end,
       step_number: sequence(:occurrence_step_number, & &1),
