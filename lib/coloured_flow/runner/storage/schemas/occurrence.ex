@@ -5,6 +5,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
 
   alias ColouredFlow.Enactment.Occurrence
   alias ColouredFlow.Runner.Storage.Schemas.Enactment
+  alias ColouredFlow.Runner.Storage.Schemas.Workitem
 
   @type step_number() :: pos_integer()
 
@@ -12,6 +13,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
     field :id, Types.id()
     field :enactment_id, Types.id()
     field :enactment, Types.association(Enactment.t())
+    field :workitem, Types.association(Workitem.t())
     field :step_number, step_number()
     field :data, %{occurrence: Occurrence.t()}
 
@@ -20,6 +22,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
 
   schema "occurrences" do
     belongs_to :enactment, Enactment
+    belongs_to :workitem, Workitem
     field :step_number, :integer
 
     embeds_one :data, Data, primary_key: false, on_replace: :update do

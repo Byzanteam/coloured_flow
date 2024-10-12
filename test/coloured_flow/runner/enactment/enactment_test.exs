@@ -99,9 +99,10 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
     test "catchup", %{enactment: enactment} do
       enactment_id = enactment.id
+      workitem = :workitem |> build(enactment: enactment, state: :completed) |> insert()
 
       :occurrence
-      |> build(enactment: enactment, step_number: 1)
+      |> build(enactment: enactment, workitem: workitem, step_number: 1)
       |> occurrence_with_occurrence(%Occurrence{
         binding_element:
           BindingElement.new(

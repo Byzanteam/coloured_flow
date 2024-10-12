@@ -464,7 +464,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       calibration =
-        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          workitem_occurrences: [{b2_workitem, occurrence}]
+        )
 
       assert expected_state === calibration.state
       assert [] === calibration.to_produce
@@ -523,7 +526,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       calibration =
-        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          workitem_occurrences: [{pt_workitem, occurrence}]
+        )
 
       assert expected_state === calibration.state
 
@@ -583,7 +589,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       }
 
       calibration =
-        WorkitemCalibration.calibrate(state, :complete, cpnet: cpnet, occurrences: [occurrence])
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          workitem_occurrences: [{b1_workitem, occurrence}]
+        )
 
       assert expected_state === calibration.state
       assert [] === calibration.to_produce
@@ -640,7 +649,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
           cpnet: cpnet,
-          occurrences: [b1_occurrence_1, b1_occurrence_2]
+          workitem_occurrences: [
+            {b1_workitem_1, b1_occurrence_1},
+            {b1_workitem_2, b1_occurrence_2}
+          ]
         )
 
       assert expected_state === calibration.state
@@ -693,7 +705,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
           cpnet: cpnet,
-          occurrences: [b1_occurrence]
+          workitem_occurrences: [{b1_workitem, b1_occurrence}]
         )
 
       assert expected_state === calibration.state
@@ -742,7 +754,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
           cpnet: cpnet,
-          occurrences: [pt_occurrence]
+          workitem_occurrences: [{pt_workitem, pt_occurrence}]
         )
 
       assert expected_state === calibration.state
@@ -803,7 +815,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
           cpnet: cpnet,
-          occurrences: [ps_occurrence]
+          workitem_occurrences: [{ps_workitem, ps_occurrence}]
         )
 
       assert expected_state === calibration.state
