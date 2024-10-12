@@ -54,7 +54,7 @@ defmodule ColouredFlow.Definition.Expression do
   def build!(expr) do
     case build(expr) do
       {:ok, expr} -> expr
-      {:error, reason} -> raise reason
+      {:error, reason} -> raise "failed to build expression: #{inspect(reason)}"
     end
   end
 end
