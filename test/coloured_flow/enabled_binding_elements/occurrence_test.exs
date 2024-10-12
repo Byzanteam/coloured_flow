@@ -16,7 +16,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "filter", guard: Expression.build!("Integer.mod(x, 2) == 0")}
+      transition = build_transition!(name: "filter", guard: "Integer.mod(x, 2) == 0")
 
       cpnet =
         %ColouredPetriNet{
@@ -69,7 +69,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(unit() :: {})
       ]
 
-      transition = %Transition{name: "merge", guard: nil}
+      transition = build_transition!(name: "merge")
 
       cpnet =
         %ColouredPetriNet{
@@ -132,7 +132,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "clone", guard: nil}
+      transition = build_transition!(name: "clone")
 
       cpnet =
         %ColouredPetriNet{
@@ -202,19 +202,19 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       ]
 
       transition =
-        %Transition{
+        build_transition!(
           name: "div and mod",
-          guard: nil,
-          action:
-            build_action!(
-              code: """
-              quotient = div(dividend, divisor)
-              modulo = Integer.mod(dividend, divisor)
+          action: [
+            code: """
+            quotient = div(dividend, divisor)
+            modulo = Integer.mod(dividend, divisor)
 
-              output {quotient, modulo}
-              """
-            )
-        }
+            output {quotient, modulo}
+            """,
+            inputs: [],
+            outputs: [:quotient, :modulo]
+          ]
+        )
 
       cpnet =
         %ColouredPetriNet{
@@ -294,7 +294,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "filter", guard: Expression.build!("Integer.mod(x, 2) == 0")}
+      transition = build_transition!(name: "filter", guard: "Integer.mod(x, 2) == 0")
 
       cpnet =
         %ColouredPetriNet{
@@ -349,7 +349,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "filter", guard: Expression.build!("Integer.mod(x, 2) == 0")}
+      transition = build_transition!(name: "filter", guard: "Integer.mod(x, 2) == 0")
 
       cpnet =
         %ColouredPetriNet{

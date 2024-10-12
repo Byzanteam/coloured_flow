@@ -23,7 +23,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
   @spec complete(
           workitem_and_outputs :: Enumerable.t({Workitem.t(), Occurrence.free_binding()}),
           ColouredPetriNet.t()
-        ) :: {:ok, [Occurrence.t()]} | {:error, Exception.t()}
+        ) :: {:ok, [{Workitem.t(), Occurrence.t()}]} | {:error, Exception.t()}
   def complete(workitem_and_outputs, cpnet) do
     workitem_and_outputs
     |> Enum.reduce_while(
@@ -35,7 +35,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
           {:ok, ouputs} <- validate_outputs(transition, ouputs, cpnet),
           {:ok, occurrence} <- occur(workitem, ouputs, cpnet)
         ) do
-          {:cont, [occurrence | acc]}
+          {:cont, [{workitem, occurrence} | acc]}
         else
           {:error, {:unbound_action_output, args}} ->
             alias ColouredFlow.Runner.Exceptions.UnboundActionOutput
@@ -56,7 +56,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
     )
     |> case do
       {:error, _exception} = error -> error
-      occurrences -> {:ok, occurrences}
+      workitem_occurrences -> {:ok, Enum.reverse(workitem_occurrences)}
     end
   end
 

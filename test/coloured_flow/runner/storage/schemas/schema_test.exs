@@ -35,7 +35,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
   test "persists occurrence" do
     built_occurrence = build(:occurrence)
     inserted = insert(built_occurrence)
-    occurrence = Schemas.Occurrence |> Repo.get(inserted.id) |> Repo.preload(enactment: [:flow])
+
+    occurrence =
+      Schemas.Occurrence
+      |> Repo.get_by(enactment_id: inserted.enactment_id, step_number: inserted.step_number)
+      |> Repo.preload(workitem: [enactment: [:flow]], enactment: [:flow])
 
     assert inserted === occurrence
   end
@@ -55,7 +59,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
 
     built_occurrence = :occurrence |> build() |> occurrence_with_occurrence(occurrence)
     inserted = insert(built_occurrence)
-    occurrence = Schemas.Occurrence |> Repo.get(inserted.id) |> Repo.preload(enactment: [:flow])
+
+    occurrence =
+      Schemas.Occurrence
+      |> Repo.get_by(enactment_id: inserted.enactment_id, step_number: inserted.step_number)
+      |> Repo.preload(workitem: [enactment: [:flow]], enactment: [:flow])
 
     assert inserted === occurrence
   end

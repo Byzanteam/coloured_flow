@@ -58,20 +58,39 @@ defmodule ColouredFlow.DefinitionHelpers do
             orientation: Arc.orientation(),
             expression: binary()
           ]
-        ) ::
-          [Arc.t()]
+        ) :: [Arc.t()]
   def build_transition_arcs!(transition, params_list) do
     Enum.map(params_list, fn params ->
       build_arc!([{:transition, transition} | params])
     end)
   end
 
-  @spec build_action!(code: binary(), inputs: [Variable.name()], outputs: [Variable.name()]) ::
-          Action.t()
+  @spec build_action!(
+          code: binary(),
+          inputs: [Variable.name()],
+          outputs: [Variable.name()]
+        ) :: Action.t()
   def build_action!(params) do
-    struct!(
-      Action,
-      Keyword.update!(params, :code, &Expression.build!/1)
-    )
+    params =
+      params
+      |> Keyword.validate!([:code, :inputs, :outputs])
+      |> Keyword.update!(:code, &Expression.build!/1)
+
+    struct!(Action, params)
+  end
+
+  @spec build_transition!(
+          name: Transition.name(),
+          guard: binary(),
+          action: Action.t()
+        ) :: Transition.t()
+  def build_transition!(params) do
+    params =
+      params
+      |> Keyword.validate!([:name, :guard, :action])
+      |> Keyword.update(:guard, nil, &Expression.build!/1)
+      |> Keyword.update(:action, nil, &build_action!/1)
+
+    struct!(Transition, params)
   end
 end

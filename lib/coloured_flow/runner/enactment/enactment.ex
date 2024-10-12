@@ -209,23 +209,24 @@ defmodule ColouredFlow.Runner.Enactment do
           {Map.fetch!(started_workitems, workitem_id), free_binding}
         end),
       cpnet = Storage.get_flow_by_enactment(state.enactment_id),
-      {:ok, occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+      {:ok, workitem_occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
     ) do
-      started_workitems = to_list(started_workitems)
-
       #  wrapped in a transaction
       completed_workitems =
-        Storage.complete_workitems(
-          state.enactment_id,
-          started_workitems,
-          {state.version, occurrences}
-        )
+        Storage.complete_workitems(state.enactment_id, state.version, workitem_occurrences)
 
       {
         :reply,
         {:ok, completed_workitems},
         %__MODULE__{state | workitems: workitems},
-        {:continue, {:calibrate_workitems, :complete, [cpnet: cpnet, occurrences: occurrences]}}
+        {
+          :continue,
+          {
+            :calibrate_workitems,
+            :complete,
+            [cpnet: cpnet, workitem_occurrences: workitem_occurrences]
+          }
+        }
       }
     else
       {:error, exception} when is_exception(exception) ->

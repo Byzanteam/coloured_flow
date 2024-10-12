@@ -85,7 +85,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   ## Complete options
 
     * `cpnet`: The coloured petri net.
-    * `occurrences`: The occurrences that are appened after the `complete` transition.
+    * `workitem_occurrences`: The workitem and occurrence pairs that are appened after the `complete` transition.
   """
   @spec calibrate(enactment_state(), :allocate, workitems: [Workitem.t()]) :: t()
   @spec calibrate(enactment_state(), :complete,
@@ -121,7 +121,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   def calibrate(%Enactment{} = state, :complete, options)
       when is_list(options) do
     cpnet = Keyword.fetch!(options, :cpnet)
-    occurrences = Keyword.fetch!(options, :occurrences)
+    workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
+    completed_workitem_ids = Enum.map(workitem_occurrences, fn {workitem, _} -> workitem.id end)
+    occurrences = Enum.map(workitem_occurrences, &elem(&1, 1))
 
     {steps, markings} =
       state.markings
@@ -156,6 +158,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       state
       |> Map.update!(:version, &(&1 + steps))
       |> Map.put(:markings, markings)
+      |> Map.update!(:workitems, fn workitems ->
+        Map.drop(workitems, completed_workitem_ids)
+      end)
 
     struct!(
       __MODULE__,

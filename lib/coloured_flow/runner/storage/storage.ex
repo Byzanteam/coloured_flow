@@ -234,13 +234,14 @@ defmodule ColouredFlow.Runner.Storage do
 
   @spec complete_workitems(
           enactment_id(),
-          [Workitem.t(:started)],
-          {current_version :: non_neg_integer(), occurrences :: [Occurrence.t()]}
+          current_version :: non_neg_integer(),
+          workitem_occurrences :: [{Workitem.t(:started), Occurrence.t()}]
         ) :: [Workitem.t(unquote(target_state))]
-  def complete_workitems(enactment_id, started_workitems, {current_version, occurrences}) do
+  def complete_workitems(enactment_id, current_version, workitem_occurrences) do
+    started_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
     {ids, length} = check_state!(started_workitems, unquote(valid_states))
 
-    {occurrence_entries, _version} = build_occurrence_entries(occurrences, current_version)
+    occurrence_entries = build_occurrence_entries(workitem_occurrences, current_version)
 
     ids
     |> update_all_multi(length, unquote(target_state))
@@ -270,25 +271,31 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @spec build_occurrence_entries(
-          occurrences :: Enumerable.t(Occurrence.t()),
+          workitem_occurrences :: Enumerable.t({Workitem.t(:started), Occurrence.t()}),
           current_version :: non_neg_integer()
-        ) :: {[Occurrence.t()], non_neg_integer()}
-  defp build_occurrence_entries(occurrences, current_version) do
-    Enum.map_reduce(occurrences, current_version, fn occurrence, last_version ->
-      version = last_version + 1
+        ) :: [Occurrence.t()]
+  defp build_occurrence_entries(workitem_occurrences, current_version) do
+    workitem_occurrences
+    |> Enum.map_reduce(
+      current_version,
+      fn {workitem, occurrence}, last_version ->
+        version = last_version + 1
 
-      {
-        %{
-          enactment_id: {:placeholder, :enactment_id},
-          step_number: version,
-          data: %Schemas.Occurrence.Data{
-            occurrence: occurrence
+        {
+          %{
+            enactment_id: {:placeholder, :enactment_id},
+            workitem_id: workitem.id,
+            step_number: version,
+            data: %Schemas.Occurrence.Data{
+              occurrence: occurrence
+            },
+            inserted_at: {:placeholder, :now}
           },
-          inserted_at: {:placeholder, :now}
-        },
-        version
-      }
-    end)
+          version
+        }
+      end
+    )
+    |> elem(0)
   end
 
   @spec take_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok

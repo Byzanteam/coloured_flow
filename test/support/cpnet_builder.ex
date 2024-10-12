@@ -27,7 +27,7 @@ defmodule ColouredFlow.CpnetBuilder do
         %Place{name: "output", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "pass_through", guard: nil}
+        build_transition!(name: "pass_through")
       ],
       arcs: [
         build_arc!(
@@ -82,9 +82,9 @@ defmodule ColouredFlow.CpnetBuilder do
         %Place{name: "output_2", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "pass_through", guard: nil},
-        %Transition{name: "deferred_choice_1", guard: nil},
-        %Transition{name: "deferred_choice_2", guard: nil}
+        build_transition!(name: "pass_through"),
+        build_transition!(name: "deferred_choice_1"),
+        build_transition!(name: "deferred_choice_2")
       ],
       arcs: [
         build_arc!(
@@ -164,9 +164,9 @@ defmodule ColouredFlow.CpnetBuilder do
         %Place{name: "output_2", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "parallel_split", guard: nil},
-        %Transition{name: "pass_through_1", guard: nil},
-        %Transition{name: "pass_through_2", guard: nil}
+        build_transition!(name: "parallel_split"),
+        build_transition!(name: "pass_through_1"),
+        build_transition!(name: "pass_through_2")
       ],
       arcs: [
         build_arc!(
@@ -243,7 +243,7 @@ defmodule ColouredFlow.CpnetBuilder do
         %Place{name: "output", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "and_join", guard: nil}
+        build_transition!(name: "and_join")
       ],
       arcs:
         build_transition_arcs!("and_join", [
@@ -308,9 +308,9 @@ defmodule ColouredFlow.CpnetBuilder do
         %Place{name: "output", colour_set: :int}
       ],
       transitions: [
-        %Transition{name: "branch_1", guard: nil},
-        %Transition{name: "branch_2", guard: nil},
-        %Transition{name: "thread_merge", guard: nil}
+        build_transition!(name: "branch_1"),
+        build_transition!(name: "branch_2"),
+        build_transition!(name: "thread_merge")
       ],
       arcs: [
         build_arc!(
@@ -383,11 +383,11 @@ defmodule ColouredFlow.CpnetBuilder do
         %Place{name: "next_send", colour_set: :no}
       ],
       transitions: [
-        %Transition{name: "send_packet"},
-        %Transition{name: "transmit_packet"},
-        %Transition{name: "receive_packet"},
-        %Transition{name: "transmit_ack"},
-        %Transition{name: "receive_ack"}
+        build_transition!(name: "send_packet"),
+        build_transition!(name: "transmit_packet"),
+        build_transition!(name: "receive_packet"),
+        build_transition!(name: "transmit_ack"),
+        build_transition!(name: "receive_ack")
       ],
       arcs:
         List.flatten([
@@ -502,7 +502,7 @@ defmodule ColouredFlow.CpnetBuilder do
 
   @spec update_arc!(
           ColouredPetriNet.t(),
-          {
+          arc :: {
             orientation :: Arc.orientation(),
             transition :: Transition.name(),
             place :: Place.name()
@@ -510,7 +510,8 @@ defmodule ColouredFlow.CpnetBuilder do
           label: Arc.label(),
           expression: binary()
         ) :: ColouredPetriNet.t()
-  def update_arc!(%ColouredPetriNet{} = cpnet, {orientation, transition, place}, params) do
+  def update_arc!(%ColouredPetriNet{} = cpnet, {orientation, transition, place} = _arc, params)
+      when is_list(params) do
     Map.update!(cpnet, :arcs, fn arcs ->
       arcs
       |> Enum.map_reduce(false, fn
@@ -531,6 +532,37 @@ defmodule ColouredFlow.CpnetBuilder do
       |> case do
         {arcs, true} -> arcs
         {_arcs, false} -> raise "Arc not found"
+      end
+    end)
+  end
+
+  @spec update_transition!(
+          ColouredPetriNet.t(),
+          transition :: Transition.name(),
+          guard: binary(),
+          action: [
+            code: binary(),
+            inputs: [Variable.name()],
+            outputs: [Variable.name()]
+          ]
+        ) :: ColouredPetriNet.t()
+  def update_transition!(%ColouredPetriNet{} = cpnet, transition, params)
+      when is_binary(transition) and is_list(params) do
+    Map.update!(cpnet, :transitions, fn transitions ->
+      transitions
+      |> Enum.map_reduce(false, fn
+        %Transition{name: ^transition}, _acc ->
+          transition =
+            build_transition!(Keyword.merge([name: transition], params))
+
+          {transition, true}
+
+        other, acc ->
+          {other, acc}
+      end)
+      |> case do
+        {transitions, true} -> transitions
+        {_transitions, false} -> raise "Transition not found"
       end
     end)
   end

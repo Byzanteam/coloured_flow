@@ -18,7 +18,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "filter", guard: Expression.build!("true")}
+      transition = build_transition!(name: "filter", guard: "true")
 
       cpnet =
         %ColouredPetriNet{
@@ -80,7 +80,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(unit() :: {})
       ]
 
-      transition = %Transition{name: "merge", guard: nil}
+      transition = build_transition!(name: "merge")
 
       cpnet =
         %ColouredPetriNet{
@@ -180,7 +180,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "a + b", guard: nil}
+      transition = build_transition!(name: "a + b")
 
       cpnet =
         %ColouredPetriNet{
@@ -290,7 +290,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "a + b", guard: nil}
+      transition = build_transition!(name: "a + b")
 
       cpnet =
         %ColouredPetriNet{
@@ -423,7 +423,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(unit() :: {})
       ]
 
-      transition = %Transition{name: "merge", guard: nil}
+      transition = build_transition!(name: "merge")
 
       cpnet =
         %ColouredPetriNet{
@@ -546,7 +546,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "filter", guard: nil}
+      transition = build_transition!(name: "filter")
 
       cpnet =
         %ColouredPetriNet{
@@ -614,7 +614,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "filter", guard: nil}
+      transition = build_transition!(name: "filter")
 
       cpnet =
         %ColouredPetriNet{
@@ -666,7 +666,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{name: "merge", guard: nil}
+      transition = build_transition!(name: "merge")
 
       cpnet =
         %ColouredPetriNet{
@@ -766,13 +766,13 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
         colset(int() :: integer())
       ]
 
-      transition = %Transition{
-        name: "filter",
-        guard:
-          Expression.build!("""
+      transition =
+        build_transition!(
+          name: "filter",
+          guard: """
           x > 0 and Integer.mod(x, 2) === 0
-          """)
-      }
+          """
+        )
 
       cpnet =
         %ColouredPetriNet{
