@@ -8,7 +8,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
   import Ecto.Query
 
   @moduletag cpnet: :simple_sequence
-  @moduletag initial_markings: [%Marking{place: "input", tokens: ~b[2**1]}]
+  @moduletag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
 
   setup :setup_flow
   setup :setup_enactment
@@ -28,7 +28,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                version: 0
              } = get_enactment_state(enactment_server)
 
-      assert [%Marking{place: "input", tokens: ~b[2**1]}] ===
+      assert [%Marking{place: "input", tokens: ~MS[2**1]}] ===
                get_enactment_markings(enactment_server)
 
       assert match?(
@@ -39,7 +39,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                    binding_element: %BindingElement{
                      transition: "pass_through",
                      binding: [x: 1],
-                     to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                     to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
                    }
                  },
                  %Enactment.Workitem{
@@ -48,7 +48,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                    binding_element: %BindingElement{
                      transition: "pass_through",
                      binding: [x: 1],
-                     to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                     to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
                    }
                  }
                ]
@@ -66,8 +66,8 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
     test "with snapshot", %{enactment: enactment} do
       markings = [
-        %Marking{place: "input", tokens: ~b[1]},
-        %Marking{place: "output", tokens: ~b[1]}
+        %Marking{place: "input", tokens: ~MS[1]},
+        %Marking{place: "output", tokens: ~MS[1]}
       ]
 
       :snapshot
@@ -78,8 +78,8 @@ defmodule ColouredFlow.Runner.EnactmentTest do
       [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
 
       assert [
-               %Marking{place: "input", tokens: ~b[1]},
-               %Marking{place: "output", tokens: ~b[1]}
+               %Marking{place: "input", tokens: ~MS[1]},
+               %Marking{place: "output", tokens: ~MS[1]}
              ] === get_enactment_markings(enactment_server)
 
       assert [
@@ -90,7 +90,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                    transition: "pass_through",
                    binding: [x: 1],
                    to_consume: [
-                     %Marking{place: "input", tokens: ~b[1]}
+                     %Marking{place: "input", tokens: ~MS[1]}
                    ]
                  }
                }
@@ -108,18 +108,18 @@ defmodule ColouredFlow.Runner.EnactmentTest do
           BindingElement.new(
             "pass_through",
             [x: 1],
-            [%Marking{place: "input", tokens: ~b[1]}]
+            [%Marking{place: "input", tokens: ~MS[1]}]
           ),
         free_binding: [],
-        to_produce: [%Marking{place: "output", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
       })
       |> insert()
 
       [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
 
       assert [
-               %Marking{place: "input", tokens: ~b[1]},
-               %Marking{place: "output", tokens: ~b[1]}
+               %Marking{place: "input", tokens: ~MS[1]},
+               %Marking{place: "output", tokens: ~MS[1]}
              ] === get_enactment_markings(enactment_server)
 
       assert [
@@ -129,7 +129,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  binding_element: %BindingElement{
                    transition: "pass_through",
                    binding: [x: 1],
-                   to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                   to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
                  }
                }
              ] = get_enactment_workitems(enactment_server)
@@ -150,7 +150,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
             "pass_through",
             [x: 2],
             # there isn't a token `2` in the input place
-            [%Marking{place: "input", tokens: ~b[2]}]
+            [%Marking{place: "input", tokens: ~MS[2]}]
           )
         )
         |> insert()
@@ -162,7 +162,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
           BindingElement.new(
             "pass_through",
             [x: 1],
-            [%Marking{place: "input", tokens: ~b[1]}]
+            [%Marking{place: "input", tokens: ~MS[1]}]
           )
         )
         |> insert()
@@ -175,7 +175,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
             "pass_through",
             [x: 2],
             # there isn't a token `2` in the input place
-            [%Marking{place: "input", tokens: ~b[2]}]
+            [%Marking{place: "input", tokens: ~MS[2]}]
           )
         )
         |> insert()
@@ -187,7 +187,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
           BindingElement.new(
             "pass_through",
             [x: 1],
-            [%Marking{place: "input", tokens: ~b[1]}]
+            [%Marking{place: "input", tokens: ~MS[1]}]
           )
         )
         |> insert()
@@ -199,7 +199,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
           BindingElement.new(
             "pass_through",
             [x: 1],
-            [%Marking{place: "input", tokens: ~b[1]}]
+            [%Marking{place: "input", tokens: ~MS[1]}]
           )
         )
         |> insert()
@@ -213,7 +213,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
       assert %Enactment{
                enactment_id: ^enactment_id,
                version: 0,
-               markings: %{"input" => %Marking{place: "input", tokens: ~b[2**1]}}
+               markings: %{"input" => %Marking{place: "input", tokens: ~MS[2**1]}}
              } = get_enactment_state(enactment_server)
 
       # withdrawn for the binding_element is not satisfied
@@ -233,7 +233,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  binding_element: %BindingElement{
                    transition: "pass_through",
                    binding: [x: 1],
-                   to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                   to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
                  }
                },
                %Enactment.Workitem{
@@ -242,7 +242,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  binding_element: %BindingElement{
                    transition: "pass_through",
                    binding: [x: 1],
-                   to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                   to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
                  }
                }
              ] = get_enactment_workitems(enactment_server)

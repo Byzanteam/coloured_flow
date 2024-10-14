@@ -21,7 +21,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert state === calibration.state
       assert [] === calibration.to_withdraw
-      assert ~b[] === calibration.to_produce
+      assert ~MS[] === calibration.to_produce
     end
 
     test "produces binding_elements" do
@@ -29,7 +29,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}])
+        markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}])
       }
 
       calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
@@ -40,10 +40,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       binding_elemnt = %BindingElement{
         transition: "pass_through",
         binding: [x: 1],
-        to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
       }
 
-      assert ~b[2**binding_elemnt] === calibration.to_produce
+      assert ~MS[2**binding_elemnt] === calibration.to_produce
     end
 
     test "produces missing binding_elements" do
@@ -51,7 +51,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}]),
         workitems:
           to_map([
             %Enactment.Workitem{
@@ -60,7 +60,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
               binding_element: %BindingElement{
                 transition: "pass_through",
                 binding: [x: 1],
-                to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+                to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
               }
             }
           ])
@@ -74,10 +74,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       binding_elemnt = %BindingElement{
         transition: "pass_through",
         binding: [x: 1],
-        to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
       }
 
-      assert ~b[binding_elemnt] === calibration.to_produce
+      assert ~MS[binding_elemnt] === calibration.to_produce
     end
 
     test "withdraws some workitems" do
@@ -89,13 +89,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: to_map([%Marking{place: "input", tokens: ~b[]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[]}]),
         workitems: to_map([workitem])
       }
 
@@ -104,7 +104,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
 
-      assert ~b[] === calibration.to_produce
+      assert ~MS[] === calibration.to_produce
     end
 
     test "produces some binding_elements and withdraws some workitems" do
@@ -116,13 +116,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [x: 2],
-          to_consume: [%Marking{place: "input", tokens: ~b[2]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[2]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
-        markings: to_map([%Marking{place: "input", tokens: ~b[1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[1]}]),
         workitems: to_map([workitem])
       }
 
@@ -134,10 +134,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       binding_elemnt = %BindingElement{
         transition: "pass_through",
         binding: [x: 1],
-        to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+        to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
       }
 
-      assert ~b[binding_elemnt] === calibration.to_produce
+      assert ~MS[binding_elemnt] === calibration.to_produce
     end
 
     test "works with mulitple input places transition" do
@@ -150,9 +150,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           transition: "and_join",
           binding: [x: 1],
           to_consume: [
-            %Marking{place: "input1", tokens: ~b[1]},
-            %Marking{place: "input2", tokens: ~b[1]},
-            %Marking{place: "input3", tokens: ~b[1]}
+            %Marking{place: "input1", tokens: ~MS[1]},
+            %Marking{place: "input2", tokens: ~MS[1]},
+            %Marking{place: "input3", tokens: ~MS[1]}
           ]
         }
       }
@@ -161,8 +161,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         enactment_id: Ecto.UUID.generate(),
         markings:
           to_map([
-            %Marking{place: "input1", tokens: ~b[1]},
-            %Marking{place: "input2", tokens: ~b[1]}
+            %Marking{place: "input1", tokens: ~MS[1]},
+            %Marking{place: "input2", tokens: ~MS[1]}
           ]),
         workitems: to_map([workitem])
       }
@@ -171,7 +171,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
-      assert ~b[] === calibration.to_produce
+      assert ~MS[] === calibration.to_produce
     end
   end
 
@@ -179,7 +179,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
     # ```mermaid
     # flowchart LR
     #   %% colset int() :: integer()
-    #   %% ~b[3**1]
+    #   %% ~MS[3**1]
     #   i((input))
     #   o((output))
     #   pt1[pass_through_1]
@@ -197,7 +197,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -207,7 +207,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -217,7 +217,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -227,14 +227,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_2",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[2**1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[2**1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings: to_map([%Marking{place: "input", tokens: ~b[3**1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[3**1]}]),
         workitems:
           to_map([
             %Enactment.Workitem{
@@ -270,7 +270,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
     # ```mermaid
     # flowchart LR
     #   %% colset int() :: integer()
-    #   %% ~b[2**1]
+    #   %% ~MS[2**1]
     #   i((input))
     #   o((output))
     #   pt1[pass_through_1]
@@ -288,7 +288,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -298,7 +298,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -308,14 +308,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through_2",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[2**1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[2**1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: enactment_id,
         version: 0,
-        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}]),
         workitems:
           to_map([
             %Enactment.Workitem{
@@ -348,11 +348,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
     # ```mermaid
     # flowchart TB
     #   %% colset int() :: integer()
-    #   %% ~b[2**1]
+    #   %% ~MS[2**1]
     #   i1((input1))
-    #   %% ~b[1]
+    #   %% ~MS[1]
     #   i2((input2))
-    #   %% ~b[1]
+    #   %% ~MS[1]
     #   i3((input3))
     #   o((output))
     #   join[And Join]
@@ -368,9 +368,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           transition: "and_join",
           binding: [x: 1],
           to_consume: [
-            %Marking{place: "input1", tokens: ~b[1]},
-            %Marking{place: "input2", tokens: ~b[1]},
-            %Marking{place: "input3", tokens: ~b[1]}
+            %Marking{place: "input1", tokens: ~MS[1]},
+            %Marking{place: "input2", tokens: ~MS[1]},
+            %Marking{place: "input3", tokens: ~MS[1]}
           ]
         }
       }
@@ -382,9 +382,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           transition: "and_join",
           binding: [x: 1],
           to_consume: [
-            %Marking{place: "input1", tokens: ~b[1]},
-            %Marking{place: "input2", tokens: ~b[1]},
-            %Marking{place: "input3", tokens: ~b[1]}
+            %Marking{place: "input1", tokens: ~MS[1]},
+            %Marking{place: "input2", tokens: ~MS[1]},
+            %Marking{place: "input3", tokens: ~MS[1]}
           ]
         }
       }
@@ -394,9 +394,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         version: 0,
         markings:
           to_map([
-            %Marking{place: "input1", tokens: ~b[2**1]},
-            %Marking{place: "input2", tokens: ~b[1]},
-            %Marking{place: "input3", tokens: ~b[1]}
+            %Marking{place: "input1", tokens: ~MS[2**1]},
+            %Marking{place: "input2", tokens: ~MS[1]},
+            %Marking{place: "input3", tokens: ~MS[1]}
           ]),
         workitems:
           to_map([
@@ -440,27 +440,27 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "branch_2",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[2**1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[2**1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
         version: 0,
-        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}]),
         workitems: to_map([])
       }
 
       occurrence = %Occurrence{
         binding_element: b2_workitem.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "merge", tokens: ~MS[1]}]
       }
 
       expected_state = %Enactment{
         state
         | version: 1,
-          markings: to_map([%Marking{place: "merge", tokens: ~b[1]}])
+          markings: to_map([%Marking{place: "merge", tokens: ~MS[1]}])
       }
 
       calibration =
@@ -488,7 +488,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -498,7 +498,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "deferred_choice_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "place", tokens: ~MS[1]}]
         }
       }
 
@@ -507,8 +507,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         version: 0,
         markings:
           to_map([
-            %Marking{place: "input", tokens: ~b[1]},
-            %Marking{place: "place", tokens: ~b[1]}
+            %Marking{place: "input", tokens: ~MS[1]},
+            %Marking{place: "place", tokens: ~MS[1]}
           ]),
         workitems: to_map([dc1_workitem])
       }
@@ -516,13 +516,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       occurrence = %Occurrence{
         binding_element: pt_workitem.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "place", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "place", tokens: ~MS[1]}]
       }
 
       expected_state = %Enactment{
         state
         | version: 1,
-          markings: to_map([%Marking{place: "place", tokens: ~b[2**1]}])
+          markings: to_map([%Marking{place: "place", tokens: ~MS[2**1]}])
       }
 
       calibration =
@@ -537,7 +537,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                %BindingElement{
                  transition: "deferred_choice_1",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "place", tokens: ~MS[1]}]
                }
              ] === calibration.to_produce
     end
@@ -551,7 +551,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "branch_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -561,7 +561,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "thread_merge",
           binding: [],
-          to_consume: [%Marking{place: "merge", tokens: ~b[2**1]}]
+          to_consume: [%Marking{place: "merge", tokens: ~MS[2**1]}]
         }
       }
 
@@ -570,8 +570,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         version: 0,
         markings:
           to_map([
-            %Marking{place: "input", tokens: ~b[1]},
-            %Marking{place: "merge", tokens: ~b[2**1]}
+            %Marking{place: "input", tokens: ~MS[1]},
+            %Marking{place: "merge", tokens: ~MS[2**1]}
           ]),
         workitems: to_map([tm_workitem])
       }
@@ -579,13 +579,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       occurrence = %Occurrence{
         binding_element: b1_workitem.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "merge", tokens: ~MS[1]}]
       }
 
       expected_state = %Enactment{
         state
         | version: 1,
-          markings: to_map([%Marking{place: "merge", tokens: ~b[3**1]}])
+          markings: to_map([%Marking{place: "merge", tokens: ~MS[3**1]}])
       }
 
       calibration =
@@ -607,7 +607,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "branch_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -617,33 +617,33 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "branch_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
         version: 0,
-        markings: to_map([%Marking{place: "input", tokens: ~b[2**1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}]),
         workitems: to_map([])
       }
 
       b1_occurrence_1 = %Occurrence{
         binding_element: b1_workitem_1.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "merge", tokens: ~MS[1]}]
       }
 
       b1_occurrence_2 = %Occurrence{
         binding_element: b1_workitem_2.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "merge", tokens: ~MS[1]}]
       }
 
       expected_state = %Enactment{
         state
         | version: 2,
-          markings: to_map([%Marking{place: "merge", tokens: ~b[2**1]}])
+          markings: to_map([%Marking{place: "merge", tokens: ~MS[2**1]}])
       }
 
       calibration =
@@ -661,7 +661,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                %BindingElement{
                  transition: "thread_merge",
                  binding: [],
-                 to_consume: [%Marking{place: "merge", tokens: ~b[2**1]}]
+                 to_consume: [%Marking{place: "merge", tokens: ~MS[2**1]}]
                }
              ] === calibration.to_produce
     end
@@ -675,7 +675,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "branch_1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
@@ -684,8 +684,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         version: 0,
         markings:
           to_map([
-            %Marking{place: "input", tokens: ~b[1]},
-            %Marking{place: "merge", tokens: ~b[1]}
+            %Marking{place: "input", tokens: ~MS[1]},
+            %Marking{place: "merge", tokens: ~MS[1]}
           ]),
         workitems: to_map([])
       }
@@ -693,13 +693,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       b1_occurrence = %Occurrence{
         binding_element: b1_workitem.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "merge", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "merge", tokens: ~MS[1]}]
       }
 
       expected_state = %Enactment{
         state
         | version: 1,
-          markings: to_map([%Marking{place: "merge", tokens: ~b[2**1]}])
+          markings: to_map([%Marking{place: "merge", tokens: ~MS[2**1]}])
       }
 
       calibration =
@@ -714,7 +714,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                %BindingElement{
                  transition: "thread_merge",
                  binding: [],
-                 to_consume: [%Marking{place: "merge", tokens: ~b[2**1]}]
+                 to_consume: [%Marking{place: "merge", tokens: ~MS[2**1]}]
                }
              ] === calibration.to_produce
     end
@@ -728,27 +728,27 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
         version: 0,
-        markings: to_map([%Marking{place: "input", tokens: ~b[1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[1]}]),
         workitems: to_map([])
       }
 
       pt_occurrence = %Occurrence{
         binding_element: pt_workitem.binding_element,
         free_binding: [],
-        to_produce: [%Marking{place: "place", tokens: ~b[1]}]
+        to_produce: [%Marking{place: "place", tokens: ~MS[1]}]
       }
 
       expected_state = %Enactment{
         state
         | version: 1,
-          markings: to_map([%Marking{place: "place", tokens: ~b[1]}])
+          markings: to_map([%Marking{place: "place", tokens: ~MS[1]}])
       }
 
       calibration =
@@ -763,12 +763,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                %BindingElement{
                  transition: "deferred_choice_1",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "place", tokens: ~MS[1]}]
                },
                %BindingElement{
                  transition: "deferred_choice_2",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "place", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "place", tokens: ~MS[1]}]
                }
              ] === calibration.to_produce
     end
@@ -782,14 +782,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: %BindingElement{
           transition: "parallel_split",
           binding: [x: 1],
-          to_consume: [%Marking{place: "input", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
         }
       }
 
       state = %Enactment{
         enactment_id: Ecto.UUID.generate(),
         version: 0,
-        markings: to_map([%Marking{place: "input", tokens: ~b[1]}]),
+        markings: to_map([%Marking{place: "input", tokens: ~MS[1]}]),
         workitems: to_map([])
       }
 
@@ -797,8 +797,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         binding_element: ps_workitem.binding_element,
         free_binding: [],
         to_produce: [
-          %Marking{place: "place_1", tokens: ~b[1]},
-          %Marking{place: "place_2", tokens: ~b[1]}
+          %Marking{place: "place_1", tokens: ~MS[1]},
+          %Marking{place: "place_2", tokens: ~MS[1]}
         ]
       }
 
@@ -807,8 +807,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         | version: 1,
           markings:
             to_map([
-              %Marking{place: "place_1", tokens: ~b[1]},
-              %Marking{place: "place_2", tokens: ~b[1]}
+              %Marking{place: "place_1", tokens: ~MS[1]},
+              %Marking{place: "place_2", tokens: ~MS[1]}
             ])
       }
 
@@ -824,12 +824,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                %BindingElement{
                  transition: "pass_through_1",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "place_1", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "place_1", tokens: ~MS[1]}]
                },
                %BindingElement{
                  transition: "pass_through_2",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "place_2", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "place_2", tokens: ~MS[1]}]
                }
              ] === calibration.to_produce
     end

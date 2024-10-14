@@ -462,7 +462,7 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
-  Handles the sigil `~b`(short for `bag`, aka `multi_set`).
+  Handles the sigil `~MS`(that is `multi_set`).
 
   It returns a `multi_set` split by whitespace.
   Character interpolation happens for each pairs.
@@ -474,16 +474,15 @@ defmodule ColouredFlow.MultiSet do
   ## Examples
 
       iex> a = :a
-      iex> ~b[3**(1+1) 2**a 1**"a"]
+      iex> ~MS[3**(1+1) 2**a 1**"a"]
       ColouredFlow.MultiSet.from_pairs([{3, 2}, {2, :a}, {1, "a"}])
-      iex> ~b[a "a"]
+      iex> ~MS[a "a"]
       ColouredFlow.MultiSet.from_pairs([{1, :a}, {1, "a"}])
   """
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec sigil_b(term(), list(binary())) :: Macro.t()
-  defmacro sigil_b(term, modifiers)
-
-  defmacro sigil_b({:<<>>, _meta, [pairs]}, _modifiers) do
+  @spec sigil_MS(term(), list(binary())) :: Macro.t()
+  # credo:disable-for-next-line Credo.Check.Readability.FunctionNames
+  defmacro sigil_MS({:<<>>, _meta, [pairs]} = _term, _modifiers) do
     {list, is_literal?} =
       pairs
       |> String.split()
@@ -537,7 +536,7 @@ defmodule ColouredFlow.MultiSet do
 
           reraise(
             """
-            The sigils ~b only accepts pairs of the form `coefficient**value`,
+            The sigils ~MS only accepts pairs of the form `coefficient**value`,
             a literal `value`(the coefficient is 1),
             or a variable `value`(the coefficient is 1).
             """,

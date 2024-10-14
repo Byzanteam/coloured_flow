@@ -52,7 +52,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       binding_element = %BindingElement{
         transition: "filter",
         binding: [x: 2],
-        to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+        to_consume: [%Marking{place: "integer", tokens: ~MS[2]}]
       }
 
       free_binding = []
@@ -60,7 +60,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
 
       assert [] === occurrence.free_binding
-      assert [%Marking{place: "even", tokens: ~b[1**2]}] === occurrence.to_produce
+      assert [%Marking{place: "even", tokens: ~MS[1**2]}] === occurrence.to_produce
     end
 
     test "the literal arc expression" do
@@ -113,8 +113,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           transition: "merge",
           binding: [],
           to_consume: [
-            %Marking{place: "a", tokens: ~b[2**{}]},
-            %Marking{place: "b", tokens: ~b[{}]}
+            %Marking{place: "a", tokens: ~MS[2**{}]},
+            %Marking{place: "b", tokens: ~MS[{}]}
           ]
         }
 
@@ -123,7 +123,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
 
       assert [] === occurrence.free_binding
-      assert [%Marking{place: "unit", tokens: ~b[1**{}]}] === occurrence.to_produce
+      assert [%Marking{place: "unit", tokens: ~MS[1**{}]}] === occurrence.to_produce
     end
 
     test "works with multiple output places" do
@@ -178,7 +178,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           transition: transition.name,
           binding: [x: 1],
           to_consume: [
-            %Marking{place: "number", tokens: ~b[1]}
+            %Marking{place: "number", tokens: ~MS[1]}
           ]
         }
 
@@ -189,8 +189,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       assert [] === occurrence.free_binding
 
       assert [
-               %Marking{place: "one", tokens: ~b[1]},
-               %Marking{place: "another", tokens: ~b[1]}
+               %Marking{place: "one", tokens: ~MS[1]},
+               %Marking{place: "another", tokens: ~MS[1]}
              ] ===
                occurrence.to_produce
     end
@@ -271,8 +271,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
           transition: transition.name,
           binding: [dividend: 5, divisor: 2],
           to_consume: [
-            %Marking{place: "dividend", tokens: ~b[5]},
-            %Marking{place: "divisor", tokens: ~b[2]}
+            %Marking{place: "dividend", tokens: ~MS[5]},
+            %Marking{place: "divisor", tokens: ~MS[2]}
           ]
         }
 
@@ -283,8 +283,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       assert [modulo: 1, quotient: 2] === sort_binding(occurrence.free_binding)
 
       assert [
-               %Marking{place: "modulo", tokens: ~b[1]},
-               %Marking{place: "quotient", tokens: ~b[2]}
+               %Marking{place: "modulo", tokens: ~MS[1]},
+               %Marking{place: "quotient", tokens: ~MS[2]}
              ] === sort_markings(occurrence.to_produce)
     end
 
@@ -333,7 +333,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       binding_element = %BindingElement{
         transition: "filter",
         binding: [x: 2],
-        to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+        to_consume: [%Marking{place: "integer", tokens: ~MS[2]}]
       }
 
       free_binding = []
@@ -385,7 +385,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
       binding_element = %BindingElement{
         transition: "filter",
         binding: [x: 2],
-        to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+        to_consume: [%Marking{place: "integer", tokens: ~MS[2]}]
       }
 
       free_binding = []

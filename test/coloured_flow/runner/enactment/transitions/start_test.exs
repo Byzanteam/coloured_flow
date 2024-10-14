@@ -6,7 +6,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
 
   describe "start workitems" do
     @describetag cpnet: :simple_sequence
-    @describetag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
 
     setup :setup_flow
     setup :setup_enactment

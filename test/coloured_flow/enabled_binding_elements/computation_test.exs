@@ -59,17 +59,17 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                %BindingElement{
                  transition: "filter",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "integer", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "integer", tokens: ~MS[1]}]
                },
                %BindingElement{
                  transition: "filter",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "integer", tokens: ~b[1]}]
+                 to_consume: [%Marking{place: "integer", tokens: ~MS[1]}]
                },
                %BindingElement{
                  transition: "filter",
                  binding: [x: 2],
-                 to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+                 to_consume: [%Marking{place: "integer", tokens: ~MS[2]}]
                }
              ] === ebes
     end
@@ -134,32 +134,32 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "merge",
                  binding: [],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[2**{}]},
-                   %Marking{place: "b", tokens: ~b[{}]}
+                   %Marking{place: "a", tokens: ~MS[2**{}]},
+                   %Marking{place: "b", tokens: ~MS[{}]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[2**{}]},
-                   %Marking{place: "b", tokens: ~b[{}]}
+                   %Marking{place: "a", tokens: ~MS[2**{}]},
+                   %Marking{place: "b", tokens: ~MS[{}]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[2**{}]},
-                   %Marking{place: "b", tokens: ~b[{}]}
+                   %Marking{place: "a", tokens: ~MS[2**{}]},
+                   %Marking{place: "b", tokens: ~MS[{}]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[2**{}]},
-                   %Marking{place: "b", tokens: ~b[{}]}
+                   %Marking{place: "a", tokens: ~MS[2**{}]},
+                   %Marking{place: "b", tokens: ~MS[{}]}
                  ]
                }
              ] === ebes
@@ -235,48 +235,48 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "a + b",
                  binding: [a: 1, b: 4],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[1]},
-                   %Marking{place: "b", tokens: ~b[4]}
+                   %Marking{place: "a", tokens: ~MS[1]},
+                   %Marking{place: "b", tokens: ~MS[4]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 1, b: 5],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[1]},
-                   %Marking{place: "b", tokens: ~b[5]}
+                   %Marking{place: "a", tokens: ~MS[1]},
+                   %Marking{place: "b", tokens: ~MS[5]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 2, b: 4],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[2]},
-                   %Marking{place: "b", tokens: ~b[4]}
+                   %Marking{place: "a", tokens: ~MS[2]},
+                   %Marking{place: "b", tokens: ~MS[4]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 2, b: 5],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[2]},
-                   %Marking{place: "b", tokens: ~b[5]}
+                   %Marking{place: "a", tokens: ~MS[2]},
+                   %Marking{place: "b", tokens: ~MS[5]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 3, b: 4],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[3]},
-                   %Marking{place: "b", tokens: ~b[4]}
+                   %Marking{place: "a", tokens: ~MS[3]},
+                   %Marking{place: "b", tokens: ~MS[4]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 3, b: 5],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[3]},
-                   %Marking{place: "b", tokens: ~b[5]}
+                   %Marking{place: "a", tokens: ~MS[3]},
+                   %Marking{place: "b", tokens: ~MS[5]}
                  ]
                }
              ] ===
@@ -351,48 +351,48 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "a + b",
                  binding: [a: 0, b: -1],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[0]},
-                   %Marking{place: "b", tokens: ~b[1**-1]}
+                   %Marking{place: "a", tokens: ~MS[0]},
+                   %Marking{place: "b", tokens: ~MS[1**-1]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 0, b: 0],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[0]},
-                   %Marking{place: "b", tokens: ~b[0]}
+                   %Marking{place: "a", tokens: ~MS[0]},
+                   %Marking{place: "b", tokens: ~MS[0]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 0, b: 1],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[0]},
-                   %Marking{place: "b", tokens: ~b[1]}
+                   %Marking{place: "a", tokens: ~MS[0]},
+                   %Marking{place: "b", tokens: ~MS[1]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 1, b: -1],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[0]},
-                   %Marking{place: "b", tokens: ~b[1**-1]}
+                   %Marking{place: "a", tokens: ~MS[0]},
+                   %Marking{place: "b", tokens: ~MS[1**-1]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 1, b: 0],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[0]},
-                   %Marking{place: "b", tokens: ~b[0]}
+                   %Marking{place: "a", tokens: ~MS[0]},
+                   %Marking{place: "b", tokens: ~MS[0]}
                  ]
                },
                %BindingElement{
                  transition: "a + b",
                  binding: [a: 1, b: 1],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[1]},
-                   %Marking{place: "b", tokens: ~b[1]}
+                   %Marking{place: "a", tokens: ~MS[1]},
+                   %Marking{place: "b", tokens: ~MS[1]}
                  ]
                }
              ] === ebes
@@ -409,8 +409,8 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "a + b",
                  binding: [a: 1, b: 1],
                  to_consume: [
-                   %Marking{place: "a", tokens: ~b[1]},
-                   %Marking{place: "b", tokens: ~b[1]}
+                   %Marking{place: "a", tokens: ~MS[1]},
+                   %Marking{place: "b", tokens: ~MS[1]}
                  ]
                }
              ] === ebes
@@ -477,64 +477,64 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "merge",
                  binding: [n: 0, x: 1],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[0**{}]},
-                   %Marking{place: "numbers", tokens: ~b[0**1]}
+                   %Marking{place: "counter", tokens: ~MS[0**{}]},
+                   %Marking{place: "numbers", tokens: ~MS[0**1]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 0, x: 2],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[0**{}]},
-                   %Marking{place: "numbers", tokens: ~b[0**2]}
+                   %Marking{place: "counter", tokens: ~MS[0**{}]},
+                   %Marking{place: "numbers", tokens: ~MS[0**2]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 0, x: 3],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[0**{}]},
-                   %Marking{place: "numbers", tokens: ~b[0**3]}
+                   %Marking{place: "counter", tokens: ~MS[0**{}]},
+                   %Marking{place: "numbers", tokens: ~MS[0**3]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 1, x: 1],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[{}]},
-                   %Marking{place: "numbers", tokens: ~b[1]}
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[1]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 1, x: 2],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[{}]},
-                   %Marking{place: "numbers", tokens: ~b[2]}
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[2]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 1, x: 3],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[{}]},
-                   %Marking{place: "numbers", tokens: ~b[3]}
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[3]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 2, x: 1],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[2**{}]},
-                   %Marking{place: "numbers", tokens: ~b[2**1]}
+                   %Marking{place: "counter", tokens: ~MS[2**{}]},
+                   %Marking{place: "numbers", tokens: ~MS[2**1]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [n: 2, x: 2],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[2**{}]},
-                   %Marking{place: "numbers", tokens: ~b[2**2]}
+                   %Marking{place: "counter", tokens: ~MS[2**{}]},
+                   %Marking{place: "numbers", tokens: ~MS[2**2]}
                  ]
                }
              ] === ebes
@@ -588,21 +588,21 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "filter",
                  binding: [x: 1],
                  to_consume: [
-                   %Marking{place: "integer", tokens: ~b[1]}
+                   %Marking{place: "integer", tokens: ~MS[1]}
                  ]
                },
                %BindingElement{
                  transition: "filter",
                  binding: [x: 1],
                  to_consume: [
-                   %Marking{place: "integer", tokens: ~b[1]}
+                   %Marking{place: "integer", tokens: ~MS[1]}
                  ]
                },
                %BindingElement{
                  transition: "filter",
                  binding: [x: 2],
                  to_consume: [
-                   %Marking{place: "integer", tokens: ~b[2]}
+                   %Marking{place: "integer", tokens: ~MS[2]}
                  ]
                }
              ] === ebes
@@ -655,7 +655,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                %BindingElement{
                  transition: "filter",
                  binding: [x: 1],
-                 to_consume: [%Marking{place: "integer", tokens: ~b[2**1]}]
+                 to_consume: [%Marking{place: "integer", tokens: ~MS[2**1]}]
                }
              ] === ebes
     end
@@ -720,40 +720,40 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  transition: "merge",
                  binding: [c: 2, x: 0],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[2]},
-                   %Marking{place: "numbers", tokens: ~b[0**2]}
+                   %Marking{place: "counter", tokens: ~MS[2]},
+                   %Marking{place: "numbers", tokens: ~MS[0**2]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [c: 2, x: 1],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[2]},
-                   %Marking{place: "numbers", tokens: ~b[1**2]}
+                   %Marking{place: "counter", tokens: ~MS[2]},
+                   %Marking{place: "numbers", tokens: ~MS[1**2]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [c: 2, x: 2],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[2]},
-                   %Marking{place: "numbers", tokens: ~b[2**2]}
+                   %Marking{place: "counter", tokens: ~MS[2]},
+                   %Marking{place: "numbers", tokens: ~MS[2**2]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [c: 3, x: 0],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[3]},
-                   %Marking{place: "numbers", tokens: ~b[0**3]}
+                   %Marking{place: "counter", tokens: ~MS[3]},
+                   %Marking{place: "numbers", tokens: ~MS[0**3]}
                  ]
                },
                %BindingElement{
                  transition: "merge",
                  binding: [c: 3, x: 1],
                  to_consume: [
-                   %Marking{place: "counter", tokens: ~b[3]},
-                   %Marking{place: "numbers", tokens: ~b[1**3]}
+                   %Marking{place: "counter", tokens: ~MS[3]},
+                   %Marking{place: "numbers", tokens: ~MS[1**3]}
                  ]
                }
              ] === ebes
@@ -813,7 +813,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                %BindingElement{
                  transition: "filter",
                  binding: [x: 2],
-                 to_consume: [%Marking{place: "integer", tokens: ~b[2]}]
+                 to_consume: [%Marking{place: "integer", tokens: ~MS[2]}]
                }
              ] === ebes
     end

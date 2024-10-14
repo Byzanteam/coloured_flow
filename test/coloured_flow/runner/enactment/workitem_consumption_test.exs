@@ -17,7 +17,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
           transition: "pass_through",
           binding: [x: 1],
           to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
+            %Marking{place: "input", tokens: ~MS[1]}
           ]
         }
       }
@@ -29,7 +29,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
           transition: "pass_through",
           binding: [x: 1],
           to_consume: [
-            %Marking{place: "input", tokens: ~b[1]}
+            %Marking{place: "input", tokens: ~MS[1]}
           ]
         }
       }
@@ -76,17 +76,17 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
   describe "consume_tokens" do
     test "works" do
       place_markings = [
-        %Marking{place: "a", tokens: ~b[1]},
-        %Marking{place: "b", tokens: ~b[1]},
-        %Marking{place: "c", tokens: ~b[1]}
+        %Marking{place: "a", tokens: ~MS[1]},
+        %Marking{place: "b", tokens: ~MS[1]},
+        %Marking{place: "c", tokens: ~MS[1]}
       ]
 
       binding_element_1 = %BindingElement{
         transition: "t",
         binding: [],
         to_consume: [
-          %Marking{place: "a", tokens: ~b[1]},
-          %Marking{place: "b", tokens: ~b[1]}
+          %Marking{place: "a", tokens: ~MS[1]},
+          %Marking{place: "b", tokens: ~MS[1]}
         ]
       }
 
@@ -94,7 +94,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
         transition: "t",
         binding: [],
         to_consume: [
-          %Marking{place: "c", tokens: ~b[1]}
+          %Marking{place: "c", tokens: ~MS[1]}
         ]
       }
 
@@ -104,7 +104,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
                  binding_element_2
                ])
 
-      assert {:ok, %{"c" => %Marking{place: "c", tokens: ~b[1]}}} ===
+      assert {:ok, %{"c" => %Marking{place: "c", tokens: ~MS[1]}}} ===
                WorkitemConsumption.consume_tokens(to_map(place_markings), [
                  binding_element_1
                ])
@@ -112,32 +112,32 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
 
     test "tokens are consumed partially" do
       place_markings = [
-        %Marking{place: "a", tokens: ~b[2**1]}
+        %Marking{place: "a", tokens: ~MS[2**1]}
       ]
 
       binding_element = %BindingElement{
         transition: "t",
         binding: [],
         to_consume: [
-          %Marking{place: "a", tokens: ~b[1]}
+          %Marking{place: "a", tokens: ~MS[1]}
         ]
       }
 
-      assert {:ok, %{"a" => %Marking{place: "a", tokens: ~b[1]}}} ===
+      assert {:ok, %{"a" => %Marking{place: "a", tokens: ~MS[1]}}} ===
                WorkitemConsumption.consume_tokens(to_map(place_markings), [binding_element])
     end
 
     test "empty markings or binding_elements" do
       place_markings =
         to_map([
-          %Marking{place: "a", tokens: ~b[1]},
-          %Marking{place: "b", tokens: ~b[1]},
-          %Marking{place: "c", tokens: ~b[1]}
+          %Marking{place: "a", tokens: ~MS[1]},
+          %Marking{place: "b", tokens: ~MS[1]},
+          %Marking{place: "c", tokens: ~MS[1]}
         ])
 
       to_consume = [
-        %Marking{place: "a", tokens: ~b[1]},
-        %Marking{place: "b", tokens: ~b[1]}
+        %Marking{place: "a", tokens: ~MS[1]},
+        %Marking{place: "b", tokens: ~MS[1]}
       ]
 
       binding_element = %BindingElement{
@@ -154,9 +154,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
 
     test "returns unsufficient_tokens error" do
       place_markings = [
-        %Marking{place: "a", tokens: ~b[1]},
-        %Marking{place: "b", tokens: ~b[1]},
-        %Marking{place: "c", tokens: ~b[1]}
+        %Marking{place: "a", tokens: ~MS[1]},
+        %Marking{place: "b", tokens: ~MS[1]},
+        %Marking{place: "c", tokens: ~MS[1]}
       ]
 
       binding_elements = [
@@ -164,15 +164,15 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
           transition: "t",
           binding: [],
           to_consume: [
-            %Marking{place: "a", tokens: ~b[1]},
-            %Marking{place: "b", tokens: ~b[1]}
+            %Marking{place: "a", tokens: ~MS[1]},
+            %Marking{place: "b", tokens: ~MS[1]}
           ]
         },
         %BindingElement{
           transition: "t",
           binding: [],
           to_consume: [
-            %Marking{place: "c", tokens: ~b[2]}
+            %Marking{place: "c", tokens: ~MS[2]}
           ]
         }
       ]
@@ -181,16 +181,16 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
                :error,
                {
                  :unsufficient_tokens,
-                 %Marking{place: "c", tokens: ~b[1]}
+                 %Marking{place: "c", tokens: ~MS[1]}
                }
              } === WorkitemConsumption.consume_tokens(to_map(place_markings), binding_elements)
     end
 
     test "raises error when place marking is absent" do
       place_markings = [
-        %Marking{place: "a", tokens: ~b[1]},
-        %Marking{place: "b", tokens: ~b[1]},
-        %Marking{place: "c", tokens: ~b[1]}
+        %Marking{place: "a", tokens: ~MS[1]},
+        %Marking{place: "b", tokens: ~MS[1]},
+        %Marking{place: "c", tokens: ~MS[1]}
       ]
 
       binding_elements = [
@@ -198,7 +198,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
           transition: "t",
           binding: [],
           to_consume: [
-            %Marking{place: "d", tokens: ~b[2]}
+            %Marking{place: "d", tokens: ~MS[2]}
           ]
         }
       ]
