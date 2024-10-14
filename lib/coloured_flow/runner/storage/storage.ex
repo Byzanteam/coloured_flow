@@ -85,7 +85,7 @@ defmodule ColouredFlow.Runner.Storage do
   @doc """
   Returns a list of live workitems for the given enactment.
   """
-  @spec list_live_workitems(enactment_id()) :: [Workitem.t()]
+  @spec list_live_workitems(enactment_id()) :: [Workitem.t(Workitem.live_state())]
   def list_live_workitems(enactment_id) do
     Schemas.Workitem
     |> where([wi], wi.enactment_id == ^enactment_id and wi.state in @live_states)
@@ -96,7 +96,8 @@ defmodule ColouredFlow.Runner.Storage do
   @doc """
   Produces the workitems for the given enactment.
   """
-  @spec produce_workitems(enactment_id(), Enumerable.t(BindingElement.t())) :: [Workitem.t()]
+  @spec produce_workitems(enactment_id(), Enumerable.t(BindingElement.t())) ::
+          [Workitem.t(:enabled)]
   def produce_workitems(enactment_id, binding_elements) do
     workitems =
       Enum.map(binding_elements, fn binding_element ->
@@ -114,7 +115,7 @@ defmodule ColouredFlow.Runner.Storage do
     Schemas.Workitem
     |> Repo.insert_all(workitems,
       returning: true,
-      placeholders: %{now: DateTime.utc_now()}
+      placeholders: %{now: NaiveDateTime.utc_now()}
     )
     |> elem(1)
     |> Enum.map(&Schemas.Workitem.to_workitem/1)
@@ -204,7 +205,7 @@ defmodule ColouredFlow.Runner.Storage do
     |> Ecto.Multi.update_all(
       :update,
       where(Schemas.Workitem, [wi], wi.id in ^ids),
-      set: [state: target_state, updated_at: DateTime.utc_now()]
+      set: [state: target_state, updated_at: NaiveDateTime.utc_now()]
     )
     |> Ecto.Multi.run(:result, fn _repo, %{update: update} ->
       case update do
@@ -252,7 +253,7 @@ defmodule ColouredFlow.Runner.Storage do
       fn %{occurrence_entries: occurrence_entries} -> occurrence_entries end,
       placeholders: %{
         enactment_id: enactment_id,
-        now: DateTime.utc_now()
+        now: NaiveDateTime.utc_now()
       }
     )
     |> Repo.transaction()
