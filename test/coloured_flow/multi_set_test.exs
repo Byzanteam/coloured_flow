@@ -53,21 +53,22 @@ defmodule ColouredFlow.MultiSetTest do
     test "works" do
       a = :a
 
-      assert MultiSet.from_pairs([{3, 2}, {2, :a}, {1, "a"}]) === ~b[3**(1+1) 2**a 1**"a"]
-      assert MultiSet.from_pairs([{1, :a}, {1, "a"}]) === ~b(a "a")
-      assert MultiSet.from_pairs([]) === ~b()
+      assert MultiSet.from_pairs([{3, 2}, {2, :a}, {1, "a"}]) === ~MS[3**(1+1) 2**a 1**"a"]
+      assert MultiSet.from_pairs([{1, :a}, {1, "a"}]) === ~MS(a "a")
+      assert MultiSet.from_pairs([]) === ~MS()
 
-      assert_raise RuntimeError, ~r/The sigils ~b only accepts pairs/, fn ->
-        Code.eval_quoted(quote(do: ~b[URI.parse("/")]))
+      assert_raise RuntimeError, ~r/The sigils ~MS only accepts pairs/, fn ->
+        Code.eval_quoted(quote(do: ~MS[URI.parse("/")]))
       end
     end
 
     test "works with tuple" do
-      assert MultiSet.from_pairs([{2, {}}]) === ~b(2**{})
-      assert MultiSet.from_pairs([{1, {}}]) === ~b({})
+      assert MultiSet.from_pairs([{2, {}}]) === ~MS(2**{})
+      assert MultiSet.from_pairs([{1, {}}]) === ~MS({})
 
-      assert MultiSet.from_pairs([{1, {:{}, [], []}}]) === ~b({:{},[],[]})
-      assert MultiSet.from_pairs([{2, {:{}, [], []}}]) === ~b(2**{:{},[],[]})
+      item = {:{}, [], []}
+      assert MultiSet.from_pairs([{1, {:{}, [], []}}]) === ~MS(item)
+      assert MultiSet.from_pairs([{2, {:{}, [], []}}]) === ~MS(2**item)
     end
   end
 end

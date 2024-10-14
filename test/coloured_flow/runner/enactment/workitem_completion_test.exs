@@ -42,7 +42,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   %Occurrence{
                     binding_element: workitem.binding_element,
                     free_binding: [],
-                    to_produce: [%Marking{place: "output", tokens: ~b[1]}]
+                    to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 }
               ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
@@ -72,7 +72,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   %Occurrence{
                     binding_element: workitem_1.binding_element,
                     free_binding: [],
-                    to_produce: [%Marking{place: "output", tokens: ~b[1]}]
+                    to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 },
                 {
@@ -80,7 +80,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   %Occurrence{
                     binding_element: workitem_2.binding_element,
                     free_binding: [],
-                    to_produce: [%Marking{place: "output", tokens: ~b[1]}]
+                    to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 }
               ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
@@ -153,7 +153,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   %Occurrence{
                     binding_element: workitem.binding_element,
                     free_binding: [y: 1],
-                    to_produce: [%Marking{place: "output", tokens: ~b[1]}]
+                    to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 }
               ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
@@ -183,7 +183,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   %Occurrence{
                     binding_element: workitem_1.binding_element,
                     free_binding: [y: 2],
-                    to_produce: [%Marking{place: "output", tokens: ~b[2]}]
+                    to_produce: [%Marking{place: "output", tokens: ~MS[2]}]
                   }
                 },
                 {
@@ -191,7 +191,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   %Occurrence{
                     binding_element: workitem_2.binding_element,
                     free_binding: [y: 3],
-                    to_produce: [%Marking{place: "output", tokens: ~b[3]}]
+                    to_produce: [%Marking{place: "output", tokens: ~MS[3]}]
                   }
                 }
               ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)

@@ -11,7 +11,7 @@ defmodule ColouredFlow.Factory do
 
   use ExMachina.Ecto, repo: Repo
 
-  import ColouredFlow.MultiSet, only: [sigil_b: 2]
+  import ColouredFlow.MultiSet, only: :sigils
 
   def flow_factory do
     %Schemas.Flow{
@@ -54,10 +54,10 @@ defmodule ColouredFlow.Factory do
               BindingElement.new(
                 "pass_through",
                 [x: 1],
-                [%Marking{place: "integer", tokens: ~b[1]}]
+                [%Marking{place: "integer", tokens: ~MS[1]}]
               ),
             free_binding: [],
-            to_produce: [%Marking{place: "output", tokens: ~b[1**2]}]
+            to_produce: [%Marking{place: "output", tokens: ~MS[1**2]}]
           }
         }
       end
@@ -79,7 +79,7 @@ defmodule ColouredFlow.Factory do
             BindingElement.new(
               "pass_through",
               [x: 1],
-              [%Marking{place: "integer", tokens: ~b[1]}]
+              [%Marking{place: "integer", tokens: ~MS[1]}]
             )
         }
       end

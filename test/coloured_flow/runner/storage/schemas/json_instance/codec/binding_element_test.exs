@@ -12,12 +12,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.BindingElementT
         %BindingElement{
           transition: "t1",
           binding: [x: 1],
-          to_consume: [%Marking{place: "p1", tokens: ~b[1]}]
+          to_consume: [%Marking{place: "p1", tokens: ~MS[1]}]
         },
         %BindingElement{
           transition: "t1",
           binding: [x: 1, y: 2],
-          to_consume: [%Marking{place: "p1", tokens: ~b[1**2 2**3]}]
+          to_consume: [%Marking{place: "p1", tokens: ~MS[1**2 2**3]}]
         }
       ]
 

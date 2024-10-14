@@ -8,8 +8,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.MarkingTest do
   describe "codec" do
     test "works" do
       list = [
-        %Marking{place: "p1", tokens: ~b[1]},
-        %Marking{place: "p1", tokens: ~b[1**2 2**3]}
+        %Marking{place: "p1", tokens: ~MS[1]},
+        %Marking{place: "p1", tokens: ~MS[1**2 2**3]}
       ]
 
       assert_codec(list)

@@ -14,11 +14,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.OccurrenceTest 
           binding_element: %BindingElement{
             transition: "t1",
             binding: [x: 1],
-            to_consume: [%Marking{place: "p1", tokens: ~b[1]}]
+            to_consume: [%Marking{place: "p1", tokens: ~MS[1]}]
           },
           free_binding: [x: 1],
           to_produce: [
-            %Marking{place: "p2", tokens: ~b[2**1]}
+            %Marking{place: "p2", tokens: ~MS[2**1]}
           ]
         }
       ]

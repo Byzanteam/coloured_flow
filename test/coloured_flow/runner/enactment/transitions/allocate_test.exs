@@ -6,7 +6,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
 
   describe "returns the allocated workitem" do
     @describetag cpnet: :simple_sequence
-    @describetag initial_markings: [%Marking{place: "input", tokens: ~b[1]}]
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
 
     setup :setup_flow
     setup :setup_enactment
@@ -59,7 +59,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
     end
 
     @tag cpnet: :deferred_choice
-    @tag initial_markings: [%Marking{place: "place", tokens: ~b[1]}]
+    @tag initial_markings: [%Marking{place: "place", tokens: ~MS[1]}]
     test "returns UnsufficientTokensToConsume exception", %{
       enactment_server: enactment_server,
       enactment: enactment
@@ -75,11 +75,11 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
       assert %Exceptions.UnsufficientTokensToConsume{
                enactment_id: enactment.id,
                place: "place",
-               tokens: ~b[1]
+               tokens: ~MS[1]
              } === exception
     end
 
-    @tag initial_markings: [%Marking{place: "input", tokens: ~b[2**1]}]
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
     test "allocates multiple workitems", %{enactment_server: enactment_server} do
       [workitem_1, workitem_2] = get_enactment_workitems(enactment_server)
 
@@ -100,7 +100,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.AllocateTest do
     setup :start_enactment
 
     @tag cpnet: :deferred_choice
-    @tag initial_markings: [%Marking{place: "place", tokens: ~b[1]}]
+    @tag initial_markings: [%Marking{place: "place", tokens: ~MS[1]}]
     test "works", %{enactment_server: enactment_server} do
       state = get_enactment_state(enactment_server)
 

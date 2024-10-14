@@ -24,7 +24,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
   end
 
   test "persists enactment with initial_markings" do
-    markings = [%Marking{place: "p1", tokens: ~b[1]}]
+    markings = [%Marking{place: "p1", tokens: ~MS[1]}]
     built_enactment = :enactment |> build() |> enactment_with_initial_markings(markings)
     inserted = insert(built_enactment)
     enactment = Schemas.Enactment |> Repo.get(inserted.id) |> Repo.preload([:flow])
@@ -49,11 +49,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
       binding_element: %BindingElement{
         transition: "t1",
         binding: [x: 1],
-        to_consume: [%Marking{place: "p1", tokens: ~b[1]}]
+        to_consume: [%Marking{place: "p1", tokens: ~MS[1]}]
       },
       free_binding: [x: 1],
       to_produce: [
-        %Marking{place: "p2", tokens: ~b[2**1]}
+        %Marking{place: "p2", tokens: ~MS[2**1]}
       ]
     }
 
@@ -80,7 +80,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
     binding_element = %BindingElement{
       transition: "t1",
       binding: [x: 1],
-      to_consume: [%Marking{place: "p1", tokens: ~b[1]}]
+      to_consume: [%Marking{place: "p1", tokens: ~MS[1]}]
     }
 
     built_workitem = :workitem |> build() |> workitem_with_binding_element(binding_element)
@@ -101,7 +101,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.SchemaTest do
   end
 
   test "persists snapshot with markings" do
-    marking = %Marking{place: "p1", tokens: ~b[1]}
+    marking = %Marking{place: "p1", tokens: ~MS[1]}
     built_snapshot = :snapshot |> build() |> snapshot_with_markings([marking])
     inserted = insert(built_snapshot)
 
