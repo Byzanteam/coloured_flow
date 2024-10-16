@@ -15,9 +15,8 @@ defmodule ColouredFlow.Runner.Supervisor do
 
   use Supervisor
 
-  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec start_link(term()) :: Supervisor.on_start()
-  def start_link(init_arg) do
+  @spec start_link(Keyword.t()) :: Supervisor.on_start()
+  def start_link(init_arg \\ []) when is_list(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 

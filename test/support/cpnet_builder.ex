@@ -398,9 +398,7 @@ defmodule ColouredFlow.CpnetBuilder do
             [
               place: "packets_to_send",
               orientation: :p_to_t,
-              expression: """
-              bind {1, {n, d}}
-              """
+              expression: "bind {1, {n, d}}"
             ],
             [
               place: "next_send",

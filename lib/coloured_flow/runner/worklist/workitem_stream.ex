@@ -43,10 +43,18 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   * `:after_cursor` - The cursor to start listing workitems from.
   * `:limit` - The maximum number of workitems to list.
   """
-  @spec list_live(list_options()) :: {[Workitem.t()], cursor} | :end_of_stream
-  def list_live(options \\ []) do
+  @spec list_live(list_options() | Ecto.Queryable.t()) ::
+          {[Schemas.Workitem.t()], cursor} | :end_of_stream
+  def list_live(options \\ [])
+
+  def list_live(options) when is_list(options) do
     options
     |> live_query()
+    |> list_live()
+  end
+
+  def list_live(queryable) do
+    queryable
     |> Repo.all()
     |> then(fn
       [] ->
@@ -54,7 +62,6 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
 
       workitems ->
         cursor = encode_cursor(workitems |> List.last() |> Map.take([:updated_at, :id]))
-        workitems = Enum.map(workitems, &Schemas.Workitem.to_workitem/1)
 
         {workitems, cursor}
     end)

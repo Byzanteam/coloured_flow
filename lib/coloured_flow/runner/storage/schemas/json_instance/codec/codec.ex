@@ -126,7 +126,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
 
   defp do_decode({:struct, module, fields_spec}, value)
        when is_atom(module) and is_list(fields_spec) and is_map(value) do
-    fields_spec = Map.new(fields_spec, fn {key, spec} -> {Atom.to_string(key), {key, spec}} end)
+    fields_spec =
+      fields_spec
+      |> Enum.flat_map(fn {key, spec} ->
+        [{key, {key, spec}}, {Atom.to_string(key), {key, spec}}]
+      end)
+      |> Map.new()
 
     value
     |> Enum.map(fn {key, value} ->

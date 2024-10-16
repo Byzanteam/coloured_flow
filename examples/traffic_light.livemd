@@ -1,0 +1,525 @@
+# Traffic Light
+
+```elixir
+Mix.install(
+  [
+    {:coloured_flow, path: "/Users/fahchen/Projects/coloured_flow"}
+  ],
+  config: [
+    coloured_flow: [
+      {
+        ColouredFlow.Runner.Storage,
+        [repo: ExampleRepo]
+      }
+    ]
+  ]
+)
+```
+
+## Coloured Petri Net graph
+
+```mermaid
+flowchart TB
+  %% colset unit() :: {}
+
+  subgraph EW
+    %% places
+    %% ~b[{}]
+    r_ew((red_ew))
+    g_ew((green_ew))
+    y_ew((yellow_ew))
+
+    %% transitions
+    tr_ew[turn_red_ew]
+    tg_ew[turn_green_ew]
+    ty_ew[turn_yellow_ew]
+
+    r_ew --{1,u}--> tg_ew
+    tg_ew --{1,u}--> g_ew
+    g_ew --{1,u}--> ty_ew
+    ty_ew --{1,u}--> y_ew
+    y_ew --{1,u}--> tr_ew
+    tr_ew --{1,u}--> r_ew
+  end
+
+  subgraph NS
+    %% places
+    %% ~b[{}]
+    r_ns((red_ns))
+    g_ns((green_ns))
+    y_ns((yellow_ns))
+
+    %% transitions
+    tr_ns[turn_red_ns]
+    tg_ns[turn_green_ns]
+    ty_ns[turn_yellow_ns]
+
+    r_ns --{1,u}--> tg_ns
+    tg_ns --{1,u}--> g_ns
+    g_ns --{1,u}--> ty_ns
+    ty_ns --{1,u}--> y_ns
+    y_ns --{1,u}--> tr_ns
+    tr_ns --{1,u}--> r_ns
+  end
+
+  %% safe
+  %% ~b[{}]
+  s_ew((safe_ew))
+  s_ns((safe_ns))
+
+  tr_ns --{1,u}--> s_ew
+  s_ew --{1,u}--> tg_ew
+  tr_ew --{1,u}--> s_ns
+  s_ns --{1,u}--> tg_ns
+```
+
+## Setup
+
+```elixir
+defmodule ExampleRepo do
+  use Ecto.Repo,
+    otp_app: :coloured_flow,
+    adapter: Ecto.Adapters.Postgres
+end
+
+repo_pid = case ExampleRepo.start_link(url: "ecto://postgres:postgres@localhost/coloured_flow") do
+  {:ok, pid} -> pid
+  {:error, {:already_started, pid}} -> pid
+  {:error, reason} -> raise inspect(reason)
+end
+
+Ecto.Migrator.run(
+  ExampleRepo,
+  [{0, ColouredFlow.Runner.Migrations.V0}],
+  :up,
+  all: true
+)
+
+"Repo started: #{inspect(repo_pid)}"
+```
+
+```elixir
+supervisor_pid = case ColouredFlow.Runner.Supervisor.start_link() do
+  {:ok, pid} -> pid
+  {:error, {:already_started, pid}} -> pid
+  {:error, reason} -> raise inspect(reason)
+end
+
+"Runner supervisor started: #{inspect(supervisor_pid)}"
+```
+
+```elixir
+defmodule FlowDefinitionHelpers do
+  @moduledoc false
+
+  alias ColouredFlow.Definition.Action
+  alias ColouredFlow.Definition.Arc
+  alias ColouredFlow.Definition.Expression
+  alias ColouredFlow.Definition.Place
+  alias ColouredFlow.Definition.Transition
+  alias ColouredFlow.Definition.Variable
+
+  @spec build_arc!(
+          label: Arc.label(),
+          place: Place.name(),
+          transition: Transition.name(),
+          orientation: Arc.orientation(),
+          expression: binary()
+        ) :: Arc.t()
+  def build_arc!(params) do
+    params = Keyword.validate!(params, [:label, :place, :transition, :orientation, :expression])
+    expr = Expression.build!(params[:expression])
+
+    bindings =
+      case params[:orientation] do
+        :p_to_t -> Arc.build_bindings!(expr)
+        :t_to_p -> []
+      end
+
+    %Arc{
+      label: Keyword.get(params, :label),
+      place: params[:place],
+      transition: params[:transition],
+      orientation: params[:orientation],
+      expression: expr,
+      bindings: bindings
+    }
+  end
+
+  @spec build_transition_arcs!(
+          transition :: Transition.name(),
+          params_list :: [
+            label: Arc.label(),
+            place: Place.name(),
+            transition: Transition.name(),
+            orientation: Arc.orientation(),
+            expression: binary()
+          ]
+        ) :: [Arc.t()]
+  def build_transition_arcs!(transition, params_list) do
+    Enum.map(params_list, fn params ->
+      build_arc!([{:transition, transition} | params])
+    end)
+  end
+
+  @spec build_action!(
+          code: binary(),
+          inputs: [Variable.name()],
+          outputs: [Variable.name()]
+        ) :: Action.t()
+  def build_action!(params) do
+    params =
+      params
+      |> Keyword.validate!([:code, :inputs, :outputs])
+      |> Keyword.update!(:code, &Expression.build!/1)
+
+    struct!(Action, params)
+  end
+
+  @spec build_transition!(
+          name: Transition.name(),
+          guard: binary(),
+          action: Action.t()
+        ) :: Transition.t()
+  def build_transition!(params) do
+    params =
+      params
+      |> Keyword.validate!([:name, :guard, :action])
+      |> Keyword.update(:guard, nil, &Expression.build!/1)
+      |> Keyword.update(:action, nil, &build_action!/1)
+
+    struct!(Transition, params)
+  end
+end
+```
+
+```elixir
+defmodule TrafficLight do
+  alias ColouredFlow.Runner.Storage.Schemas
+  
+  def flow do
+    alias ColouredFlow.Definition.ColouredPetriNet
+    alias ColouredFlow.Definition.Place
+    alias ColouredFlow.Definition.Variable
+
+    import ColouredFlow.Notation.Colset
+
+    import FlowDefinitionHelpers
+
+    %ColouredPetriNet{
+      colour_sets: [
+        colset(unit() :: {})
+      ],
+      places:
+        Enum.map(
+          ~w[red_ew green_ew yellow_ew red_ns green_ns yellow_ns safe_ew safe_ns],
+          fn name ->
+            %Place{name: name, colour_set: :unit}
+          end
+        ),
+      transitions:
+        Enum.map(
+          ~w[turn_red_ew turn_green_ew turn_yellow_ew turn_red_ns turn_green_ns turn_yellow_ns],
+          &build_transition!(name: &1)
+        ),
+      arcs:
+        [
+          build_arc!(
+            place: "red_ew",
+            transition: "turn_green_ew",
+            orientation: :p_to_t,
+            expression: "bind {1, u}"
+          ),
+          build_arc!(
+            place: "green_ew",
+            transition: "turn_yellow_ew",
+            orientation: :t_to_p,
+            expression: "{1, u}"
+          ),
+          build_arc!(
+            place: "green_ew",
+            transition: "turn_yellow_ew",
+            orientation: :p_to_t,
+            expression: "bind {1, u}"
+          ),
+          build_arc!(
+            place: "yellow_ew",
+            transition: "turn_yellow_ew",
+            orientation: :t_to_p,
+            expression: "{1, u}"
+          ),
+          build_arc!(
+            place: "yellow_ew",
+            transition: "turn_red_ew",
+            orientation: :p_to_t,
+            expression: "bind {1, u}"
+          ),
+          build_arc!(
+            place: "red_ew",
+            transition: "turn_red_ew",
+            orientation: :t_to_p,
+            expression: "{1, u}"
+          )
+        ] ++
+          [
+            build_arc!(
+              place: "red_ns",
+              transition: "turn_green_ns",
+              orientation: :p_to_t,
+              expression: "bind {1, u}"
+            ),
+            build_arc!(
+              place: "green_ns",
+              transition: "turn_yellow_ns",
+              orientation: :t_to_p,
+              expression: "{1, u}"
+            ),
+            build_arc!(
+              place: "green_ns",
+              transition: "turn_yellow_ns",
+              orientation: :p_to_t,
+              expression: "bind {1, u}"
+            ),
+            build_arc!(
+              place: "yellow_ns",
+              transition: "turn_yellow_ns",
+              orientation: :t_to_p,
+              expression: "{1, u}"
+            ),
+            build_arc!(
+              place: "yellow_ns",
+              transition: "turn_red_ns",
+              orientation: :p_to_t,
+              expression: "bind {1, u}"
+            ),
+            build_arc!(
+              place: "red_ns",
+              transition: "turn_red_ns",
+              orientation: :t_to_p,
+              expression: "{1, u}"
+            )
+          ] ++
+          [
+            build_arc!(
+              place: "safe_ew",
+              transition: "turn_red_ns",
+              orientation: :t_to_p,
+              expression: "{1, u}"
+            ),
+            build_arc!(
+              place: "safe_ew",
+              transition: "turn_green_ew",
+              orientation: :p_to_t,
+              expression: "bind {1, u}"
+            ),
+            build_arc!(
+              place: "safe_ns",
+              transition: "turn_red_ew",
+              orientation: :t_to_p,
+              expression: "{1, u}"
+            ),
+            build_arc!(
+              place: "safe_ns",
+              transition: "turn_green_ns",
+              orientation: :p_to_t,
+              expression: "bind {1, u}"
+            )
+          ],
+      variables: [
+        %Variable{name: :u, colour_set: :unit}
+      ]
+    }
+  end
+
+  def setup_flow do
+    %Schemas.Flow{}
+    |> Ecto.Changeset.cast(
+      %{
+        name: "TrafficLight",
+        version: 1,
+        data: %{
+          definition: flow()
+        }
+      },
+      [:name, :version]
+    )
+    |> Ecto.Changeset.cast_embed(:data, with: fn schema, params ->
+      Ecto.Changeset.cast(schema, params, [:definition])
+    end)
+    |> Ecto.Changeset.unique_constraint([:name, :version])
+    |> ExampleRepo.insert!(
+      conflict_target: [:name, :version],
+      on_conflict: {:replace, [:name, :version]},
+      returning: true
+    )
+  end
+
+  def setup_enactment(flow, initial_markings) do
+    %Schemas.Enactment{}
+    |> Ecto.Changeset.cast(%{data: %{initial_markings: initial_markings}}, [])
+    |> Ecto.Changeset.put_assoc(:flow, flow)
+    |> Ecto.Changeset.cast_embed(:data, with: fn schema, params ->
+      Ecto.Changeset.cast(schema, params, [:initial_markings])
+    end)
+    |> ExampleRepo.insert!()
+  end
+end
+```
+
+```elixir
+alias ColouredFlow.Runner.Storage.Schemas
+
+import ColouredFlow.MultiSet, only: :sigils
+
+flow = TrafficLight.setup_flow()
+
+enactment = TrafficLight.setup_enactment(
+  flow,
+  [
+    %{place: "red_ew", tokens: ~MS[{}]},
+    %{place: "red_ns", tokens: ~MS[{}]},
+    %{place: "safe_ew", tokens: ~MS[{}]}
+  ]
+)
+
+{:ok, enactment_pid} = ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment.id)
+
+"Enactment(#{enactment.id}) started: #{inspect(enactment_pid)}"
+```
+
+```elixir
+defmodule WorkitemHandler do
+  use GenServer
+
+  alias ColouredFlow.Enactment.BindingElement
+
+  alias ColouredFlow.Runner.Enactment.WorkitemTransition
+  alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage.Schemas
+  alias ColouredFlow.Runner.Worklist.WorkitemStream
+
+  def start_link(init_arg) do
+    case GenServer.start_link(__MODULE__, init_arg, name: __MODULE__) do
+      {:ok, pid} ->
+        {:ok, pid}
+
+      {:error, {:already_started, pid}} ->
+        GenServer.stop(pid)
+        GenServer.start_link(__MODULE__, init_arg, name: __MODULE__)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl GenServer
+  def init(init_arg) do
+    enactment_id = Keyword.fetch!(init_arg, :enactment_id)
+
+    {:ok, %{enactment_id: enactment_id}, {:continue, :subscribe}}
+  end
+
+  @impl GenServer
+  def handle_continue(:subscribe, state) do
+    stream_task = start_stream(enactment_id: state.enactment_id)
+
+    {:noreply, Map.put(state, :stream_task, stream_task)}
+  end
+
+  @impl GenServer
+  def handle_info(
+        {
+          :workitem,
+          %Schemas.Workitem{
+            state: :enabled,
+            data: %Schemas.Workitem.Data{
+              binding_element: %BindingElement{
+                transition: "turn_green" <> _dir
+              }
+            }
+          } = workitem
+        },
+        state
+      ) do
+    {:ok, allocated_workitem} =
+      WorkitemTransition.allocate_workitem(state.enactment_id, workitem.id)
+
+    {:ok, started_workitem} =
+      WorkitemTransition.start_workitem(state.enactment_id, allocated_workitem.id)
+
+    schedule_turn_green(started_workitem, workitem.inserted_at)
+
+    {:noreply, state}
+  end
+
+  def handle_info({:turn_green, %Workitem{} = workitem}, state) do
+    {:ok, _completed_workitem} =
+      WorkitemTransition.complete_workitem(state.enactment_id, {workitem.id, []})
+
+    {:noreply, state}
+  end
+
+  def handle_info({:workitem, %Schemas.Workitem{} = workitem}, state) do
+    IO.inspect(workitem)
+
+    {:noreply, state}
+  end
+
+  for {color, duration} <- [red: 10_000, yellow: 3_000, green: 10_000] do
+    fun_name = :"schedule_turn_#{color}"
+
+    defp unquote(fun_name)(%Workitem{} = workitem, started_at) do
+      deplay =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.diff(started_at, :millisecond)
+        |> then(&Kernel.-(unquote(duration), &1))
+        |> Kernel.max(0)
+
+      Process.send_after(self(), {:turn_green, workitem}, deplay)
+    end
+  end
+
+  @delay 1000
+  defp start_stream(options) when is_list(options) do
+    import Ecto.Query
+
+    delay = Keyword.get(options, :delay, @delay)
+    enactment_id = Keyword.fetch!(options, :enactment_id)
+
+    handler = self()
+
+    Task.async(fn ->
+      stream =
+        Stream.resource(
+          fn -> nil end,
+          fn cursor ->
+            [after_cursor: cursor]
+            |> WorkitemStream.live_query()
+            |> where(enactment_id: ^enactment_id)
+            |> WorkitemStream.list_live()
+            |> case do
+              :end_of_stream ->
+                Process.sleep(delay)
+
+                {[], cursor}
+
+              {workitems, cursor} ->
+                {workitems, cursor}
+            end
+          end,
+          fn _cursor -> :ok end
+        )
+
+      stream
+      |> Stream.each(fn %Schemas.Workitem{} = workitem -> send(handler, {:workitem, workitem}) end)
+      |> Stream.run()
+    end)
+  end
+end
+
+{:ok, pid} = WorkitemHandler.start_link(enactment_id: enactment.id)
+
+"Workitem handler started: #{inspect(pid)}"
+
+:sys.get_state(enactment_pid)
+```
