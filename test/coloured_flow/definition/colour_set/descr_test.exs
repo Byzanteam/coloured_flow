@@ -63,6 +63,21 @@ defmodule ColouredFlow.Definition.ColourSet.DescrTest do
     end
   end
 
+  describe "type definitions" do
+    test "works" do
+      assert_of_descr(Descr.integer())
+      assert_of_descr(Descr.float())
+      assert_of_descr(Descr.boolean())
+      assert_of_descr(Descr.binary())
+      assert_of_descr(Descr.unit())
+      assert_of_descr(Descr.tuple([Descr.integer(), Descr.integer()]))
+      assert_of_descr(Descr.map(name: Descr.binary(), age: Descr.integer()))
+      assert_of_descr(Descr.enum([:foo, :bar]))
+      assert_of_descr(Descr.union(integer: Descr.integer(), unit: Descr.unit()))
+      assert_of_descr(Descr.list(Descr.integer()))
+    end
+  end
+
   describe "to_quoted/1" do
     test "works" do
       assert_to_quoted({:integer, []}, "integer()")
