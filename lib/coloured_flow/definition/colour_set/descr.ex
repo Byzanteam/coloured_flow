@@ -50,6 +50,38 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
 
   defp valid?(_descr), do: false
 
+  # Type definitions
+
+  @spec integer() :: t()
+  def integer, do: {:integer, []}
+
+  @spec float() :: t()
+  def float, do: {:float, []}
+
+  @spec boolean() :: t()
+  def boolean, do: {:boolean, []}
+
+  @spec binary() :: t()
+  def binary, do: {:binary, []}
+
+  @spec unit() :: t()
+  def unit, do: {:unit, []}
+
+  @spec tuple(types :: [t()]) :: t()
+  def tuple(types) when is_list(types), do: {:tuple, types}
+
+  @spec map(types :: [{atom(), t()}]) :: t()
+  def map(types) when is_list(types), do: {:map, Map.new(types)}
+
+  @spec enum(items :: [atom()]) :: t()
+  def enum(items) when is_list(items), do: {:enum, items}
+
+  @spec union(types :: [{atom(), t()}]) :: t()
+  def union(types) when is_list(types), do: {:union, Map.new(types)}
+
+  @spec list(type :: t()) :: t()
+  def list(type), do: {:list, type}
+
   @doc """
   Convert the `descr` to quoted expression.
   """
