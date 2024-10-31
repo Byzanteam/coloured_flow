@@ -3,8 +3,6 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   The workitem stream in the coloured_flow runner.
   """
 
-  alias ColouredFlow.Runner.Enactment.Workitem
-
   alias ColouredFlow.Runner.Storage.Repo
   alias ColouredFlow.Runner.Storage.Schemas
 
@@ -17,19 +15,25 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
 
   @typep cursor() :: %{updated_at: NaiveDateTime.t(), id: Schemas.Types.id()}
 
+  @live_states ColouredFlow.Runner.Enactment.Workitem.__live_states__()
   @default_limit 100
 
   @doc """
   Constructs a query to list the live workitems.
+
+  ## Options
+
+  * `:after_cursor` - The cursor to start listing workitems from.
+  * `:limit` - The maximum number of workitems to list.
   """
   @spec live_query(list_options()) :: Ecto.Query.t()
-  def live_query(options) do
+  def live_query(options \\ []) when is_list(options) do
     options = Keyword.validate!(options, [:after_cursor, :limit])
     limit = Keyword.get(options, :limit, @default_limit)
     after_cursor = options |> Keyword.get(:after_cursor) |> decode_cursor()
 
     Schemas.Workitem
-    |> where([w], w.state in ^Workitem.__live_states__())
+    |> where([w], w.state in ^@live_states)
     |> filter_by_cursor(after_cursor)
     |> order_by(asc: :updated_at, asc: :id)
     |> limit(^limit)
@@ -38,15 +42,36 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   @doc """
   Lists the live workitems.
 
-  ## Options
+  ## Examples
 
-  * `:after_cursor` - The cursor to start listing workitems from.
-  * `:limit` - The maximum number of workitems to list.
+  ```elixir
+  # build a stream to list live workitems
+  Stream.resource(
+    fn -> nil end,
+    fn cursor ->
+      [after_cursor: cursor]
+      |> WorkitemStream.live_query()
+      # filter by enactment_id if needed
+      # |> where(enactment_id: ^enactment_id)
+      |> WorkitemStream.list_live()
+      |> case do
+        :end_of_stream ->
+          # simulate a delay for the next iteration
+          Process.sleep(500)
+
+          {[], cursor}
+
+        {workitems, cursor} ->
+          {workitems, cursor}
+      end
+    end,
+    fn _cursor -> :ok end
+  )
+  ```
   """
-  @spec list_live(list_options()) :: {[Workitem.t()], cursor} | :end_of_stream
-  def list_live(options \\ []) do
-    options
-    |> live_query()
+  @spec list_live(Ecto.Queryable.t()) :: {[Schemas.Workitem.t()], cursor} | :end_of_stream
+  def list_live(queryable) do
+    queryable
     |> Repo.all()
     |> then(fn
       [] ->
@@ -54,7 +79,6 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
 
       workitems ->
         cursor = encode_cursor(workitems |> List.last() |> Map.take([:updated_at, :id]))
-        workitems = Enum.map(workitems, &Schemas.Workitem.to_workitem/1)
 
         {workitems, cursor}
     end)

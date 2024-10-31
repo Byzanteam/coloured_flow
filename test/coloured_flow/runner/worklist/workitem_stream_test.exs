@@ -7,29 +7,47 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStreamTest do
     test "works" do
       workitem = insert(:workitem)
 
-      {workitems, cursor} = WorkitemStream.list_live()
-      assert [Schemas.Workitem.to_workitem(workitem)] === workitems
-      assert :end_of_stream = WorkitemStream.list_live(after_cursor: cursor)
+      {workitems, cursor} = WorkitemStream.list_live(WorkitemStream.live_query())
+      assert [workitem] === preload_assocs(workitems)
+
+      assert :end_of_stream =
+               [after_cursor: cursor] |> WorkitemStream.live_query() |> WorkitemStream.list_live()
     end
 
     test "works with after_cursor" do
       [workitem_1, workitem_2] = insert_pair(:workitem)
 
-      {workitems, cursor} = WorkitemStream.list_live(limit: 1)
-      assert [Schemas.Workitem.to_workitem(workitem_1)] === workitems
+      {workitems, cursor} =
+        [limit: 1] |> WorkitemStream.live_query() |> WorkitemStream.list_live()
 
-      {workitems, cursor} = WorkitemStream.list_live(limit: 1, after_cursor: cursor)
-      assert [Schemas.Workitem.to_workitem(workitem_2)] === workitems
+      assert [workitem_1] === preload_assocs(workitems)
 
-      assert :end_of_stream = WorkitemStream.list_live(limit: 1, after_cursor: cursor)
+      {workitems, cursor} =
+        [limit: 1, after_cursor: cursor]
+        |> WorkitemStream.live_query()
+        |> WorkitemStream.list_live()
+
+      assert [workitem_2] === preload_assocs(workitems)
+
+      assert :end_of_stream =
+               [limit: 1, after_cursor: cursor]
+               |> WorkitemStream.live_query()
+               |> WorkitemStream.list_live()
     end
 
     test "with invalid after_cursor" do
       [workitem_1, workitem_2] = insert_pair(:workitem)
 
-      {workitems, _cursor} = WorkitemStream.list_live(limit: 2, after_cursor: "abc")
+      {workitems, _cursor} =
+        [limit: 2, after_cursor: "abc"]
+        |> WorkitemStream.live_query()
+        |> WorkitemStream.list_live()
 
-      assert Enum.map([workitem_1, workitem_2], &Schemas.Workitem.to_workitem/1) === workitems
+      assert [workitem_1, workitem_2] === preload_assocs(workitems)
     end
+  end
+
+  defp preload_assocs(workitems) do
+    Repo.preload(workitems, enactment: :flow)
   end
 end

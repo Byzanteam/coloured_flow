@@ -63,11 +63,93 @@ defmodule ColouredFlow.Definition.ColourSet.DescrTest do
     end
   end
 
+  describe "to_quoted/1" do
+    test "works" do
+      assert_to_quoted({:integer, []}, "integer()")
+      assert_to_quoted({:float, []}, "float()")
+      assert_to_quoted({:boolean, []}, "boolean()")
+      assert_to_quoted({:binary, []}, "binary()")
+      assert_to_quoted({:unit, []}, "{}")
+    end
+
+    test "tuple" do
+      assert_to_quoted(
+        {:tuple, [{:integer, []}, {:integer, []}]},
+        "{integer(), integer()}"
+      )
+
+      assert_to_quoted(
+        {:tuple, [{:integer, []}, {:integer, []}, {:integer, []}]},
+        "{integer(), integer(), integer()}"
+      )
+    end
+
+    test "map" do
+      assert_to_quoted({:map, %{name: {:binary, []}}}, "%{name: binary()}")
+
+      assert_to_quoted(
+        {:map, %{name: {:binary, []}, age: {:integer, []}}},
+        "%{name: binary(), age: integer()}"
+      )
+    end
+
+    test "enum" do
+      assert_to_quoted({:enum, [:female, :male]}, ":female | :male")
+    end
+
+    test "union" do
+      assert_to_quoted(
+        {:union, %{integer: {:integer, []}, unit: {:unit, []}}},
+        "{:integer, integer()} | {:unit, {}}"
+      )
+    end
+
+    test "list" do
+      assert_to_quoted({:list, {:integer, []}}, "list(integer())")
+      assert_to_quoted({:list, {:list, {:integer, []}}}, "list(list(integer()))")
+    end
+
+    test "complex" do
+      descr =
+        {:union,
+         %{
+           integer: {:integer, []},
+           unit: {:unit, []},
+           list: {:list, {:list, {:integer, []}}},
+           map: {
+             :map,
+             %{
+               name: {:binary, []},
+               age: {:integer, []},
+               list: {:list, {:integer, []}},
+               enum: {:enum, [:female, :male]}
+             }
+           }
+         }}
+
+      assert_to_quoted(
+        descr,
+        """
+        {:integer, integer()}
+        | {:list, list(list(integer()))}
+        | {:unit, {}}
+        | {:map, %{list: list(integer()), name: binary(), enum: :female | :male, age: integer()}}
+        """
+      )
+    end
+  end
+
   defp assert_of_descr(descr) do
     assert {:ok, descr} == Descr.of_descr(descr)
   end
 
   defp refute_of_descr(descr) do
     assert :error == Descr.of_descr(descr)
+  end
+
+  defp assert_to_quoted(descr, expected) do
+    expected = String.trim(expected)
+
+    assert expected === descr |> Descr.to_quoted() |> Macro.to_string()
   end
 end
