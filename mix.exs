@@ -41,7 +41,8 @@ defmodule ColouredFlow.MixProject do
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:jet_credo, [github: "Byzanteam/jet_credo", only: [:dev, :test], runtime: false]},
-      {:typed_structor, "~> 0.4"}
+      {:typed_structor, "~> 0.4"},
+      {:kino, "~> 0.14.1", only: [:dev, :test]}
     ]
   end
 
