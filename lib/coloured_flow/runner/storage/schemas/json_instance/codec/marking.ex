@@ -25,6 +25,10 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.Marking do
     end)
   end
 
+  defp decode_tokens(data) when is_struct(data, MultiSet) do
+    data
+  end
+
   defp decode_tokens(data) when is_list(data) do
     pairs =
       Enum.map(data, fn %{"coefficient" => coefficient, "value" => value} ->
