@@ -121,9 +121,9 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
-    # We don't need to ensure `transition_workitems` and `produce_workitems` are atomic,
+    # We don't need to ensure `withdraw_workitems` and `produce_workitems` are atomic,
     # because the gen_server will restart if the process crashes.
-    Storage.transition_workitems(calibration.to_withdraw, :withdrawn)
+    Storage.withdraw_workitems(calibration.to_withdraw)
 
     produced_workitems =
       state.enactment_id
@@ -146,7 +146,7 @@ defmodule ColouredFlow.Runner.Enactment do
       # after each `allocated_workitems` step by `calibrate_workitems`.
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
-      allocated_workitems = Storage.transition_workitems(enabled_workitems, :allocated)
+      allocated_workitems = Storage.allocate_workitems(enabled_workitems)
 
       state = %__MODULE__{
         state
@@ -180,7 +180,7 @@ defmodule ColouredFlow.Runner.Enactment do
     case pop_workitems(state, workitem_ids, :start, :allocated) do
       {:ok, allocated_workitems, workitems} ->
         allocated_workitems = to_list(allocated_workitems)
-        started_workitems = Storage.transition_workitems(allocated_workitems, :started)
+        started_workitems = Storage.start_workitems(allocated_workitems)
 
         state = %__MODULE__{
           state

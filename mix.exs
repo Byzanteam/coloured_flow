@@ -89,6 +89,10 @@ defmodule ColouredFlow.MixProject do
         ColouredFlow.Notation,
         ColouredFlow.Runner
       ],
+      groups_for_docs: [
+        workitem: &(&1[:group] == :workitem),
+        snapshot: &(&1[:group] == :snapshot)
+      ],
       before_closing_body_tag: fn
         :html ->
           """
@@ -118,7 +122,8 @@ defmodule ColouredFlow.MixProject do
 
         _ ->
           ""
-      end
+      end,
+      formatters: ["html"]
     ]
   end
 
