@@ -10,7 +10,10 @@ Mix.install(
     coloured_flow: [
       {
         ColouredFlow.Runner.Storage,
-        [repo: TrafficLight.Repo]
+        [
+          repo: TrafficLight.Repo,
+          storage: ColouredFlow.Runner.Storage.Default
+        ]
       }
     ]
   ]
