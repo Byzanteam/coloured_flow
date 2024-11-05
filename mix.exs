@@ -32,17 +32,18 @@ defmodule ColouredFlow.MixProject do
 
   defp deps do
     [
-      {:ecto, "~> 3.0"},
-      {:ecto_sql, "~> 3.12"},
-      {:postgrex, ">= 0.0.0"},
-      {:ex_machina, "~> 2.8.0", only: :test},
-      {:jason, "~> 1.0"},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
+      {:ecto, "~> 3.0"},
+      {:ecto_sql, "~> 3.12"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:ex_machina, "~> 2.8.0", only: :test},
+      {:jason, "~> 1.0"},
       {:jet_credo, [github: "Byzanteam/jet_credo", only: [:dev, :test], runtime: false]},
-      {:typed_structor, "~> 0.4"},
-      {:kino, "~> 0.14.1", only: [:dev, :test]}
+      {:kino, "~> 0.14.1", only: [:dev, :test]},
+      {:postgrex, ">= 0.0.0"},
+      {:telemetry, "~> 1.0"},
+      {:typed_structor, "~> 0.4"}
     ]
   end
 
