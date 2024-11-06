@@ -2,6 +2,46 @@
 defmodule ColouredFlow.Runner.Telemetry do
   @moduledoc """
   Telemetry integration for event metrics, logging and error reporting.
+
+  ## Enactment workitem events
+
+  `ColouredFlow.Runner` emits telemetry span events for the following workitem
+  operations during running:
+
+  - `[:coloured_flow, :runner, :enactment, :produce_workitems, :start | :stop | :exception]`
+  - `[:coloured_flow, :runner, :enactment, :allocate_workitems, :start | :stop | :exception]`
+  - `[:coloured_flow, :runner, :enactment, :start_workitems, :start | :stop | :exception]`
+  - `[:coloured_flow, :runner, :enactment, :withdraw_workitems, :start | :stop | :exception]`
+  - `[:coloured_flow, :runner, :enactment, :complete_workitems, :start | :stop | :exception]`
+
+  All workitem events share the same measurements, but their metadata will differ
+  a bit. In addition, `:exception` events will obey the `:telemetry.span/3`
+  exception event format.
+
+  | event        | measurements                      | metadata                                                               |
+  | ------------ | --------------------------------- | ---------------------------------------------------------------------- |
+  | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, additional metadata (see below)   |
+  | `:stop`      | `:duration`, `:monotonic_time`    | `:enactment_id`, `:enactment_state`                                    |
+  | `:exception` | `:duration`, `:monotonic_time`    | `:enactment_id`, `:enactment_state`, `:kind`, `:reason`, `:stacktrace` |
+
+  #### Metadata
+
+  - `:enactment_id` — The ID of the running enactment.
+  - `:enactment_state` — The current state of the enactment
+  (`t:ColouredFlow.Runner.Enactment.state/0`).
+  - `:workitems` — The workitems that were transitioned.
+
+  #### Additional metadata
+
+  The table below lists the additional metadata included in the workitem events:
+
+  | event                 | start.metadata                              | stop.metadata |
+  | --------------------- | ------------------------------------------- | ------------- |
+  | `:produce_workitems`  | `:binding_elements`                         | `:workitems`  |
+  | `:allocate_workitems` | `:workitem_ids`                             | `:workitems`  |
+  | `:start_workitems`    | `:workitem_ids`                             | `:workitems`  |
+  | `:withdraw_workitems` | `:workitem_ids`                             | `:workitems`  |
+  | `:complete_workitems` | `:workitem_ids`, `:workitem_id_and_outputs` | `:workitems`  |
   """
 
   @type event_prefix() :: :telemetry.event_prefix()

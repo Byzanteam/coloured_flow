@@ -20,6 +20,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
   alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage
+  alias ColouredFlow.Runner.Telemetry
 
   @typep enactment_id() :: Storage.enactment_id()
 
@@ -123,12 +124,26 @@ defmodule ColouredFlow.Runner.Enactment do
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
     # We don't need to ensure `withdraw_workitems` and `produce_workitems` are atomic,
     # because the gen_server will restart if the process crashes.
-    Storage.withdraw_workitems(calibration.to_withdraw)
+    with_span(
+      :withdraw_workitems,
+      state,
+      %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
+      fn ->
+        workitems = Storage.withdraw_workitems(calibration.to_withdraw)
+        {:ok, workitems, %{workitems: workitems}}
+      end
+    )
 
-    produced_workitems =
-      state.enactment_id
-      |> Storage.produce_workitems(calibration.to_produce)
-      |> to_map()
+    {:ok, produced_workitems} =
+      with_span(
+        :produce_workitems,
+        state,
+        %{binding_elements: calibration.to_produce},
+        fn ->
+          workitems = Storage.produce_workitems(state.enactment_id, calibration.to_produce)
+          {:ok, to_map(workitems), %{workitems: workitems}}
+        end
+      )
 
     %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
   end
@@ -136,60 +151,30 @@ defmodule ColouredFlow.Runner.Enactment do
   @impl GenServer
   def handle_call({:allocate_workitems, workitem_ids}, _from, %__MODULE__{} = state)
       when is_list(workitem_ids) do
-    with(
-      {:ok, enabled_workitems, workitems} <-
-        pop_workitems(state, workitem_ids, :allocate, :enabled),
-      enabled_workitems = to_list(enabled_workitems),
-      binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
-      # We don't need to remove the markings of the allocated workitems before `consume_tokens`,
-      # because we withdraw workitems that are not enabled any more
-      # after each `allocated_workitems` step by `calibrate_workitems`.
-      {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
-    ) do
-      allocated_workitems = Storage.allocate_workitems(enabled_workitems)
+    :allocate_workitems
+    |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
+      allocate_workitems(state, workitem_ids)
+    end)
+    |> case do
+      {:ok, {reply, new_state, continue}} ->
+        {:reply, reply, new_state, continue}
 
-      state = %__MODULE__{
-        state
-        | workitems: merge_maps(allocated_workitems, workitems)
-      }
-
-      {
-        :reply,
-        {:ok, allocated_workitems},
-        state,
-        {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
-      }
-    else
-      {:error, exception} when is_exception(exception) ->
-        {:reply, {:error, exception}, state}
-
-      {:error, {:unsufficient_tokens, %Marking{} = marking}} ->
-        exception =
-          Exceptions.UnsufficientTokensToConsume.exception(
-            enactment_id: state.enactment_id,
-            place: marking.place,
-            tokens: marking.tokens
-          )
-
+      {:error, exception} ->
         {:reply, {:error, exception}, state}
     end
   end
 
   def handle_call({:start_workitems, workitem_ids}, _from, %__MODULE__{} = state)
       when is_list(workitem_ids) do
-    case pop_workitems(state, workitem_ids, :start, :allocated) do
-      {:ok, allocated_workitems, workitems} ->
-        allocated_workitems = to_list(allocated_workitems)
-        started_workitems = Storage.start_workitems(allocated_workitems)
+    :start_workitems
+    |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
+      start_workitems(state, workitem_ids)
+    end)
+    |> case do
+      {:ok, {reply, new_state}} ->
+        {:reply, reply, new_state}
 
-        state = %__MODULE__{
-          state
-          | workitems: merge_maps(started_workitems, workitems)
-        }
-
-        {:reply, {:ok, started_workitems}, state}
-
-      {:error, exception} when is_exception(exception) ->
+      {:error, exception} ->
         {:reply, {:error, exception}, state}
     end
   end
@@ -201,35 +186,19 @@ defmodule ColouredFlow.Runner.Enactment do
       ) do
     workitem_ids = Enum.map(workitem_id_and_outputs, &elem(&1, 0))
 
-    with(
-      {:ok, started_workitems, workitems} <-
-        pop_workitems(state, workitem_ids, :complete, :started),
-      workitem_and_outputs =
-        Enum.map(workitem_id_and_outputs, fn {workitem_id, free_binding} ->
-          {Map.fetch!(started_workitems, workitem_id), free_binding}
-        end),
-      cpnet = Storage.get_flow_by_enactment(state.enactment_id),
-      {:ok, workitem_occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
-    ) do
-      #  wrapped in a transaction
-      completed_workitems =
-        Storage.complete_workitems(state.enactment_id, state.version, workitem_occurrences)
+    :complete_workitems
+    |> with_span(
+      state,
+      %{workitem_ids: workitem_ids, workitem_id_and_outputs: workitem_id_and_outputs},
+      fn ->
+        complete_workitems(state, workitem_ids, workitem_id_and_outputs)
+      end
+    )
+    |> case do
+      {:ok, {reply, new_state, continue}} ->
+        {:reply, reply, new_state, continue}
 
-      {
-        :reply,
-        {:ok, completed_workitems},
-        %__MODULE__{state | workitems: workitems},
-        {
-          :continue,
-          {
-            :calibrate_workitems,
-            :complete,
-            [cpnet: cpnet, workitem_occurrences: workitem_occurrences]
-          }
-        }
-      }
-    else
-      {:error, exception} when is_exception(exception) ->
+      {:error, exception} ->
         {:reply, {:error, exception}, state}
     end
   end
@@ -261,6 +230,105 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  defp allocate_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
+    with(
+      {:ok, enabled_workitems, workitems} <-
+        pop_workitems(state, workitem_ids, :allocate, :enabled),
+      enabled_workitems = to_list(enabled_workitems),
+      binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
+      # We don't need to remove the markings of the allocated workitems before `consume_tokens`,
+      # because we withdraw workitems that are not enabled any more
+      # after each `allocated_workitems` step by `calibrate_workitems`.
+      {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
+    ) do
+      allocated_workitems = Storage.allocate_workitems(enabled_workitems)
+
+      state = %__MODULE__{
+        state
+        | workitems: merge_maps(allocated_workitems, workitems)
+      }
+
+      {
+        :ok,
+        {
+          {:ok, allocated_workitems},
+          state,
+          {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
+        },
+        %{workitems: allocated_workitems}
+      }
+    else
+      {:error, exception} when is_exception(exception) ->
+        {:error, exception}
+
+      {:error, {:unsufficient_tokens, %Marking{} = marking}} ->
+        exception =
+          Exceptions.UnsufficientTokensToConsume.exception(
+            enactment_id: state.enactment_id,
+            place: marking.place,
+            tokens: marking.tokens
+          )
+
+        {:error, exception}
+    end
+  end
+
+  defp start_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
+    case pop_workitems(state, workitem_ids, :start, :allocated) do
+      {:ok, allocated_workitems, workitems} ->
+        allocated_workitems = to_list(allocated_workitems)
+        started_workitems = Storage.start_workitems(allocated_workitems)
+
+        state = %__MODULE__{
+          state
+          | workitems: merge_maps(started_workitems, workitems)
+        }
+
+        {:ok, {{:ok, started_workitems}, state}, %{workitems: started_workitems}}
+
+      {:error, exception} when is_exception(exception) ->
+        {:error, exception}
+    end
+  end
+
+  defp complete_workitems(%__MODULE__{} = state, workitem_ids, workitem_id_and_outputs)
+       when is_list(workitem_ids) do
+    with(
+      {:ok, started_workitems, workitems} <-
+        pop_workitems(state, workitem_ids, :complete, :started),
+      workitem_and_outputs =
+        Enum.map(workitem_id_and_outputs, fn {workitem_id, free_binding} ->
+          {Map.fetch!(started_workitems, workitem_id), free_binding}
+        end),
+      cpnet = Storage.get_flow_by_enactment(state.enactment_id),
+      {:ok, workitem_occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+    ) do
+      #  wrapped in a transaction
+      completed_workitems =
+        Storage.complete_workitems(state.enactment_id, state.version, workitem_occurrences)
+
+      {
+        :ok,
+        {
+          {:ok, completed_workitems},
+          %__MODULE__{state | workitems: workitems},
+          {
+            :continue,
+            {
+              :calibrate_workitems,
+              :complete,
+              [cpnet: cpnet, workitem_occurrences: workitem_occurrences]
+            }
+          }
+        },
+        %{workitems: completed_workitems}
+      }
+    else
+      {:error, exception} when is_exception(exception) ->
+        {:error, exception}
+    end
+  end
+
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
   @spec to_map(Enumerable.t(item)) :: %{Workitem.id() => item} when item: Workitem.t()
   def to_map([]), do: %{}
@@ -277,4 +345,31 @@ defmodule ColouredFlow.Runner.Enactment do
         when item: Workitem.t(), amap: %{Workitem.id() => item}
   defp merge_maps(map1, map2) when is_map(map1) and is_map(map2), do: Map.merge(map1, map2)
   defp merge_maps(list, map) when is_list(list) and is_map(map), do: merge_maps(to_map(list), map)
+
+  @spec with_span(
+          event :: atom(),
+          state(),
+          base_metadata :: Telemetry.event_metadata(),
+          span_function :: Telemetry.span_function(result, exception)
+        ) :: {:ok, result} | {:error, exception}
+        when result: var, exception: Exception.t()
+  defp with_span(event, %__MODULE__{} = state, base_metadata, span_function)
+       when is_atom(event) and is_function(span_function, 0) do
+    start_metadata =
+      Map.merge(base_metadata, %{enactment_id: state.enactment_id, enactment_state: state})
+
+    Telemetry.span([:coloured_flow, :runner, :enactment, event], start_metadata, fn ->
+      case span_function.() do
+        {:ok, result, stop_metadata} ->
+          {:ok, result, Map.merge(start_metadata, stop_metadata)}
+
+        # the extra_measurements are not used in this case, comment out for dialyzer
+        # {:ok, result, extra_measurements, stop_metadata} ->
+        #   {:ok, result, extra_measurements, Map.merge(start_metadata, stop_metadata)}
+
+        {:error, exception} ->
+          {:error, exception}
+      end
+    end)
+  end
 end
