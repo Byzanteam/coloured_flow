@@ -19,12 +19,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.ObjectTest do
     use Codec
 
     @impl Codec
-    def encode(%MyStruct{} = struct) do
+    def encode(%MyStruct{} = struct, _options) do
       %{"foo" => struct.foo}
     end
 
     @impl Codec
-    def decode(%{"foo" => foo}) do
+    def decode(%{"foo" => foo}, _options) do
       %MyStruct{foo: foo}
     end
   end
