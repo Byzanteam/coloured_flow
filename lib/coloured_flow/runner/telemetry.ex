@@ -173,4 +173,195 @@ defmodule ColouredFlow.Runner.Telemetry do
 
     Map.merge(measurements, %{duration: stop_time - start_time, monotonic_time: stop_time})
   end
+
+  require Logger
+
+  @handler_id :coloured_flow_runner_default_logger
+
+  @doc """
+  Attaches a default `Logger` handler for logging structured JSON output.
+
+  ## Options
+
+  * `:level` — The log level to use for logging output, defaults to `:info`
+  * `:encode` — Whether to encode log output as JSON, defaults to `true`
+
+  ## Examples
+
+  Attach a logger at the default `:info` level with JSON encoding:
+
+      :ok = ColouredFlow.Runner.Telemetry.attach_default_logger()
+
+  Attach a logger at the `:debug` level:
+
+      :ok = ColouredFlow.Runner.Telemetry.attach_default_logger(level: :debug)
+
+  Attach a logger without JSON encoding:
+
+      :ok = ColouredFlow.Runner.Telemetry.attach_default_logger(encode: false)
+  """
+  @spec attach_default_logger(Logger.level() | [{:level, Logger.level()}, {:encode, boolean()}]) ::
+          :ok | {:error, :already_exists}
+  def attach_default_logger(opts \\ [encode: true, level: :info])
+
+  def attach_default_logger(opts) when is_list(opts) do
+    events = [
+      [:coloured_flow, :runner, :enactment, :produce_workitems, :start],
+      [:coloured_flow, :runner, :enactment, :produce_workitems, :stop],
+      [:coloured_flow, :runner, :enactment, :produce_workitems, :exception],
+      [:coloured_flow, :runner, :enactment, :allocate_workitems, :start],
+      [:coloured_flow, :runner, :enactment, :allocate_workitems, :stop],
+      [:coloured_flow, :runner, :enactment, :allocate_workitems, :exception],
+      [:coloured_flow, :runner, :enactment, :start_workitems, :start],
+      [:coloured_flow, :runner, :enactment, :start_workitems, :stop],
+      [:coloured_flow, :runner, :enactment, :start_workitems, :exception],
+      [:coloured_flow, :runner, :enactment, :withdraw_workitems, :start],
+      [:coloured_flow, :runner, :enactment, :withdraw_workitems, :stop],
+      [:coloured_flow, :runner, :enactment, :withdraw_workitems, :exception],
+      [:coloured_flow, :runner, :enactment, :complete_workitems, :start],
+      [:coloured_flow, :runner, :enactment, :complete_workitems, :stop],
+      [:coloured_flow, :runner, :enactment, :complete_workitems, :exception]
+    ]
+
+    opts =
+      opts
+      |> Keyword.put_new(:encode, true)
+      |> Keyword.put_new(:level, :info)
+
+    :telemetry.attach_many(@handler_id, events, &__MODULE__.handle_event/4, opts)
+  end
+
+  @doc """
+  Undoes `ColouredFlow.Runner.Telemetry.attach_default_logger/1` by detaching the attached logger.
+
+  ## Examples
+
+  Detach a previously attached logger:
+
+      :ok = ColouredFlow.Runner.Telemetry.attach_default_logger()
+      :ok = ColouredFlow.Runner.Telemetry.detach_default_logger()
+
+  Attempt to detach when a logger wasn't attached:
+
+      {:error, :not_found} = ColouredFlow.Runner.Telemetry.detach_default_logger()
+  """
+  @spec detach_default_logger() :: :ok | {:error, :not_found}
+  def detach_default_logger do
+    :telemetry.detach(@handler_id)
+  end
+
+  alias ColouredFlow.Enactment.Marking
+  alias ColouredFlow.Runner.Enactment
+  alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec
+
+  @doc false
+  @spec handle_event([atom()], map(), map(), Keyword.t()) :: :ok
+  def handle_event(
+        [:coloured_flow, :runner, :enactment, operation, event],
+        measurements,
+        metadata,
+        opts
+      ) do
+    log(opts, fn ->
+      basic = build_basic(metadata.enactment_state)
+
+      common =
+        case event do
+          :start ->
+            %{event: "#{operation}:start", system_time: measurements.system_time}
+
+          :stop ->
+            %{event: "#{operation}:stop", duration: convert_duration(measurements.duration)}
+
+          :exception ->
+            %{
+              event: "#{operation}:exception",
+              error: Exception.format_banner(metadata.kind, metadata.reason, metadata.stacktrace),
+              duration: convert_duration(measurements.duration)
+            }
+        end
+
+      extra = build_extra(operation, event, metadata)
+
+      basic |> Map.merge(common) |> Map.merge(extra)
+    end)
+  end
+
+  defp build_basic(%Enactment{} = enactment_state) do
+    enactment_state
+    |> Map.take(~w[enactment_id version]a)
+    |> Map.put(
+      :markings,
+      Enum.map(enactment_state.markings, fn {_place_name, %Marking{} = marking} ->
+        Codec.Marking.encode(marking)
+      end)
+    )
+    |> Map.put(
+      :workitems,
+      Enum.map(enactment_state.workitems, fn {_workitem_id, %Workitem{} = workitem} ->
+        build_workitem(workitem)
+      end)
+    )
+  end
+
+  defp build_extra(operation, event, metadata) do
+    case {operation, event} do
+      {:produce_workitems, :start} ->
+        %{
+          binding_elements:
+            Codec.encode(
+              {:list, {:codec, Codec.BindingElement}},
+              Enum.to_list(metadata.binding_elements)
+            )
+        }
+
+      {:complete_workitems, :start} ->
+        %{
+          workitem_ids: metadata.workitem_ids,
+          workitem_id_and_outputs:
+            Map.new(metadata.workitem_id_and_outputs, fn {workitem_id, output} ->
+              {
+                workitem_id,
+                Codec.encode({:list, Codec.BindingElement.binding_codec_spec()}, output)
+              }
+            end)
+        }
+
+      {_operation, :start} ->
+        %{workitem_ids: metadata.workitem_ids}
+
+      {_operation, :stop} ->
+        %{
+          workitems: Enum.map(metadata.workitems, &build_workitem(&1))
+        }
+
+      {_operation, :exception} ->
+        %{}
+    end
+  end
+
+  defp build_workitem(%Workitem{} = workitem) do
+    %{
+      id: workitem.id,
+      state: workitem.state,
+      binding_element: Codec.BindingElement.encode(workitem.binding_element)
+    }
+  end
+
+  defp log(opts, fun) do
+    level = Keyword.fetch!(opts, :level)
+
+    Logger.log(level, fn ->
+      output = Map.put(fun.(), :source, "coloured_flow.runner")
+
+      if Keyword.fetch!(opts, :encode) do
+        Jason.encode_to_iodata!(output)
+      else
+        output
+      end
+    end)
+  end
+
+  defp convert_duration(value), do: System.convert_time_unit(value, :native, :microsecond)
 end
