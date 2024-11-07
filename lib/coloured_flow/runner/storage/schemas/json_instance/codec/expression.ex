@@ -6,12 +6,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.Expression do
   use ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec
 
   @impl Codec
-  def encode(%Expression{} = expression) do
+  def encode(%Expression{} = expression, _options) do
     %{"code" => expression.code}
   end
 
   @impl Codec
-  def decode(%{"code" => code}) do
+  def decode(%{"code" => code}, _options) do
     Expression.build!(code)
   end
 end

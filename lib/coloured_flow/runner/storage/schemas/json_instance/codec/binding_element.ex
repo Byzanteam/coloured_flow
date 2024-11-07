@@ -14,7 +14,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.BindingElement 
       ]
     }
 
-  @spec binding_codec_spec() :: Codec.codec_spec()
+  @spec binding_codec_spec() :: Codec.codec_spec(map())
   def binding_codec_spec do
     {:codec, {&encode_binding/1, &decode_binding/1}}
   end

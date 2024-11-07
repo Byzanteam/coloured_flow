@@ -34,11 +34,11 @@ defmodule ColouredFlow.Runner.CodecCase do
   end
 
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec assert_codec(module(), [term()]) :: :ok
-  def assert_codec(codec, list) do
+  @spec assert_codec(module(), Keyword.t(), [term()]) :: :ok
+  def assert_codec(codec, options \\ [], list) do
     Enum.each(list, fn colour_set ->
-      json = codec.encode(colour_set)
-      assert colour_set === codec.decode(json)
+      json = codec.encode(colour_set, options)
+      assert colour_set === codec.decode(json, options)
     end)
   end
 end

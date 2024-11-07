@@ -16,8 +16,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Object do
 
   @impl Ecto.ParameterizedType
   def init(opts) do
-    codec = Keyword.fetch!(opts, :codec)
-    Enum.into(opts, %{codec: codec})
+    {codec, options} = Keyword.pop!(opts, :codec)
+    Enum.into(opts, %{codec: codec, options: options})
   end
 
   @impl Ecto.ParameterizedType
@@ -26,8 +26,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Object do
   @impl Ecto.ParameterizedType
   def cast(nil, _params), do: {:ok, nil}
 
-  def cast(data, %{codec: codec}) when is_map(data) do
-    {:ok, codec.decode(data)}
+  def cast(data, %{codec: codec, options: options}) when is_map(data) do
+    {:ok, codec.decode(data, options)}
   end
 
   def cast(_data, _params), do: :error
@@ -35,8 +35,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Object do
   @impl Ecto.ParameterizedType
   def load(nil, _loader, _params), do: {:ok, nil}
 
-  def load(data, _loader, %{codec: codec}) when is_map(data) do
-    {:ok, codec.decode(data)}
+  def load(data, _loader, %{codec: codec, options: options}) when is_map(data) do
+    {:ok, codec.decode(data, options)}
   end
 
   def load(_data, _loader, _params), do: :error
@@ -44,8 +44,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Object do
   @impl Ecto.ParameterizedType
   def dump(nil, _loader, _params), do: {:ok, nil}
 
-  def dump(data, _dumper, %{codec: codec}) when is_struct(data) do
-    {:ok, codec.encode(data)}
+  def dump(data, _dumper, %{codec: codec, options: options}) when is_struct(data) do
+    {:ok, codec.encode(data, options)}
   end
 
   def dump(_data, _dumper, _params), do: :error

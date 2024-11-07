@@ -1,19 +1,25 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   @moduledoc false
 
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @type data() :: term()
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @type encoded_data() :: term()
+  @type options() :: Keyword.t()
+
   @doc """
   Encodes the given data into a json value.
 
   Use `map` for more extensibility when updating the data structure.
   """
-  @callback encode(struct()) :: map()
+  @callback encode(data(), options()) :: encoded_data()
 
   @doc """
   Decodes the given json value into a data struct.
 
   Use `map` for more extensibility when updating the data structure.
   """
-  @callback decode(map()) :: struct()
+  @callback decode(encoded_data(), options()) :: data()
 
   defmacro __using__(opts) do
     common_ast =
@@ -29,12 +35,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
           unquote(common_ast)
 
           @impl Codec
-          def encode(data) do
+          def encode(data, _options) do
             Codec.encode(unquote(codec_spec), data)
           end
 
           @impl Codec
-          def decode(data) do
+          def decode(data, _options) do
             Codec.decode(unquote(codec_spec), data)
           end
 
@@ -45,8 +51,6 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
         common_ast
     end
   end
-
-  alias ColouredFlow.Definition.ColourSet
 
   @typep struct_module() :: module()
   # codec_module is a module that implements the Codec behaviour
@@ -60,21 +64,23 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
            | [json_value()]
            | %{optional(binary()) => json_value()}
 
-  @type codec_spec() ::
+  @type codec_spec(value) ::
           :string
+          | :integer
           | :atom
           # set to nil when encoding and decoding
           | :ignore
-          | {:struct, struct_module(), Keyword.t(codec_spec())}
-          | {:list, codec_spec()}
+          | {:struct, struct_module(), Keyword.t(codec_spec(value))}
+          | {:list, codec_spec(value)}
           | {:codec, codec_module()}
+          | {:codec, codec_module(), Keyword.t()}
           | {:codec,
              {
-               encoder :: (ColourSet.value() -> json_value()),
-               decoder :: (json_value() -> ColourSet.value())
+               encoder :: (value -> json_value()),
+               decoder :: (json_value() -> value)
              }}
 
-  @spec encode(codec_spec(), ColourSet.value() | nil) :: json_value() | nil
+  @spec encode(codec_spec(value), value | nil) :: json_value() | nil when value: var
   def encode(_spec, nil), do: nil
 
   def encode(spec, value) do
@@ -82,6 +88,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   end
 
   defp do_encode(:string, value) when is_binary(value), do: value
+  defp do_encode(:integer, value) when is_integer(value), do: value
   defp do_encode(:atom, value) when is_atom(value), do: Atom.to_string(value)
   defp do_encode(:ignore, _value), do: nil
 
@@ -100,14 +107,18 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   end
 
   defp do_encode({:codec, module}, value) when is_atom(module) do
-    module.encode(value)
+    do_encode({:codec, module, []}, value)
+  end
+
+  defp do_encode({:codec, module, options}, value) when is_atom(module) and is_list(options) do
+    module.encode(value, options)
   end
 
   defp do_encode({:codec, {encoder, _decoder}}, value) when is_function(encoder, 1) do
     encoder.(value)
   end
 
-  @spec decode(codec_spec(), json_value() | nil) :: ColourSet.value() | nil
+  @spec decode(codec_spec(value), json_value() | nil) :: value | nil when value: var
   def decode(spec, value)
   def decode(_spec, nil), do: nil
 
@@ -116,6 +127,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   end
 
   defp do_decode(:string, value) when is_binary(value), do: value
+  defp do_decode(:integer, value) when is_integer(value), do: value
   # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
   defp do_decode(:atom, value) when is_binary(value), do: String.to_atom(value)
 
@@ -146,7 +158,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   end
 
   defp do_decode({:codec, module}, value) when is_atom(module) do
-    module.decode(value)
+    do_decode({:codec, module, []}, value)
+  end
+
+  defp do_decode({:codec, module, options}, value) when is_atom(module) and is_list(options) do
+    module.decode(value, options)
   end
 
   defp do_decode({:codec, {_encoder, decoder}}, value) when is_function(decoder, 1) do
