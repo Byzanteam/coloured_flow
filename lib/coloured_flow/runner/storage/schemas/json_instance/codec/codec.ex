@@ -66,6 +66,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
 
   @type codec_spec(value) ::
           :string
+          | :integer
           | :atom
           # set to nil when encoding and decoding
           | :ignore
@@ -87,6 +88,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   end
 
   defp do_encode(:string, value) when is_binary(value), do: value
+  defp do_encode(:integer, value) when is_integer(value), do: value
   defp do_encode(:atom, value) when is_atom(value), do: Atom.to_string(value)
   defp do_encode(:ignore, _value), do: nil
 
@@ -125,6 +127,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
   end
 
   defp do_decode(:string, value) when is_binary(value), do: value
+  defp do_decode(:integer, value) when is_integer(value), do: value
   # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
   defp do_decode(:atom, value) when is_binary(value), do: String.to_atom(value)
 
