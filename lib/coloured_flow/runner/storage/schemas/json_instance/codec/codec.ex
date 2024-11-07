@@ -46,8 +46,6 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
     end
   end
 
-  alias ColouredFlow.Definition.ColourSet
-
   @typep struct_module() :: module()
   # codec_module is a module that implements the Codec behaviour
   @typep codec_module() :: module()
@@ -60,21 +58,21 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
            | [json_value()]
            | %{optional(binary()) => json_value()}
 
-  @type codec_spec() ::
+  @type codec_spec(value) ::
           :string
           | :atom
           # set to nil when encoding and decoding
           | :ignore
-          | {:struct, struct_module(), Keyword.t(codec_spec())}
-          | {:list, codec_spec()}
+          | {:struct, struct_module(), Keyword.t(codec_spec(value))}
+          | {:list, codec_spec(value)}
           | {:codec, codec_module()}
           | {:codec,
              {
-               encoder :: (ColourSet.value() -> json_value()),
-               decoder :: (json_value() -> ColourSet.value())
+               encoder :: (value -> json_value()),
+               decoder :: (json_value() -> value)
              }}
 
-  @spec encode(codec_spec(), ColourSet.value() | nil) :: json_value() | nil
+  @spec encode(codec_spec(value), value | nil) :: json_value() | nil when value: var
   def encode(_spec, nil), do: nil
 
   def encode(spec, value) do
@@ -107,7 +105,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec do
     encoder.(value)
   end
 
-  @spec decode(codec_spec(), json_value() | nil) :: ColourSet.value() | nil
+  @spec decode(codec_spec(value), json_value() | nil) :: value | nil when value: var
   def decode(spec, value)
   def decode(_spec, nil), do: nil
 

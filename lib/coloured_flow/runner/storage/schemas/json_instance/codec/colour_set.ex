@@ -13,12 +13,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
       ]
     }
 
-  @spec value_codec_spec() :: Codec.codec_spec()
+  @spec value_codec_spec() :: Codec.codec_spec(ColourSet.value())
   def value_codec_spec do
     {:codec, {&encode_value/1, &decode_value/1}}
   end
 
-  @spec descr_codec_spec() :: Codec.codec_spec()
+  @spec descr_codec_spec() :: Codec.codec_spec(ColourSet.descr())
   def descr_codec_spec do
     {:codec, {&encode_descr/1, &decode_descr/1}}
   end
