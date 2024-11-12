@@ -6,6 +6,7 @@ defmodule ColouredFlow.DefinitionHelpers do
       alias ColouredFlow.Definition.Action
       alias ColouredFlow.Definition.Arc
       alias ColouredFlow.Definition.ColouredPetriNet
+      alias ColouredFlow.Definition.Constant
       alias ColouredFlow.Definition.Expression
       alias ColouredFlow.Definition.Place
       alias ColouredFlow.Definition.Transition
