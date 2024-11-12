@@ -19,7 +19,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   alias ColouredFlow.EnabledBindingElements.Utils
 
   alias ColouredFlow.Runner.Enactment
-  alias ColouredFlow.Runner.Enactment.Catchuping
+  alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
 
@@ -128,7 +128,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
     {steps, markings} =
       state.markings
       |> Enactment.to_list()
-      |> Catchuping.apply(occurrences)
+      |> CatchingUp.apply(occurrences)
 
     markings = Enactment.to_map(markings)
 

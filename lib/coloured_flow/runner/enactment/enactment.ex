@@ -11,7 +11,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
 
-  alias ColouredFlow.Runner.Enactment.Catchuping
+  alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -116,7 +116,7 @@ defmodule ColouredFlow.Runner.Enactment do
   defp catchup_snapshot(enactment_id, snapshot) do
     occurrences = Storage.occurrences_stream(enactment_id, snapshot.version)
 
-    {steps, markings} = Catchuping.apply(snapshot.markings, occurrences)
+    {steps, markings} = CatchingUp.apply(snapshot.markings, occurrences)
 
     %Snapshot{snapshot | version: snapshot.version + steps, markings: markings}
   end
