@@ -267,7 +267,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
             build_transition!(
               name: "pass_through",
               action: [
-                code: "{1 + x}",
+                payload: "{1 + x}",
                 inputs: [:x],
                 outputs: [:y]
               ]
@@ -469,7 +469,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
         [
           in_arc,
-          ColouredFlow.DefinitionHelpers.build_arc!(out_arc_params)
+          ColouredFlow.Definition.Helper.build_arc!(out_arc_params)
         ]
       end)
 

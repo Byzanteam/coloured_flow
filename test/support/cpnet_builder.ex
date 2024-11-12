@@ -539,7 +539,7 @@ defmodule ColouredFlow.CpnetBuilder do
           transition :: Transition.name(),
           guard: binary(),
           action: [
-            code: binary(),
+            payload: binary(),
             inputs: [Variable.name()],
             outputs: [Variable.name()]
           ]

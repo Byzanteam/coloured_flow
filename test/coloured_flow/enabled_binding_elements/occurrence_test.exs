@@ -205,7 +205,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
         build_transition!(
           name: "div and mod",
           action: [
-            code: """
+            payload: """
             quotient = div(dividend, divisor)
             modulo = Integer.mod(dividend, divisor)
 
