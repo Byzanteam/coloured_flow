@@ -1,10 +1,10 @@
-defmodule ColouredFlow.Runner.Enactment.CatchupingTest do
+defmodule ColouredFlow.Runner.Enactment.CatchingUpTest do
   use ExUnit.Case
 
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
-  alias ColouredFlow.Runner.Enactment.Catchuping
+  alias ColouredFlow.Runner.Enactment.CatchingUp
 
   import ColouredFlow.MultiSet
 
@@ -13,7 +13,7 @@ defmodule ColouredFlow.Runner.Enactment.CatchupingTest do
       current_markings = []
       occurrences = []
 
-      assert {0, []} === Catchuping.apply(current_markings, occurrences)
+      assert {0, []} === CatchingUp.apply(current_markings, occurrences)
     end
 
     test "works with consumed and produced tokens" do
@@ -40,7 +40,7 @@ defmodule ColouredFlow.Runner.Enactment.CatchupingTest do
                  %Marking{place: "b", tokens: ~MS[2**:b 1**:c]}
                ]
              } ===
-               order(Catchuping.apply(current_markings, [occurrence1]))
+               order(CatchingUp.apply(current_markings, [occurrence1]))
 
       occurrence2 = %Occurrence{
         binding_element: %BindingElement{
@@ -59,7 +59,7 @@ defmodule ColouredFlow.Runner.Enactment.CatchupingTest do
                2,
                [%Marking{place: "c", tokens: ~MS[1**:c]}]
              } ===
-               order(Catchuping.apply(current_markings, [occurrence1, occurrence2]))
+               order(CatchingUp.apply(current_markings, [occurrence1, occurrence2]))
     end
   end
 

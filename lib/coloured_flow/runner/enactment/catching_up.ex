@@ -1,6 +1,6 @@
-defmodule ColouredFlow.Runner.Enactment.Catchuping do
+defmodule ColouredFlow.Runner.Enactment.CatchingUp do
   @moduledoc """
-  Catchuping is used to update the marking of an enactment to the latest marking.
+  CatchingUp is used to update the marking of an enactment to the latest marking.
   """
 
   alias ColouredFlow.Definition.Place
