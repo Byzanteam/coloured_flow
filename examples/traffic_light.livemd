@@ -15,10 +15,21 @@ Mix.install(
           storage: ColouredFlow.Runner.Storage.Default
         ]
       }
+    ],
+    traffic_light: [
+      database_url: "ecto://postgres:postgres@localhost/coloured_flow"
     ]
   ]
 )
 ```
+
+## Preparation
+
+We assume you have a PostgreSQL database running, and the `coloured_flow` database exists.
+If not, please create the `coloured_flow` database before proceeding.
+
+The default database URL is `ecto://postgres:postgres@localhost/coloured_flow`,
+you can change it in the above setup block if your database URL is different.
 
 ## Coloured Petri Net graph
 
@@ -87,7 +98,7 @@ defmodule TrafficLight.Repo do
 end
 
 repo_pid =
-  case TrafficLight.Repo.start_link(url: "ecto://postgres:postgres@localhost/coloured_flow") do
+  case TrafficLight.Repo.start_link(url: Application.fetch_env!(:traffic_light, :database_url)) do
     {:ok, pid} -> pid
     {:error, {:already_started, pid}} -> pid
     {:error, reason} -> raise inspect(reason)
