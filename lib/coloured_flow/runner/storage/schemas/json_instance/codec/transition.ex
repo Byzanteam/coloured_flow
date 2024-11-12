@@ -15,7 +15,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.Transition do
           :struct,
           Action,
           [
-            code: {:codec, Codec.Expression},
+            payload: :string,
             inputs: {:list, :atom},
             outputs: {:list, :atom}
           ]

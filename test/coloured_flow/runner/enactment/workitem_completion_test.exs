@@ -120,7 +120,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
         :simple_sequence
         |> build_cpnet()
         |> update_transition!("pass_through",
-          action: [code: "{x + 1}", inputs: [:x], outputs: [:y]]
+          action: [payload: "{x + 1}", inputs: [:x], outputs: [:y]]
         )
         |> update_arc!({:t_to_p, "pass_through", "output"}, expression: "{1,y}")
         |> Map.update!(:variables, fn variables ->
