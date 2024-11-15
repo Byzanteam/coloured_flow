@@ -46,6 +46,17 @@ defmodule ColouredFlow.MultiSet do
   defguard is_empty(value) when is_struct(value, __MODULE__) and map_size(value.map) === 0
 
   @doc """
+  Get the coefficient of `value` in the `multi_set`.
+  If the `value` is not in the `multi_set`, a `KeyError` is raised.
+  This can be used in guards, similar to `ColouredFlow.MultiSet.coefficient/2`.
+  """
+  defmacro multi_set_coefficient(multi_set, value) do
+    quote do
+      :erlang.map_get(unquote(value), unquote(multi_set).map)
+    end
+  end
+
+  @doc """
   Returns a new `multi_set`.
 
   ## Examples

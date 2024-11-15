@@ -71,4 +71,24 @@ defmodule ColouredFlow.MultiSetTest do
       assert MultiSet.from_pairs([{2, {:{}, [], []}}]) === ~MS(2**item)
     end
   end
+
+  describe "multi_set_size" do
+    test "works" do
+      import MultiSet
+
+      markings = %{
+        "input" => ~MS[2**1]
+      }
+
+      assert match?(%{"input" => ms} when multi_set_coefficient(ms, 1) > 1, markings)
+      assert match?(%{"input" => ms} when multi_set_coefficient(ms, 1) === 2, markings)
+      refute match?(%{"input" => ms} when multi_set_coefficient(ms, 2) === 0, markings)
+
+      assert 1 === multi_set_coefficient(~MS[1], 1)
+
+      assert_raise KeyError, fn ->
+        multi_set_coefficient(~MS[1], 2)
+      end
+    end
+  end
 end
