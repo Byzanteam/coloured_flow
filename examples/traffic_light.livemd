@@ -33,6 +33,10 @@ you can change it in the above setup block if your database URL is different.
 
 ## Coloured Petri Net graph
 
+<details>
+<summary>Open to view the graph</summary>
+
+
 ```mermaid
 flowchart TB
   %% colset unit() :: {}
@@ -87,6 +91,7 @@ flowchart TB
   tr_ew --{1,u}--> s_ns
   s_ns --{1,u}--> tg_ns
 ```
+</details>
 
 ## Setup
 
