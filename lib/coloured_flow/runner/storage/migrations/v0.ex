@@ -30,6 +30,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
     create table("enactments", table_options) do
       add :id, :binary_id, primary_key: true
       add :flow_id, references("flows", type: :binary_id, on_delete: :delete_all), null: false
+      add :state, :string, null: false, default: "running"
       add :label, :text
       add :data, :jsonb, null: false
 
