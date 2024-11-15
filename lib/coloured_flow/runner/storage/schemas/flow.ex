@@ -8,7 +8,6 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Flow do
   typed_structor define_struct: false, enforce: true do
     field :id, Types.id()
     field :name, String.t()
-    field :version, pos_integer()
     field :data, %{definition: ColouredPetriNet.t()}
 
     field :inserted_at, NaiveDateTime.t()
@@ -16,7 +15,6 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Flow do
 
   schema "flows" do
     field :name, :string
-    field :version, :integer
 
     embeds_one :data, Data, primary_key: false, on_replace: :update do
       @moduledoc false

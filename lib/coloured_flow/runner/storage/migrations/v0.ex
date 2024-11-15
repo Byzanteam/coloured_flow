@@ -22,13 +22,10 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
     create table("flows", table_options) do
       add :id, :binary_id, primary_key: true
       add :name, :text, null: false
-      add :version, :integer, null: false
       add :data, :jsonb, null: false
 
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
-
-    create unique_index("flows", [:name, :version], prefix: prefix)
 
     create table("enactments", table_options) do
       add :id, :binary_id, primary_key: true
