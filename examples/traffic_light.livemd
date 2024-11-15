@@ -33,6 +33,10 @@ you can change it in the above setup block if your database URL is different.
 
 ## Coloured Petri Net graph
 
+<details>
+<summary>Open to view the graph</summary>
+
+
 ```mermaid
 flowchart TB
   %% colset unit() :: {}
@@ -87,6 +91,7 @@ flowchart TB
   tr_ew --{1,u}--> s_ns
   s_ns --{1,u}--> tg_ns
 ```
+</details>
 
 ## Setup
 
@@ -269,24 +274,18 @@ defmodule TrafficLight do
     |> Ecto.Changeset.cast(
       %{
         name: "TrafficLight",
-        version: 1,
         data: %{
           definition: flow()
         }
       },
-      [:name, :version]
+      [:name]
     )
     |> Ecto.Changeset.cast_embed(:data,
       with: fn schema, params ->
         Ecto.Changeset.cast(schema, params, [:definition])
       end
     )
-    |> Ecto.Changeset.unique_constraint([:name, :version])
-    |> TrafficLight.Repo.insert!(
-      conflict_target: [:name, :version],
-      on_conflict: {:replace, [:name, :version]},
-      returning: true
-    )
+    |> TrafficLight.Repo.insert!()
   end
 
   def setup_enactment(flow, initial_markings) do

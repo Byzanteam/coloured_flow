@@ -17,7 +17,6 @@ defmodule ColouredFlow.Factory do
     %Schemas.Flow{
       id: Ecto.UUID.generate(),
       name: sequence(:flow_name, &"flow-#{&1}"),
-      version: 1,
       data: fn -> %{definition: ColouredFlow.CpnetBuilder.build_cpnet(:simple_sequence)} end
     }
   end
