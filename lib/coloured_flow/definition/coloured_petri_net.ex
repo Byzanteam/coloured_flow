@@ -10,6 +10,7 @@ defmodule ColouredFlow.Definition.ColouredPetriNet do
   alias ColouredFlow.Definition.Constant
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Procedure
+  alias ColouredFlow.Definition.TerminationCriteria
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Definition.Variable
 
@@ -27,5 +28,7 @@ defmodule ColouredFlow.Definition.ColouredPetriNet do
     field :constants, [Constant.t()], default: []
 
     field :functions, [Procedure.t()], default: []
+
+    field :termination_criteria, TerminationCriteria.t(), enforce: false
   end
 end

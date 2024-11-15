@@ -27,7 +27,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColouredPetriNe
                value: Codec.ColourSet.value_codec_spec()
              ]
            }},
-        functions: {:list, {:codec, Codec.Procedure}}
+        functions: {:list, {:codec, Codec.Procedure}},
+        termination_criteria: {:codec, Codec.TerminationCriteria}
       ]
     }
 end

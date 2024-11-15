@@ -4,7 +4,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColouredPetriNe
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.Constant
+  alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Procedure
+  alias ColouredFlow.Definition.TerminationCriteria
 
   describe "codec" do
     test "works" do
@@ -52,6 +54,17 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColouredPetriNe
                 result: {:boolean, []}
               }
             ]
+        },
+        %{
+          simple_net
+          | termination_criteria: %TerminationCriteria{
+              markings: %TerminationCriteria.Markings{
+                expression:
+                  Expression.build!(
+                    ~S|match?(%{"output" => output_ms} when multi_set_coefficient(output_ms, unit), {})|
+                  )
+              }
+            }
         }
       ]
 
