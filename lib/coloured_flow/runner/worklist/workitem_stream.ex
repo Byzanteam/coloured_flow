@@ -28,8 +28,8 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   """
   @spec live_query(list_options()) :: Ecto.Query.t()
   def live_query(options \\ []) when is_list(options) do
-    options = Keyword.validate!(options, [:after_cursor, :limit])
-    limit = Keyword.get(options, :limit, @default_limit)
+    options = Keyword.validate!(options, [:after_cursor, limit: @default_limit])
+    limit = Keyword.fetch!(options, :limit)
     after_cursor = options |> Keyword.get(:after_cursor) |> decode_cursor()
 
     Schemas.Workitem
