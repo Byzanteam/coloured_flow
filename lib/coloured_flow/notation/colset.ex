@@ -15,14 +15,26 @@ defmodule ColouredFlow.Notation.Colset do
 
   See more examples at `ColouredFlow.Definition.ColourSet`.
   """
-  defmacro colset({:"::", _meta, [name, type]}) do
-    name = decompose_name(name)
-    type = decompose_type(type)
+  defmacro colset(declaration) do
+    {name, type} = __colset__(declaration)
 
-    Macro.escape(%ColourSet{name: name, type: type})
+    quote do
+      %ColourSet{
+        name: unquote(name),
+        type: unquote(type)
+      }
+    end
   end
 
-  defmacro colset(declaration) do
+  @spec __colset__(Macro.t()) :: {name :: Macro.t(), type :: Macro.t()}
+  def __colset__({:"::", _meta, [name, type]}) do
+    name = name |> decompose_name() |> Macro.escape()
+    type = type |> decompose_type() |> Macro.escape()
+
+    {name, type}
+  end
+
+  def __colset__(declaration) do
     raise """
     Invalid ColourSet declaration: #{type_to_string(declaration)}
     See the documentation for valid colour set declarations at `ColouredFlow.Definition.ColourSet`.
@@ -50,7 +62,7 @@ defmodule ColouredFlow.Notation.Colset do
         #{@name_example}
         """
 
-      {name, _args} ->
+      {name, []} ->
         name
 
       _other ->

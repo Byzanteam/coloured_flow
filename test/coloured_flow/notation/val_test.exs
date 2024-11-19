@@ -20,10 +20,26 @@ defmodule ColouredFlow.Notation.ValTest do
         )
       end
 
+      assert_raise RuntimeError, ~r/Invalid name for the constant: `name\(t\)`/, fn ->
+        Code.eval_quoted(
+          quote do
+            val name(t) :: string() = "Alice"
+          end
+        )
+      end
+
       assert_raise RuntimeError, ~r/Invalid colour_set for the constant/, fn ->
         Code.eval_quoted(
           quote do
             val name :: {binary(), binary()} = {"Alice", "Bob"}
+          end
+        )
+      end
+
+      assert_raise RuntimeError, ~r/Invalid colour_set for the constant: `string\(t\)`/, fn ->
+        Code.eval_quoted(
+          quote do
+            val name :: string(t) = "Alice"
           end
         )
       end
@@ -34,6 +50,23 @@ defmodule ColouredFlow.Notation.ValTest do
             val name :: string()
           end
         )
+      end
+    end
+
+    test "value refers to a variable" do
+      name = "Alice"
+
+      assert %Constant{name: :name, colour_set: :string, value: "Alice"} ===
+               val(name :: string() = name)
+
+      assert_raise CompileError, fn ->
+        Code.with_diagnostics(fn ->
+          Code.eval_quoted(
+            quote do
+              val name :: string() = name
+            end
+          )
+        end)
       end
     end
   end

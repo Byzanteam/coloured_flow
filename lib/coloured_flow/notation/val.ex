@@ -26,14 +26,27 @@ defmodule ColouredFlow.Notation.Val do
       iex> val name :: string() = "Alice"
       %ColouredFlow.Definition.Constant{name: :name, colour_set: :string, value: "Alice"}
   """
-  defmacro val({:"::", _meta1, [name, {:=, _meta2, [colour_set, value]}]}) do
-    name = decompose(name, :name)
-    colour_set = decompose(colour_set, :colour_set)
+  defmacro val(declaration) do
+    {name, colour_set, value} = __val__(declaration)
 
-    Macro.escape(%Constant{name: name, colour_set: colour_set, value: value})
+    quote do
+      %Constant{
+        name: unquote(name),
+        colour_set: unquote(colour_set),
+        value: unquote(value)
+      }
+    end
   end
 
-  defmacro val(declaration) do
+  @spec __val__(Macro.t()) :: {name :: Macro.t(), colour_set :: Macro.t(), value :: Macro.t()}
+  def __val__({:"::", _meta1, [name, {:=, _meta2, [colour_set, value]}]}) do
+    name = name |> decompose(:name) |> Macro.escape()
+    colour_set = colour_set |> decompose(:colour_set) |> Macro.escape()
+
+    {name, colour_set, value}
+  end
+
+  def __val__(declaration) do
     raise """
     Invalid Constant declaration: #{type_to_string(declaration)}
     """
@@ -48,7 +61,7 @@ defmodule ColouredFlow.Notation.Val do
         #{@example}
         """
 
-      {name, _args} ->
+      {name, []} ->
         name
 
       _other ->
