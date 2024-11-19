@@ -33,6 +33,14 @@ defmodule ColouredFlow.Notation.ColsetTest do
         )
       end
 
+      assert_raise RuntimeError, ~r/Invalid colour set name: `name\(t\)`/, fn ->
+        Code.eval_quoted(
+          quote do
+            colset name(t) :: binary()
+          end
+        )
+      end
+
       assert_raise RuntimeError, ~r/Invalid colour set type/, fn ->
         Code.eval_quoted(
           quote do

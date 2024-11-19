@@ -50,7 +50,7 @@ defmodule ColouredFlow.Notation.Colset do
         #{@name_example}
         """
 
-      {name, _args} ->
+      {name, []} ->
         name
 
       _other ->

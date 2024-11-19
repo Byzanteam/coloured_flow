@@ -18,10 +18,26 @@ defmodule ColouredFlow.Notation.VarTest do
         )
       end
 
+      assert_raise RuntimeError, ~r/Invalid name for the variable: `name\(t\)`/, fn ->
+        Code.eval_quoted(
+          quote do
+            var name(t) :: string
+          end
+        )
+      end
+
       assert_raise RuntimeError, ~r/Invalid colour_set for the variable/, fn ->
         Code.eval_quoted(
           quote do
             var name :: {binary(), binary()}
+          end
+        )
+      end
+
+      assert_raise RuntimeError, ~r/Invalid colour_set for the variable: `string\(t\)`/, fn ->
+        Code.eval_quoted(
+          quote do
+            var name :: string(t)
           end
         )
       end

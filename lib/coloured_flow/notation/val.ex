@@ -48,7 +48,7 @@ defmodule ColouredFlow.Notation.Val do
         #{@example}
         """
 
-      {name, _args} ->
+      {name, []} ->
         name
 
       _other ->
