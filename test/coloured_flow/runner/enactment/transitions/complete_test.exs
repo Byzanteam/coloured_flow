@@ -6,6 +6,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
   alias ColouredFlow.Enactment.Occurrence
 
   alias ColouredFlow.Runner.Exceptions
+  alias ColouredFlow.Runner.Storage
 
   describe "complete workitems" do
     setup :setup_flow
@@ -454,6 +455,49 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
                },
                ^dc1_workitem
              ] = get_enactment_workitems(enactment_server)
+    end
+  end
+
+  describe "snapshot" do
+    setup :setup_flow
+    setup :setup_enactment
+    setup :start_enactment
+
+    @describetag cpnet: :simple_sequence
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+
+    setup %{enactment_server: enactment_server} do
+      [%Enactment.Workitem{state: :enabled} = workitem] =
+        get_enactment_workitems(enactment_server)
+
+      workitem = start_workitem(workitem, enactment_server)
+
+      [workitem: workitem]
+    end
+
+    test "takes after completed", %{
+      enactment: enactment,
+      initial_markings: initial_markings,
+      enactment_server: enactment_server,
+      workitem: workitem
+    } do
+      {:ok, snapshot} = Storage.read_enactment_snapshot(enactment.id)
+      assert 0 === snapshot.version
+      assert initial_markings === snapshot.markings
+
+      {:ok, [completed_workitem]} =
+        GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}})
+
+      assert :completed === completed_workitem.state
+
+      # ensure that the snapshot is taken
+      get_enactment_state(enactment_server)
+
+      {:ok, new_snapshot} = Storage.read_enactment_snapshot(enactment.id)
+
+      assert 1 === new_snapshot.version
+
+      assert [%Marking{place: "output", tokens: ~MS[1]}] === new_snapshot.markings
     end
   end
 

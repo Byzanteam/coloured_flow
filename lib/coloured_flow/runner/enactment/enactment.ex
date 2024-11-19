@@ -196,11 +196,23 @@ defmodule ColouredFlow.Runner.Enactment do
     )
     |> case do
       {:ok, {reply, new_state, continue}} ->
+        :ok = GenServer.cast(self(), :take_snapshot)
+
         {:reply, reply, new_state, continue}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
     end
+  end
+
+  @impl GenServer
+  def handle_cast(:take_snapshot, %__MODULE__{} = state) do
+    Storage.take_enactment_snapshot(state.enactment_id, %Snapshot{
+      version: state.version,
+      markings: to_list(state.markings)
+    })
+
+    {:noreply, state}
   end
 
   defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition, expected_state) do
