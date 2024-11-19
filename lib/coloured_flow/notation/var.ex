@@ -24,14 +24,26 @@ defmodule ColouredFlow.Notation.Var do
       iex> var name :: string()
       %ColouredFlow.Definition.Variable{name: :name, colour_set: :string}
   """
-  defmacro var({:"::", _meta, [name, colour_set]}) do
-    name = decompose(name, :name)
-    colour_set = decompose(colour_set, :colour_set)
+  defmacro var(declaration) do
+    {name, colour_set} = __var__(declaration)
 
-    Macro.escape(%Variable{name: name, colour_set: colour_set})
+    quote do
+      %Variable{
+        name: unquote(name),
+        colour_set: unquote(colour_set)
+      }
+    end
   end
 
-  defmacro var(declaration) do
+  @spec __var__(Macro.t()) :: {name :: Macro.t(), colour_set :: Macro.t()}
+  def __var__({:"::", _meta, [name, colour_set]}) do
+    name = name |> decompose(:name) |> Macro.escape()
+    colour_set = colour_set |> decompose(:colour_set) |> Macro.escape()
+
+    {name, colour_set}
+  end
+
+  def __var__(declaration) do
     raise """
     Invalid variable declaration: #{type_to_string(declaration)}
     """
