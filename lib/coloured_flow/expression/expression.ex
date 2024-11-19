@@ -217,12 +217,10 @@ defmodule ColouredFlow.Expression do
     {left, right}
   end
 
-  @spec eval(quoted :: Macro.t(), binding :: Code.binding()) ::
+  @spec eval(quoted :: Macro.t(), binding :: Code.binding(), env :: Macro.Env.t()) ::
           {:ok, term()} | {:error, [Exception.t()]}
   # credo:disable-for-previous-line JetCredo.Checks.ExplicitAnyType
-  def eval(quoted, binding) when is_list(binding) do
-    env = Env.make_env()
-
+  def eval(quoted, binding, env \\ Env.make_env()) when is_list(binding) do
     {result, all_errors_and_warnings} =
       Code.with_diagnostics(fn ->
         try do
