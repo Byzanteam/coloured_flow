@@ -17,7 +17,7 @@ defmodule ColouredFlow.Enactment.BindingElement do
 
   @type binding() :: {Variable.name(), ColourSet.value()}
 
-  typed_structor enfore: true do
+  typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
     field :transition, Transition.name()
