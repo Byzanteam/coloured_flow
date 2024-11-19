@@ -54,4 +54,6 @@ defmodule ColouredFlow.Notation do
       ColouredFlow.Notation.Val.val(unquote(declaration))
     end
   end
+
+  defdelegate declare(inscription), to: ColouredFlow.Notation.Declaration, as: :compile
 end
