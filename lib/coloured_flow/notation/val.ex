@@ -30,7 +30,9 @@ defmodule ColouredFlow.Notation.Val do
     name = decompose(name, :name)
     colour_set = decompose(colour_set, :colour_set)
 
-    Macro.escape(%Constant{name: name, colour_set: colour_set, value: value})
+    quote do
+      %Constant{name: unquote(name), colour_set: unquote(colour_set), value: unquote(value)}
+    end
   end
 
   defmacro val(declaration) do

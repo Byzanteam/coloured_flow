@@ -52,5 +52,22 @@ defmodule ColouredFlow.Notation.ValTest do
         )
       end
     end
+
+    test "value refers to a variable" do
+      name = "Alice"
+
+      assert %Constant{name: :name, colour_set: :string, value: "Alice"} ===
+               val(name :: string() = name)
+
+      assert_raise CompileError, fn ->
+        Code.with_diagnostics(fn ->
+          Code.eval_quoted(
+            quote do
+              val name :: string() = name
+            end
+          )
+        end)
+      end
+    end
   end
 end
