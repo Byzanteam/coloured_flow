@@ -6,6 +6,7 @@ defmodule ColouredFlow.Notation.DeclarationTest do
   alias ColouredFlow.Definition.Variable
 
   alias ColouredFlow.Notation.Declaration
+  alias ColouredFlow.Notation.DuplicateDeclarationError
 
   describe "compile" do
     test "works" do
@@ -41,6 +42,22 @@ defmodule ColouredFlow.Notation.DeclarationTest do
 
       assert {:ok, [%ColourSet{name: :user, type: ^user_type}]} =
                Declaration.compile(inscription)
+    end
+
+    test "duplicate declaration" do
+      inscription = """
+      colset user :: %{id: integer(), name: binary()}
+      colset user :: %{id: integer(), name: binary(), age: integer()}
+      """
+
+      assert {:error,
+              [
+                %DuplicateDeclarationError{
+                  name: :user,
+                  type: :colset,
+                  declaration: "user :: %{id: integer(), name: binary(), age: integer()}"
+                }
+              ]} = Declaration.compile(inscription)
     end
   end
 end
