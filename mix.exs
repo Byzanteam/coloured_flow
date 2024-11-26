@@ -91,8 +91,9 @@ defmodule ColouredFlow.MixProject do
         ColouredFlow.Runner
       ],
       groups_for_docs: [
-        workitem: &(&1[:group] == :workitem),
-        snapshot: &(&1[:group] == :snapshot)
+        enactment: &(&1[:group] == :enactment),
+        snapshot: &(&1[:group] == :snapshot),
+        workitem: &(&1[:group] == :workitem)
       ],
       before_closing_body_tag: fn
         :html ->

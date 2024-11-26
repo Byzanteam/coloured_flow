@@ -30,12 +30,14 @@ defmodule ColouredFlow.Runner.Storage do
   @doc """
   Returns the initial markings for the given enactment.
   """
+  @doc group: :enactment
   @callback get_initial_markings(enactment_id()) :: [Marking.t()]
 
   @doc """
   Returns a stream of occurrences for the given enactment,
   that occurred after the given `from`(exclusive) position.
   """
+  @doc group: :enactment
   @callback occurrences_stream(enactment_id(), from :: non_neg_integer()) ::
               Enumerable.t(Occurrence.t())
 
