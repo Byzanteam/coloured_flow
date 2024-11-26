@@ -11,10 +11,23 @@ defmodule ColouredFlow.Definition.TerminationCriteria.Markings do
   typed_structor do
     plugin TypedStructor.Plugins.DocFields
 
+    # NOTE (fahchen): Should we put `markings` into a context, like `Termination`?
+    # Then, we retrieve the markings by `var!(markings, Termination)`.
+    # We can use this to prevent conflicting variables from different contexts.
+
     field :expression, Expression.t(),
       doc: """
       The expression used to evaluate the criteria. It should return a boolean value.
       If `nil` is given, it will always return `false`.
+
+      ## Binding:
+
+      The expression should only use the `:markings` variable and constants.
+      If the constants include a `:markings` constant, it will be overwritten
+      by the `markings` variable.
+
+      The `:markings` variable is a map with the place name as the key and
+      the marking as the value. It follows the format `%{Place.name() => Marking.tokens()}`.
 
       ## Examples:
 
@@ -23,7 +36,7 @@ defmodule ColouredFlow.Definition.TerminationCriteria.Markings do
       ```elixir
       unit = {}
 
-      match?(%{"output" => output_ms} when multi_set_coefficient(output_ms, unit), markings)
+      match?(%{"output" => output_ms} when multi_set_coefficient(output_ms, unit) > 0, markings)
       ```
 
       The enactment will be terminated:
