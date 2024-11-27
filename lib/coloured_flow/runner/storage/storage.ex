@@ -42,6 +42,24 @@ defmodule ColouredFlow.Runner.Storage do
               Enumerable.t(Occurrence.t())
 
   @doc """
+  The enactment is terminated, and the corresponding enactment will be stopped.
+  There are three types of termination:
+
+  | Type | Description |
+  |------|-------------|
+  | `:implicit` | If there are no more enabled workitems currently or in the future. |
+  | `:explicit` | When the user-defined termination criteria are met. |
+  | `:force` | The enactment is terminated forcibly by the user. |
+  """
+  @doc group: :enactment
+  @callback terminate_enactment(
+              enactment_id(),
+              type :: :implicit | :explicit | :force,
+              final_markings :: [Marking.t()],
+              options :: [message: String.t()]
+            ) :: :ok
+
+  @doc """
   Returns a list of live workitems for the given enactment.
   """
   @doc group: :workitem
@@ -99,6 +117,17 @@ defmodule ColouredFlow.Runner.Storage do
           Enumerable.t(Occurrence.t())
   def occurrences_stream(enactment_id, from) do
     __storage__().occurrences_stream(enactment_id, from)
+  end
+
+  @doc false
+  @spec terminate_enactment(
+          enactment_id(),
+          type :: :implicit | :explicit | :force,
+          final_markings :: [Marking.t()],
+          options :: [message: String.t()]
+        ) :: :ok
+  def terminate_enactment(enactment_id, type, final_markings, options) do
+    __storage__().terminate_enactment(enactment_id, type, final_markings, options)
   end
 
   @doc false

@@ -30,6 +30,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
       @moduledoc false
 
       field :initial_markings, {:array, Object}, codec: Codec.Marking
+      field :final_markings, {:array, Object}, codec: Codec.Marking
     end
 
     has_many :steps, Occurrence

@@ -4,11 +4,13 @@ defmodule ColouredFlow.Runner.Storage.Repo do
   @repo_functions [
     all: 1,
     get!: 2,
+    get_by!: 2,
     get_by: 2,
     insert!: 2,
     insert_all: 3,
     one!: 1,
     transaction: 1,
+    update!: 1,
     update_all: 2
   ]
 

@@ -3,15 +3,42 @@ defmodule ColouredFlow.Runner.Enactment do
   Each process instance represents one individual enactment of the process, using its
   own process instance data, and which is (normally) capable of independent control
   and audit as it progresses towards completion or termination.
+
+  ## State
+
+  ```mermaid
+  ---
+  title: The state machine of the enactment
+  ---
+  stateDiagram-v2
+      direction LR
+
+      [*] --> running
+
+      running --> terminated
+      running --> exception
+      exception --> running
+      exception --> terminated
+
+      terminated --> [*]
+  ```
+
+  The enactment can be transitioned through several states:
+  - `:running` - The enactment is running.
+  - `:exception` - An exception occurred during the enactment, and the corresponding enactment will be stopped.
+  - `:terminated` - The enactment is terminated via `:implicit`, `:explicit`, or `:force`.
+
   """
 
   use GenServer
   use TypedStructor
 
+  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
 
   alias ColouredFlow.Runner.Enactment.CatchingUp
+  alias ColouredFlow.Runner.Enactment.EnactmentTermination
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -24,8 +51,10 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @typep enactment_id() :: Storage.enactment_id()
 
+  @typedoc "The markings map of the enactment."
   @type markings() :: %{Place.name() => Marking.t()}
-  @type workitems() :: %{Workitem.id() => Workitem.t()}
+  @typedoc "The live workitems map of the enactment."
+  @type workitems() :: %{Workitem.id() => Workitem.t(Workitem.live_state())}
 
   typed_structor type_name: :state, enforce: true do
     @typedoc "The state of the enactment."
@@ -98,7 +127,11 @@ defmodule ColouredFlow.Runner.Enactment do
     calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
     state = apply_calibration(calibration)
 
-    {:noreply, state}
+    # try to terminate at the start
+    case check_termination(state, cpnet) do
+      {:stop, _type} -> {:stop, :normal, state}
+      :cont -> {:noreply, state}
+    end
   end
 
   def handle_continue(
@@ -109,7 +142,18 @@ defmodule ColouredFlow.Runner.Enactment do
     calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
 
-    {:noreply, state}
+    case transition do
+      :complete ->
+        cpnet = Storage.get_flow_by_enactment(state.enactment_id)
+        # try to terminate when the transition is `:complete`
+        case check_termination(state, cpnet) do
+          {:stop, _type} -> {:stop, :normal, state}
+          :cont -> {:noreply, state}
+        end
+
+      _other ->
+        {:noreply, state}
+    end
   end
 
   @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
@@ -146,6 +190,30 @@ defmodule ColouredFlow.Runner.Enactment do
       )
 
     %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
+  end
+
+  # `:explicit` takes priority over `:implicit`
+  @spec check_termination(state(), ColouredPetriNet.t()) :: {:stop, :explicit | :implicit} | :cont
+  defp check_termination(%__MODULE__{} = state, cpnet) do
+    import EnactmentTermination
+
+    markings = to_list(state.markings)
+
+    with(
+      :cont <- check_explicit_termination(cpnet.termination_criteria, markings),
+      :cont <- check_implicit_termination(to_list(state.workitems))
+    ) do
+      :cont
+    else
+      {:stop, type} when type in [:explicit, :implicit] ->
+        :ok = Storage.terminate_enactment(state.enactment_id, type, markings, [])
+
+        {:stop, type}
+
+      {:error, _exceptions} ->
+        # TODO: handle exceptions
+        :cont
+    end
   end
 
   @impl GenServer
