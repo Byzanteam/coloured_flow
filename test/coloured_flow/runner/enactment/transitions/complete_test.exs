@@ -179,7 +179,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
     @tag cpnet: :simple_sequence
     @tag out_arc_expression: ~S[{2, x}]
-    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
     test "consumes and produces tokens", %{enactment_server: enactment_server} do
       previous_markings = get_enactment_markings(enactment_server)
 
@@ -193,8 +193,12 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
       markings = get_enactment_markings(enactment_server)
 
-      assert [%Marking{place: "input", tokens: ~MS[1]}] === previous_markings
-      assert [%Marking{place: "output", tokens: ~MS[2**1]}] === markings
+      assert [%Marking{place: "input", tokens: ~MS[2**1]}] === previous_markings
+
+      assert [
+               %Marking{place: "input", tokens: ~MS[1]},
+               %Marking{place: "output", tokens: ~MS[2**1]}
+             ] === markings
     end
   end
 
@@ -303,9 +307,9 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     setup :setup_enactment
     setup :start_enactment
 
-    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
     test "works", %{enactment_server: enactment_server} do
-      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = enactment_server |> get_enactment_workitems() |> hd()
       workitem = start_workitem(workitem, enactment_server)
       outputs = [y: 2]
 
@@ -329,8 +333,10 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
                |> Repo.all()
                |> Enum.map(&Schemas.Occurrence.to_occurrence/1)
 
-      assert [%Marking{place: "output", tokens: ~MS[2**1]}] ===
-               get_enactment_markings(enactment_server)
+      assert [
+               %Marking{place: "input", tokens: ~MS[1]},
+               %Marking{place: "output", tokens: ~MS[2**1]}
+             ] === get_enactment_markings(enactment_server)
     end
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
@@ -464,11 +470,12 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     setup :start_enactment
 
     @describetag cpnet: :simple_sequence
-    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
 
     setup %{enactment_server: enactment_server} do
-      [%Enactment.Workitem{state: :enabled} = workitem] =
-        get_enactment_workitems(enactment_server)
+      %Enactment.Workitem{state: :enabled} =
+        workitem =
+        enactment_server |> get_enactment_workitems() |> hd
 
       workitem = start_workitem(workitem, enactment_server)
 
@@ -497,7 +504,10 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
       assert 1 === new_snapshot.version
 
-      assert [%Marking{place: "output", tokens: ~MS[1]}] === new_snapshot.markings
+      assert [
+               %Marking{place: "input", tokens: ~MS[1]},
+               %Marking{place: "output", tokens: ~MS[1]}
+             ] === new_snapshot.markings
     end
   end
 

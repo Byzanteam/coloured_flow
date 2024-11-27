@@ -70,6 +70,19 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
+  @impl ColouredFlow.Runner.Storage
+  def terminate_enactment(enactment_id, _type, final_markings, _options) do
+    enactment = Repo.get_by!(Schemas.Enactment, id: enactment_id, state: :running)
+    data = Map.put(enactment.data, :final_markings, final_markings)
+
+    enactment
+    |> Ecto.Changeset.change(state: :terminated)
+    |> Ecto.Changeset.put_embed(:data, data)
+    |> Repo.update!()
+
+    :ok
+  end
+
   @live_states Workitem.__live_states__()
 
   @impl ColouredFlow.Runner.Storage

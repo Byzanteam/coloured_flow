@@ -27,7 +27,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
 
     belongs_to :workitem, Workitem
 
-    embeds_one :data, Data, primary_key: false, on_replace: :update do
+    embeds_one :data, Data, primary_key: false, on_replace: :delete do
       @moduledoc false
 
       field :occurrence, Object, codec: Codec.Occurrence

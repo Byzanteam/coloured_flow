@@ -25,7 +25,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
     belongs_to :enactment, Enactment
     field :state, Ecto.Enum, values: states
 
-    embeds_one :data, Data, primary_key: false, on_replace: :update do
+    embeds_one :data, Data, primary_key: false, on_replace: :delete do
       @moduledoc false
 
       field :binding_element, Object, codec: Codec.BindingElement

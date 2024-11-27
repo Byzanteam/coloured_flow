@@ -11,6 +11,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
     field :id, Types.id()
     field :flow_id, Types.id()
     field :flow, Types.association(Flow.t())
+    field :state, :running | :exception | :terminated, default: :running
     field :label, String.t(), enforce: false
     field :data, %{initial_markings: [Marking.t()]}
     field :steps, Types.association([Occurrence.t()])
@@ -22,12 +23,14 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
   schema "enactments" do
     belongs_to :flow, Flow
 
+    field :state, Ecto.Enum, values: [:running, :exception, :terminated], default: :running
     field :label, :string
 
-    embeds_one :data, Data, primary_key: false, on_replace: :update do
+    embeds_one :data, Data, primary_key: false, on_replace: :delete do
       @moduledoc false
 
       field :initial_markings, {:array, Object}, codec: Codec.Marking
+      field :final_markings, {:array, Object}, codec: Codec.Marking
     end
 
     has_many :steps, Occurrence

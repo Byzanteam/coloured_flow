@@ -24,7 +24,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
 
     field :version, :integer
 
-    embeds_one :data, Data, primary_key: false, on_replace: :update do
+    embeds_one :data, Data, primary_key: false, on_replace: :delete do
       @moduledoc false
 
       field :markings, {:array, Object}, codec: Codec.Marking
