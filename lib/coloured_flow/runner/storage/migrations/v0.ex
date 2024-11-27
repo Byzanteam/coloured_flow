@@ -15,6 +15,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
   def change(opts \\ []) do
     prefix = Keyword.get(opts, :prefix, @prefix)
     table_options = Keyword.put(@table_options, :prefix, prefix)
+    index_options = [prefix: prefix]
 
     execute "CREATE SCHEMA IF NOT EXISTS #{prefix}",
             "DROP SCHEMA IF EXISTS #{prefix} CASCADE"
@@ -49,6 +50,8 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       timestamps(@timestamps_opts)
     end
 
+    create index("workitems", [:enactment_id, :state], index_options)
+
     create table("occurrences", table_options) do
       add :enactment_id, references("enactments", type: :binary_id, on_delete: :delete_all),
         null: false,
@@ -65,6 +68,8 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
 
+    create index("occurrences", [:enactment_id, :step_number], index_options)
+
     create table("snapshots", table_options) do
       add :enactment_id, references("enactments", type: :binary_id, on_delete: :delete_all),
         primary_key: true,
@@ -75,6 +80,8 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
 
       timestamps(@timestamps_opts)
     end
+
+    create index("occurrences", [:enactment_id], index_options)
 
     :ok
   end
