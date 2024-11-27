@@ -16,7 +16,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Flow do
   schema "flows" do
     field :name, :string
 
-    embeds_one :data, Data, primary_key: false, on_replace: :update do
+    embeds_one :data, Data, primary_key: false, on_replace: :delete do
       @moduledoc false
 
       field :definition, Object, codec: Codec.ColouredPetriNet

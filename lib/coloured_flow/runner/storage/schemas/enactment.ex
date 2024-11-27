@@ -26,7 +26,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
     field :state, Ecto.Enum, values: [:running, :exception, :terminated], default: :running
     field :label, :string
 
-    embeds_one :data, Data, primary_key: false, on_replace: :update do
+    embeds_one :data, Data, primary_key: false, on_replace: :delete do
       @moduledoc false
 
       field :initial_markings, {:array, Object}, codec: Codec.Marking
