@@ -311,14 +311,4 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
              )
     end
   end
-
-  defp wait_enactment_to_stop!(enactment_server, reason \\ :normal) do
-    ref = Process.monitor(enactment_server)
-
-    receive do
-      {:DOWN, ^ref, :process, ^enactment_server, ^reason} -> :ok
-    after
-      500 -> flunk("Enactment server is expected to stop, but it's still running")
-    end
-  end
 end
