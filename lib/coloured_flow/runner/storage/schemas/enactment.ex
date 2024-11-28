@@ -13,7 +13,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
     field :flow, Types.association(Flow.t())
     field :state, :running | :exception | :terminated, default: :running
     field :label, String.t(), enforce: false
-    field :data, %{initial_markings: [Marking.t()]}
+
+    field :data, %{
+      required(:initial_markings) => [Marking.t()],
+      optional(:final_markings) => [Marking.t()]
+    }
+
     field :steps, Types.association([Occurrence.t()])
 
     field :inserted_at, NaiveDateTime.t()
