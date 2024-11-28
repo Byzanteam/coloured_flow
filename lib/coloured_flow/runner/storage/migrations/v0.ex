@@ -52,7 +52,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
 
-    create index("enactment_logs", [:enactment_id], index_options)
+    create index("enactment_logs", [:enactment_id, :inserted_at], index_options)
 
     create table("workitems", table_options) do
       add :id, :binary_id, primary_key: true
@@ -66,7 +66,8 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       timestamps(@timestamps_opts)
     end
 
-    create index("workitems", [:enactment_id, :state], index_options)
+    create index("workitems", [:state], index_options)
+    create index("workitems", [:updated_at], index_options)
 
     create table("occurrences", table_options) do
       add :enactment_id, references("enactments", type: :binary_id, on_delete: :delete_all),
@@ -97,7 +98,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       timestamps(@timestamps_opts)
     end
 
-    create index("occurrences", [:enactment_id], index_options)
+    create index("snapshots", [:enactment_id], index_options)
 
     :ok
   end
