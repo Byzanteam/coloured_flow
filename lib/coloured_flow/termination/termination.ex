@@ -49,4 +49,10 @@ defmodule ColouredFlow.Termination do
 
     __ENV__
   end
+
+  types = ~w[implicit explicit force]a
+  @type type() :: unquote(ColouredFlow.Types.make_sum_type(types))
+
+  @spec __types__() :: [type()]
+  def __types__, do: unquote(types)
 end

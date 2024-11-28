@@ -71,16 +71,42 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   @impl ColouredFlow.Runner.Storage
-  def terminate_enactment(enactment_id, _type, final_markings, _options) do
-    enactment = Repo.get_by!(Schemas.Enactment, id: enactment_id, state: :running)
-    data = Map.put(enactment.data, :final_markings, final_markings)
+  def terminate_enactment(enactment_id, type, final_markings, options) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.one(:enactment, fn _changes ->
+      where(Schemas.Enactment, id: ^enactment_id, state: :running)
+    end)
+    |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
+      data = Map.put(enactment.data, :final_markings, final_markings)
 
-    enactment
-    |> Ecto.Changeset.change(state: :terminated)
-    |> Ecto.Changeset.put_embed(:data, data)
-    |> Repo.update!()
+      enactment
+      |> Ecto.Changeset.change(state: :terminated)
+      |> Ecto.Changeset.put_embed(:data, data)
+    end)
+    |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
+      message = Keyword.get(options, :message)
 
-    :ok
+      %Schemas.EnactmentLog{enactment_id: enactment.id}
+      |> Ecto.Changeset.change(state: :terminated)
+      |> Ecto.Changeset.put_embed(:termination, %Schemas.EnactmentLog.Termination{
+        type: type,
+        message: message
+      })
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to terminate the enactment.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
   end
 
   @live_states Workitem.__live_states__()
