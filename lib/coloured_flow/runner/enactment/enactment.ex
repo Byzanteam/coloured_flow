@@ -110,14 +110,18 @@ defmodule ColouredFlow.Runner.Enactment do
 
     workitems = Storage.list_live_workitems(state.enactment_id)
 
+    state = %__MODULE__{
+      state
+      | version: snapshot.version,
+        markings: to_map(snapshot.markings),
+        workitems: to_map(workitems)
+    }
+
+    emit_event(:start, state)
+
     {
       :noreply,
-      %__MODULE__{
-        state
-        | version: snapshot.version,
-          markings: to_map(snapshot.markings),
-          workitems: to_map(workitems)
-      },
+      state,
       {:continue, :calibrate_workitems}
     }
   end
@@ -129,7 +133,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
     # try to terminate at the start
     case check_termination(state, cpnet) do
-      {:stop, _type} -> {:stop, :normal, state}
+      :stop -> {:stop, :normal, state}
       :cont -> {:noreply, state}
     end
   end
@@ -147,7 +151,7 @@ defmodule ColouredFlow.Runner.Enactment do
         cpnet = Storage.get_flow_by_enactment(state.enactment_id)
         # try to terminate when the transition is `:complete`
         case check_termination(state, cpnet) do
-          {:stop, _type} -> {:stop, :normal, state}
+          :stop -> {:stop, :normal, state}
           :cont -> {:noreply, state}
         end
 
@@ -193,8 +197,7 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   # `:explicit` takes priority over `:implicit`
-  @spec check_termination(state(), ColouredPetriNet.t()) ::
-          {:stop, :explicit | :implicit | :exception} | :cont
+  @spec check_termination(state(), ColouredPetriNet.t()) :: :stop | :cont
   defp check_termination(%__MODULE__{} = state, cpnet) do
     import EnactmentTermination
 
@@ -209,7 +212,9 @@ defmodule ColouredFlow.Runner.Enactment do
       {:stop, type} when type in [:explicit, :implicit] ->
         :ok = Storage.terminate_enactment(state.enactment_id, type, markings, [])
 
-        {:stop, type}
+        emit_event(:terminate, state, %{termination_type: type})
+
+        :stop
 
       {:error, exception} ->
         :ok =
@@ -219,7 +224,12 @@ defmodule ColouredFlow.Runner.Enactment do
             exception
           )
 
-        {:stop, :exception}
+        emit_event(:exception, state, %{
+          exception_reason: :termination_criteria_evaluation,
+          exception: exception
+        })
+
+        :stop
     end
   end
 
@@ -458,5 +468,15 @@ defmodule ColouredFlow.Runner.Enactment do
           {:error, exception}
       end
     end)
+  end
+
+  defp emit_event(event, %__MODULE__{} = state, metadata \\ %{}) when is_map(metadata) do
+    base_metadata = %{enactment_id: state.enactment_id, enactment_state: state}
+
+    Telemetry.execute(
+      [:coloured_flow, :runner, :enactment, event],
+      %{},
+      Enum.into(base_metadata, metadata)
+    )
   end
 end

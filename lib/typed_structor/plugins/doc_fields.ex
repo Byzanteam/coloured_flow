@@ -43,6 +43,8 @@ defmodule TypedStructor.Plugins.DocFields do
         """
       end
 
+    enforce = Keyword.get(definition.options, :enforce, false)
+
     fields =
       Enum.map(definition.fields, fn field ->
         name = Keyword.fetch!(field, :name)
@@ -50,7 +52,7 @@ defmodule TypedStructor.Plugins.DocFields do
         type = Keyword.fetch!(field, :type)
 
         type =
-          if Keyword.get(field, :enforce, false) or Keyword.has_key?(field, :default) do
+          if Keyword.get(field, :enforce, enforce) or Keyword.has_key?(field, :default) do
             expand_type(type, caller)
           else
             "#{expand_type(type, caller)} | nil"

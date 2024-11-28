@@ -6,12 +6,50 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
   @doc false
   @spec handle_event([atom()], map(), map(), Keyword.t()) :: :ok
   def handle_event(
+        [:coloured_flow, :runner, :enactment, transition],
+        measurements,
+        metadata,
+        opts
+      )
+      when transition in [:start, :terminate, :exception] do
+    log(:enactment, opts, fn ->
+      basic =
+        case transition do
+          :start ->
+            %{
+              event: "enactment:start",
+              system_time: convert_system_time(measurements.system_time)
+            }
+
+          :terminate ->
+            %{
+              event: "enactment:terminate",
+              system_time: convert_system_time(measurements.system_time),
+              termination_type: metadata.termination_type
+            }
+
+          :exception ->
+            %{
+              event: "enactment:exception",
+              system_time: convert_system_time(measurements.system_time),
+              exception_reason: metadata.exception_reason,
+              error: Exception.format_banner(:error, metadata.exception)
+            }
+        end
+
+      enactment = build_enactment_info(metadata.enactment_state)
+
+      Map.merge(basic, enactment)
+    end)
+  end
+
+  def handle_event(
         [:coloured_flow, :runner, :enactment, operation, event],
         measurements,
         metadata,
         opts
       ) do
-    log(opts, fn ->
+    log(:workitem, opts, fn ->
       basic =
         case event do
           :start ->
@@ -76,7 +114,7 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
   defp convert_system_time(value), do: DateTime.from_unix!(value, :native)
   defp convert_duration(value), do: System.convert_time_unit(value, :native, :microsecond)
 
-  defp log(opts, fun) do
+  defp log(event_type, opts, fun) do
     level = Keyword.fetch!(opts, :level)
 
     Logger.log(level, fn ->
@@ -84,7 +122,7 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
 
       if Keyword.fetch!(opts, :encode) do
         output
-        |> encode()
+        |> encode(event_type)
         |> Jason.encode_to_iodata!()
       else
         output
@@ -96,24 +134,46 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
   alias ColouredFlow.Runner.Telemetry.LooseMapCodec
   alias ColouredFlow.Runner.Telemetry.MapCodec
 
+  event_types = ~w(enactment workitem)a
+  @typep event_type() :: unquote(ColouredFlow.Types.make_sum_type(event_types))
+
   @doc """
   Encodes the given data using the codec specification.
   """
-  @spec encode(map()) :: map()
-  def encode(data) do
-    Codec.encode(codec_spec(), data)
+  @spec encode(map(), event_type()) :: map()
+  def encode(data, event_type) when event_type in unquote(event_types) do
+    Codec.encode(codec_spec(event_type), data)
   end
 
   @doc """
   Decodes the given data using the codec specification.
   """
-  @spec decode(map()) :: map()
-  def decode(data) do
-    Codec.decode(codec_spec(), data)
+  @spec decode(map(), event_type()) :: map()
+  def decode(data, event_type) when event_type in unquote(event_types) do
+    Codec.decode(codec_spec(event_type), data)
   end
 
-  @spec codec_spec() :: Codec.codec_spec(map())
-  def codec_spec do
+  @spec codec_spec(event_type()) :: Codec.codec_spec(map())
+  def codec_spec(:enactment) do
+    {
+      :codec,
+      LooseMapCodec,
+      [
+        source: :string,
+        event: :string,
+        enactment_id: :string,
+        enactment_version: :integer,
+        enactment_markings: {:list, {:codec, Codec.Marking}},
+        enactment_workitems: {:list, workitem_spec()},
+        system_time: system_time_spec(),
+        termination_type: :atom,
+        exception_reason: :atom,
+        error: :string
+      ]
+    }
+  end
+
+  def codec_spec(:workitem) do
     {
       :codec,
       LooseMapCodec,

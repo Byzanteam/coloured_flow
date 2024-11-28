@@ -3,6 +3,30 @@ defmodule ColouredFlow.Runner.Telemetry do
   @moduledoc """
   Telemetry integration for event metrics, logging and error reporting.
 
+  ## Enactment events
+  `ColouredFlow.Runner` emits telemetry events for the enactment transitions:
+
+  - `[:coloured_flow, :runner, :enactment, :start]`
+  - `[:coloured_flow, :runner, :enactment, :terminate]`
+  - `[:coloured_flow, :runner, :enactment, :exception]`
+
+  All enactment events share the same measurements and metadata, but their metadata are different.
+
+  | event        | measurements                      | metadata                                                               |
+  | ------------ | --------------------------------- | ---------------------------------------------------------------------- |
+  | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                    |
+  | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`                |
+  | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception` |
+
+  #### Metadata
+
+  - `:enactment_id` — The ID of the running enactment.
+  - `:enactment_state` — The current state of the enactment
+  (`t:ColouredFlow.Runner.Enactment.state/0`).
+  - `:termination_type` — The type of termination (`:explicit`, `:implicit` or `:force`).
+  - `:exception_reason` — The reason for the exception. (`t:ColouredFlow.Runner.Exception.reason/0`).
+  - `:exception` — The exception that was raised.
+
   ## Enactment workitem events
 
   `ColouredFlow.Runner` emits telemetry span events for the following workitem
@@ -44,6 +68,7 @@ defmodule ColouredFlow.Runner.Telemetry do
   | `:complete_workitems` | `:workitem_ids`, `:workitem_id_and_outputs` | `:workitems`  |
   """
 
+  @type event_name() :: :telemetry.event_name()
   @type event_prefix() :: :telemetry.event_prefix()
   @type event_metadata() :: :telemetry.event_metadata()
   @type event_measurements() :: :telemetry.event_measurements()
@@ -174,6 +199,16 @@ defmodule ColouredFlow.Runner.Telemetry do
     Map.merge(measurements, %{duration: stop_time - start_time, monotonic_time: stop_time})
   end
 
+  @spec execute(event_name(), event_measurements(), event_metadata()) :: :ok
+  def execute(event, measurements, metadata) when is_list(event) do
+    base_measurements = %{
+      monotonic_time: System.monotonic_time(),
+      system_time: System.system_time()
+    }
+
+    :telemetry.execute(event, Enum.into(measurements, base_measurements), metadata)
+  end
+
   alias ColouredFlow.Runner.Telemetry.DefaultLogger
 
   @handler_id :coloured_flow_runner_default_logger
@@ -226,6 +261,9 @@ defmodule ColouredFlow.Runner.Telemetry do
 
   def attach_default_logger(opts) when is_list(opts) do
     events = [
+      [:coloured_flow, :runner, :enactment, :start],
+      [:coloured_flow, :runner, :enactment, :terminate],
+      [:coloured_flow, :runner, :enactment, :exception],
       [:coloured_flow, :runner, :enactment, :produce_workitems, :start],
       [:coloured_flow, :runner, :enactment, :produce_workitems, :stop],
       [:coloured_flow, :runner, :enactment, :produce_workitems, :exception],
