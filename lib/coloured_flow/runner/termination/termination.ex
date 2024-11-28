@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Termination do
+defmodule ColouredFlow.Runner.Termination do
   @moduledoc """
   Termination criteria evaluation for the enactment.
   """

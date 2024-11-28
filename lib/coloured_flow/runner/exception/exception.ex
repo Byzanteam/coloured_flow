@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Exception do
+defmodule ColouredFlow.Runner.Exception do
   @moduledoc """
   The enactment may be stopped due to an exception.
 

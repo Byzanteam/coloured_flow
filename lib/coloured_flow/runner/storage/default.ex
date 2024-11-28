@@ -70,7 +70,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
-  exception_reasons = ColouredFlow.Exception.__reasons__()
+  exception_reasons = ColouredFlow.Runner.Exception.__reasons__()
 
   @impl ColouredFlow.Runner.Storage
   def exception_occurs(enactment_id, reason, exception)
@@ -101,7 +101,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
     end
   end
 
-  termination_types = ColouredFlow.Termination.__types__()
+  termination_types = ColouredFlow.Runner.Termination.__types__()
   @impl ColouredFlow.Runner.Storage
   def terminate_enactment(enactment_id, type, final_markings, options)
       when type in unquote(termination_types) do

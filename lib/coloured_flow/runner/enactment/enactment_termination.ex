@@ -26,7 +26,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTermination do
       when is_list(markings) do
     markings = Map.new(markings, &{&1.place, &1.tokens})
 
-    case ColouredFlow.Termination.should_terminate(markings_criteria, markings) do
+    case ColouredFlow.Runner.Termination.should_terminate(markings_criteria, markings) do
       {:ok, true} ->
         {:stop, :explicit}
 
