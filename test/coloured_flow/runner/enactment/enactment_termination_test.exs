@@ -74,6 +74,25 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationTest do
       assert initial_markings === schema.data.final_markings
     end
 
+    @tag initial_markings: [%Marking{place: "output", tokens: ~MS[1]}]
+    test "inserts enactment log", %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+      wait_enactment_to_stop!(enactment_server)
+
+      logs = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+
+      assert match?(
+               [
+                 %Schemas.EnactmentLog{
+                   state: :terminated,
+                   termination: %Schemas.EnactmentLog.Termination{type: :implicit, message: nil},
+                   exception: nil
+                 }
+               ],
+               logs
+             )
+    end
+
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2]}]
     test "terminates explicitly when no more enabled workitems after a workitem completed", %{
       enactment: enactment
@@ -132,6 +151,25 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationTest do
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert :terminated === schema.state
       assert initial_markings === schema.data.final_markings
+    end
+
+    @tag initial_markings: [%Marking{place: "output", tokens: ~MS[2**1]}]
+    test "inserts enactment log", %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+      wait_enactment_to_stop!(enactment_server)
+
+      logs = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+
+      assert match?(
+               [
+                 %Schemas.EnactmentLog{
+                   state: :terminated,
+                   termination: %Schemas.EnactmentLog.Termination{type: :explicit, message: nil},
+                   exception: nil
+                 }
+               ],
+               logs
+             )
     end
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
