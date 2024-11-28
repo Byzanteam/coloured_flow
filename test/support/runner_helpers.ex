@@ -213,6 +213,8 @@ defmodule ColouredFlow.RunnerHelpers do
 
     receive do
       {:DOWN, ^ref, :process, ^enactment_server, ^reason} -> :ok
+      # when the enactment server was stopped early
+      {:DOWN, ^ref, :process, ^enactment_server, :noproc} -> :ok
     after
       500 ->
         ExUnit.Assertions.flunk("Enactment server is expected to stop, but it's still running")

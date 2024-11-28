@@ -7,6 +7,7 @@ defmodule ColouredFlow.Runner do
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
 
   defdelegate start_enactment(enactment_id), to: EnactmentSupervisor
+  defdelegate terminate_enactment(enactment_id, options \\ []), to: EnactmentSupervisor
 
   defdelegate allocate_workitem(enactment_id, workitem_id), to: WorkitemTransition
   defdelegate allocate_workitems(enactment_id, workitem_ids), to: WorkitemTransition
