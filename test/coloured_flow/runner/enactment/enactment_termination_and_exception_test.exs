@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationTest do
+defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
   use ColouredFlow.RepoCase
   use ColouredFlow.RunnerHelpers
 
@@ -196,6 +196,119 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationTest do
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert :terminated === schema.state
       assert [%Marking{place: "output", tokens: ~MS[2**1]}] === schema.data.final_markings
+    end
+  end
+
+  describe "exception_occurs at start" do
+    setup :setup_cpnet
+
+    setup %{cpnet: cpnet} do
+      alias ColouredFlow.Definition.Expression
+      alias ColouredFlow.Definition.TerminationCriteria
+
+      terminate_criteria = %TerminationCriteria{
+        markings: %TerminationCriteria.Markings{
+          expression:
+            Expression.build!("""
+            1/0 > 1
+            """)
+        }
+      }
+
+      [cpnet: Map.put(cpnet, :termination_criteria, terminate_criteria)]
+    end
+
+    setup :setup_flow
+    setup :setup_enactment
+
+    @describetag cpnet: :simple_sequence
+
+    @tag initial_markings: [%Marking{place: "output", tokens: ~MS[1]}]
+    test "inserts a transition log", %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+      wait_enactment_to_stop!(enactment_server)
+
+      logs = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+
+      assert match?(
+               [
+                 %Schemas.EnactmentLog{
+                   termination: nil,
+                   exception: %Schemas.EnactmentLog.Exception{
+                     reason: :termination_criteria_evaluation,
+                     type: "ArithmeticError",
+                     message: "bad argument in arithmetic expression",
+                     original:
+                       ~S|%ArithmeticError{message: "bad argument in arithmetic expression"}|
+                   }
+                 }
+               ],
+               logs
+             )
+    end
+  end
+
+  describe "exception_occurs after a workitem completed" do
+    setup :setup_cpnet
+
+    setup %{cpnet: cpnet} do
+      alias ColouredFlow.Definition.Expression
+      alias ColouredFlow.Definition.TerminationCriteria
+
+      terminate_criteria = %TerminationCriteria{
+        markings: %TerminationCriteria.Markings{
+          expression:
+            Expression.build!("""
+            case markings do
+              %{"output" => output_ms} when multi_set_coefficient(output_ms, 1) > 0 ->
+                1 / 0 > 1
+
+              other ->
+                false
+            end
+            """)
+        }
+      }
+
+      [cpnet: Map.put(cpnet, :termination_criteria, terminate_criteria)]
+    end
+
+    setup :setup_flow
+    setup :setup_enactment
+
+    @describetag cpnet: :simple_sequence
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "inserts a transition log", %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+
+      [%Enactment.Workitem{state: :enabled} = workitem] =
+        get_enactment_workitems(enactment_server)
+
+      workitem = start_workitem(workitem, enactment_server)
+
+      {:ok, [_workitem]} =
+        GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}})
+
+      wait_enactment_to_stop!(enactment_server)
+
+      logs = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+
+      assert match?(
+               [
+                 %Schemas.EnactmentLog{
+                   termination: nil,
+                   exception: %Schemas.EnactmentLog.Exception{
+                     reason: :termination_criteria_evaluation,
+                     type: "ArithmeticError",
+                     message: "bad argument in arithmetic expression",
+                     original:
+                       ~S|%ArithmeticError{message: "bad argument in arithmetic expression"}|
+                   }
+                 }
+               ],
+               logs
+             )
     end
   end
 

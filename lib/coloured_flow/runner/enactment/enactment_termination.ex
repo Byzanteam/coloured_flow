@@ -14,7 +14,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTermination do
   @spec check_explicit_termination(
           termination_criteria :: TerminationCriteria.t() | nil,
           markings :: [Marking.t()]
-        ) :: {:stop, :explicit} | :cont | {:error, [Exception.t()]}
+        ) :: {:stop, :explicit} | :cont | {:error, Exception.t()}
   def check_explicit_termination(termination_criteria, markings)
   def check_explicit_termination(nil, markings) when is_list(markings), do: :cont
 
@@ -26,10 +26,16 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTermination do
       when is_list(markings) do
     markings = Map.new(markings, &{&1.place, &1.tokens})
 
-    case ColouredFlow.Termination.should_terminate(markings_criteria, markings) do
-      {:ok, true} -> {:stop, :explicit}
-      {:ok, false} -> :cont
-      {:error, exceptions} -> {:error, exceptions}
+    case ColouredFlow.Runner.Termination.should_terminate(markings_criteria, markings) do
+      {:ok, true} ->
+        {:stop, :explicit}
+
+      {:ok, false} ->
+        :cont
+
+      {:error, [exception | _rest]} ->
+        # only pop the closest exception
+        {:error, exception}
     end
   end
 

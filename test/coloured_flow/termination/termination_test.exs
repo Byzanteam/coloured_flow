@@ -1,4 +1,4 @@
-defmodule ColouredFlow.TerminationTest do
+defmodule ColouredFlow.Runner.TerminationTest do
   use ExUnit.Case, async: true
 
   import ColouredFlow.MultiSet, only: :sigils
@@ -7,7 +7,7 @@ defmodule ColouredFlow.TerminationTest do
   alias ColouredFlow.Definition.TerminationCriteria.Markings
   alias ColouredFlow.Expression.InvalidResult
 
-  alias ColouredFlow.Termination
+  alias ColouredFlow.Runner.Termination
 
   describe "should_terminate/2" do
     test "works" do
