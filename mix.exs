@@ -88,7 +88,9 @@ defmodule ColouredFlow.MixProject do
         ColouredFlow.Enactment,
         ColouredFlow.Expression,
         ColouredFlow.Notation,
-        ColouredFlow.Runner
+        ColouredFlow.Runner,
+        ColouredFlow.Runner.Enactment,
+        ColouredFlow.Runner.Storage
       ],
       groups_for_docs: [
         enactment: &(&1[:group] == :enactment),

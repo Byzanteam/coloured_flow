@@ -1,5 +1,7 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
-  @moduledoc false
+  @moduledoc """
+  The schema for the workitem in the coloured_flow runner.
+  """
 
   use ColouredFlow.Runner.Storage.Schemas.Schema
 

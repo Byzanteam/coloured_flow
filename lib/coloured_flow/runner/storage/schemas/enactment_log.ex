@@ -1,5 +1,7 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
-  @moduledoc false
+  @moduledoc """
+  The schema for the enactment log in the coloured_flow runner.
+  """
 
   use ColouredFlow.Runner.Storage.Schemas.Schema
 

@@ -1,5 +1,7 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
-  @moduledoc false
+  @moduledoc """
+  The schema for the snapshot in the coloured_flow runner.
+  """
 
   use ColouredFlow.Runner.Storage.Schemas.Schema
 
