@@ -199,6 +199,36 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
     end
   end
 
+  describe "terminates forcibly" do
+    setup :setup_flow
+    setup :setup_enactment
+
+    @describetag cpnet: :simple_sequence
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "works", %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+      :ok = GenServer.call(enactment_server, {:terminate, [message: "forceful termination"]})
+
+      wait_enactment_to_stop!(enactment_server)
+
+      logs = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+
+      assert match?(
+               [
+                 %Schemas.EnactmentLog{
+                   termination: %Schemas.EnactmentLog.Termination{
+                     type: :force,
+                     message: "forceful termination"
+                   },
+                   exception: nil
+                 }
+               ],
+               logs
+             )
+    end
+  end
+
   describe "exception_occurs at start" do
     setup :setup_cpnet
 

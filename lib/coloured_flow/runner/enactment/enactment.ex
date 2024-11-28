@@ -234,6 +234,21 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   @impl GenServer
+  def handle_call({:terminate, options}, _from, %__MODULE__{} = state) when is_list(options) do
+    :ok =
+      Storage.terminate_enactment(
+        state.enactment_id,
+        :force,
+        to_list(state.markings),
+        options
+      )
+
+    message = Keyword.get(options, :message)
+    emit_event(:terminate, state, %{termination_type: :force, termination_message: message})
+
+    {:stop, :normal, :ok, state}
+  end
+
   def handle_call({:allocate_workitems, workitem_ids}, _from, %__MODULE__{} = state)
       when is_list(workitem_ids) do
     :allocate_workitems

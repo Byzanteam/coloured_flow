@@ -25,7 +25,8 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
             %{
               event: "enactment:terminate",
               system_time: convert_system_time(measurements.system_time),
-              termination_type: metadata.termination_type
+              termination_type: metadata.termination_type,
+              termination_message: Map.get(metadata, :termination_message)
             }
 
           :exception ->
@@ -167,6 +168,7 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
         enactment_workitems: {:list, workitem_spec()},
         system_time: system_time_spec(),
         termination_type: :atom,
+        termination_message: :string,
         exception_reason: :atom,
         error: :string
       ]

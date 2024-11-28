@@ -117,8 +117,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
       |> Ecto.Changeset.put_embed(:data, data)
     end)
     |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
-      message = Keyword.get(options, :message)
-      Schemas.EnactmentLog.build_termination(enactment, type, message)
+      Schemas.EnactmentLog.build_termination(enactment, type, options)
     end)
     |> Repo.transaction()
     |> case do

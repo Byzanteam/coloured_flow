@@ -12,11 +12,10 @@ defmodule ColouredFlow.Runner.Telemetry do
 
   All enactment events share the same measurements and metadata, but their metadata are different.
 
-  | event        | measurements                      | metadata                                                               |
-  | ------------ | --------------------------------- | ---------------------------------------------------------------------- |
-  | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                    |
-  | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`                |
-  | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception` |
+  | ------------ | --------------------------------- | ------------------------------------------------------------------------------- |
+  | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
+  | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
+  | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception`          |
 
   #### Metadata
 
@@ -24,6 +23,7 @@ defmodule ColouredFlow.Runner.Telemetry do
   - `:enactment_state` — The current state of the enactment
   (`t:ColouredFlow.Runner.Enactment.state/0`).
   - `:termination_type` — The type of termination (`:explicit`, `:implicit` or `:force`).
+  - `:termination_message` — The termination message.
   - `:exception_reason` — The reason for the exception. (`t:ColouredFlow.Runner.Exception.reason/0`).
   - `:exception` — The exception that was raised.
 
