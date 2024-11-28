@@ -42,6 +42,12 @@ defmodule ColouredFlow.Runner.Storage do
               Enumerable.t(Occurrence.t())
 
   @doc """
+  An exception occurred during the enactment, and the corresponding enactment will be stopped.
+  """
+  @doc group: :enactment
+  @callback exception_occurs(enactment_id(), Exception.t()) :: :ok
+
+  @doc """
   The enactment is terminated, and the corresponding enactment will be stopped.
   There are three types of termination:
 

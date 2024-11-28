@@ -43,4 +43,15 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
 
     timestamps(updated_at: false)
   end
+
+  @spec build_termination(Enactment.t(), ColouredFlow.Termination.type(), String.t() | nil) ::
+          Ecto.Changeset.t(t())
+  def build_termination(enactment, type, message) do
+    %__MODULE__{enactment_id: enactment.id}
+    |> Ecto.Changeset.change(state: :terminated)
+    |> Ecto.Changeset.put_embed(:termination, %__MODULE__.Termination{
+      type: type,
+      message: message
+    })
+  end
 end
