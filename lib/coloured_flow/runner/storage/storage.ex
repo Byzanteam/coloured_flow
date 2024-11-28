@@ -122,7 +122,7 @@ defmodule ColouredFlow.Runner.Storage do
   @doc false
   @spec terminate_enactment(
           enactment_id(),
-          type :: :implicit | :explicit | :force,
+          type :: ColouredFlow.Termination.type(),
           final_markings :: [Marking.t()],
           options :: [message: String.t()]
         ) :: :ok
