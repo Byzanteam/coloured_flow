@@ -193,7 +193,8 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   # `:explicit` takes priority over `:implicit`
-  @spec check_termination(state(), ColouredPetriNet.t()) :: {:stop, :explicit | :implicit} | :cont
+  @spec check_termination(state(), ColouredPetriNet.t()) ::
+          {:stop, :explicit | :implicit | :exception} | :cont
   defp check_termination(%__MODULE__{} = state, cpnet) do
     import EnactmentTermination
 
@@ -210,9 +211,15 @@ defmodule ColouredFlow.Runner.Enactment do
 
         {:stop, type}
 
-      {:error, _exceptions} ->
-        # TODO: handle exceptions
-        :cont
+      {:error, exception} ->
+        :ok =
+          Storage.exception_occurs(
+            state.enactment_id,
+            :termination_criteria_evaluation,
+            exception
+          )
+
+        {:stop, :exception}
     end
   end
 

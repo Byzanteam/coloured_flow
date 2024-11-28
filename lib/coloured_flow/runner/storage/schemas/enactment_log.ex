@@ -36,6 +36,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
     embeds_one :exception, Exception, primary_key: false, on_replace: :delete do
       @moduledoc false
 
+      field :reason, Ecto.Enum, values: ColouredFlow.Exception.__reasons__()
       field :type, :string
       field :message, :string
       field :original, :string
@@ -52,6 +53,19 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
     |> Ecto.Changeset.put_embed(:termination, %__MODULE__.Termination{
       type: type,
       message: message
+    })
+  end
+
+  @spec build_exception(Enactment.t(), ColouredFlow.Exception.reason(), Exception.t()) ::
+          Ecto.Changeset.t(t())
+  def build_exception(enactment, reason, exception) do
+    %__MODULE__{enactment_id: enactment.id}
+    |> Ecto.Changeset.change(state: :exception)
+    |> Ecto.Changeset.put_embed(:exception, %__MODULE__.Exception{
+      reason: reason,
+      type: inspect(exception.__struct__),
+      message: Exception.message(exception),
+      original: inspect(exception)
     })
   end
 end

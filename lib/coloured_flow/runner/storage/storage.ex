@@ -45,7 +45,11 @@ defmodule ColouredFlow.Runner.Storage do
   An exception occurred during the enactment, and the corresponding enactment will be stopped.
   """
   @doc group: :enactment
-  @callback exception_occurs(enactment_id(), Exception.t()) :: :ok
+  @callback exception_occurs(
+              enactment_id(),
+              reason :: ColouredFlow.Exception.reason(),
+              exception :: Exception.t()
+            ) :: :ok
 
   @doc """
   The enactment is terminated, and the corresponding enactment will be stopped.
@@ -123,6 +127,12 @@ defmodule ColouredFlow.Runner.Storage do
           Enumerable.t(Occurrence.t())
   def occurrences_stream(enactment_id, from) do
     __storage__().occurrences_stream(enactment_id, from)
+  end
+
+  @doc false
+  @spec exception_occurs(enactment_id(), ColouredFlow.Exception.reason(), Exception.t()) :: :ok
+  def exception_occurs(enactment_id, reason, exception) do
+    __storage__().exception_occurs(enactment_id, reason, exception)
   end
 
   @doc false

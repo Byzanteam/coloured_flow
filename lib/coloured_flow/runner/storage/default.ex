@@ -70,8 +70,41 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
+  exception_reasons = ColouredFlow.Exception.__reasons__()
+
   @impl ColouredFlow.Runner.Storage
-  def terminate_enactment(enactment_id, type, final_markings, options) do
+  def exception_occurs(enactment_id, reason, exception)
+      when reason in unquote(exception_reasons) and is_exception(exception) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.one(:enactment, fn _changes ->
+      where(Schemas.Enactment, id: ^enactment_id)
+    end)
+    |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
+      Ecto.Changeset.change(enactment, state: :exception)
+    end)
+    |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
+      Schemas.EnactmentLog.build_exception(enactment, reason, exception)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to update the enactment to exception state.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
+  end
+
+  termination_types = ColouredFlow.Termination.__types__()
+  @impl ColouredFlow.Runner.Storage
+  def terminate_enactment(enactment_id, type, final_markings, options)
+      when type in unquote(termination_types) do
     Ecto.Multi.new()
     |> Ecto.Multi.one(:enactment, fn _changes ->
       where(Schemas.Enactment, id: ^enactment_id)
