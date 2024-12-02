@@ -217,5 +217,34 @@ defmodule ColouredFlow.Notation.ColsetTest do
 
       assert {:ok, _descr} = Descr.of_descr(colour_set.type)
     end
+
+    test "compound" do
+      assert %ColourSet{
+               name: :user,
+               type: {
+                 :map,
+                 %{
+                   name: {:name, []},
+                   profile:
+                     {:map,
+                      %{
+                        age: {:age, []},
+                        interests: {:list, {:interest, []}}
+                      }}
+                 }
+               }
+             } ===
+               colset(
+                 user() :: %{name: name(), profile: %{age: age(), interests: list(interest())}}
+               )
+
+      assert_raise RuntimeError, ~r/Parameterized types are not supported/, fn ->
+        Code.eval_quoted(
+          quote do
+            colset cn_user() :: %{name: name(:cn)}
+          end
+        )
+      end
+    end
   end
 end

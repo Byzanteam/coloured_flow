@@ -132,8 +132,14 @@ defmodule ColouredFlow.Notation.Colset do
         Invalid colour set type: `#{type_to_string(type)}`
         """
 
-      call ->
-        call
+      {name, []} when is_atom(name) ->
+        {name, []}
+
+      {name, _args} when is_atom(name) ->
+        raise """
+        Invalid colour set type: `#{type_to_string(type)}`
+        Parameterized types are not supported, try `#{name}()` instead.
+        """
     end
   end
 
