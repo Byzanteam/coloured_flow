@@ -123,13 +123,36 @@ defmodule ColouredFlow.Definition.ColourSet.OfTest do
         type
       )
     end
+
+    test "compound types" do
+      # colset data() :: binary()
+      # colset ack() :: integer()
+      # colset packet() :: {:data, data()} | {:ack, ack()}
+      type = {:union, %{data: {:data, []}, ack: {:ack, []}}}
+
+      context = %{
+        fetch_type: fn
+          :data -> {:ok, {:binary, []}}
+          :ack -> {:ok, {:integer, []}}
+          _type -> :error
+        end
+      }
+
+      assert_of_type({:data, "Coloured"}, type, context)
+      assert_of_type({:ack, 1}, type, context)
+      refute_of_type({:ack, "Coloured"}, type, context)
+    end
   end
 
-  defp assert_of_type(value, type) do
-    assert {:ok, value} === Of.of_type(value, type)
+  defp assert_of_type(value, type, context \\ default_context()) do
+    assert {:ok, value} === Of.of_type(value, type, context)
   end
 
-  defp refute_of_type(value, type) do
-    assert :error === Of.of_type(value, type)
+  defp refute_of_type(value, type, context \\ default_context()) do
+    assert :error === Of.of_type(value, type, context)
+  end
+
+  defp default_context do
+    %{fetch_type: fn _name -> :error end}
   end
 end

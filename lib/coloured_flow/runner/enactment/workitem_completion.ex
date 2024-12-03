@@ -72,13 +72,15 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
   end
 
   defp validate_outputs(%Transition{action: %Action{outputs: output_vars}}, outputs, cpnet) do
+    context = build_of_type_context(cpnet)
+
     output_vars
     |> Enum.reduce_while([], fn output_var, acc ->
       with(
         {:ok, value} <- fetch_output(outputs, output_var),
         output_var = fetch_variable!(output_var, cpnet),
         colour_set = fetch_colour_set!(output_var.colour_set, cpnet),
-        {:ok, value} <- check_output_type(value, colour_set)
+        {:ok, value} <- check_output_type(value, colour_set, context)
       ) do
         {:cont, [{output_var.name, value} | acc]}
       else
@@ -105,8 +107,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
     Utils.fetch_colour_set!(colour_set, cpnet)
   end
 
-  defp check_output_type(value, %ColourSet{} = colour_set) do
-    with :error <- ColourSet.Of.of_type(value, colour_set.type) do
+  defp build_of_type_context(%ColouredPetriNet{} = cpnet) do
+    Utils.build_of_type_context(cpnet)
+  end
+
+  defp check_output_type(value, %ColourSet{} = colour_set, context) do
+    with :error <- ColourSet.Of.of_type(value, colour_set.type, context) do
       {:error, {:colour_set_mismatch, colour_set: colour_set, value: value}}
     end
   end

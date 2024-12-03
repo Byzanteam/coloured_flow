@@ -21,6 +21,24 @@ defmodule ColouredFlow.EnabledBindingElements.Utils do
     ) || raise "Colour set with name #{inspect(colour_set)} not found in the petri net."
   end
 
+  @spec build_of_type_context(cpnet :: ColouredPetriNet.t()) ::
+          ColouredFlow.Definition.ColourSet.Of.context()
+  def build_of_type_context(%ColouredPetriNet{} = cpnet) do
+    types =
+      Map.new(cpnet.colour_sets, fn %ColourSet{name: name, type: type} ->
+        {name, type}
+      end)
+
+    %{
+      fetch_type: fn name ->
+        case Map.fetch(types, name) do
+          :error -> raise "Colour set with name #{inspect(name)} not found in the petri net."
+          {:ok, type} -> {:ok, type}
+        end
+      end
+    }
+  end
+
   @spec fetch_variable!(variable :: Variable.name(), cpnet :: ColouredPetriNet.t()) ::
           Variable.t()
   def fetch_variable!(variable, %ColouredPetriNet{} = cpnet) do
