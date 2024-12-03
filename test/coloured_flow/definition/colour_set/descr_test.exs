@@ -61,6 +61,11 @@ defmodule ColouredFlow.Definition.ColourSet.DescrTest do
          }}
       )
     end
+
+    test "compound types" do
+      assert_of_descr({:map, %{name: {:name, []}, age: {:age, []}}})
+      refute_of_descr({:enum, []})
+    end
   end
 
   describe "type definitions" do
@@ -150,6 +155,13 @@ defmodule ColouredFlow.Definition.ColourSet.DescrTest do
         | {:unit, {}}
         | {:map, %{list: list(integer()), name: binary(), enum: :female | :male, age: integer()}}
         """
+      )
+    end
+
+    test "compound types" do
+      assert_to_quoted(
+        {:map, %{name: {:name, []}, age: {:age, []}}},
+        "%{name: name(), age: age()}"
       )
     end
   end

@@ -140,6 +140,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
     Enum.map(values, &decode_value/1)
   end
 
+  alias ColouredFlow.Definition.ColourSet.Descr
+
   @primitive_types ~w[unit integer float boolean binary]a
 
   @doc """
@@ -194,13 +196,18 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
     }
   end
 
+  def encode_descr({type, []}) when type not in unquote(Descr.__built_in_types__()) do
+    %{
+      "type" => Atom.to_string(type),
+      "args" => []
+    }
+  end
+
   @doc """
   Converts the JSON representation to a `descr`.
   """
   @spec decode_descr(map()) :: ColourSet.descr()
   def decode_descr(map) do
-    alias ColouredFlow.Definition.ColourSet.Descr
-
     descr = do_decode_descr(map)
 
     case Descr.of_descr(descr) do
@@ -251,5 +258,13 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
 
   defp do_decode_descr(%{"type" => "list", "args" => descr}) do
     {:list, do_decode_descr(descr)}
+  end
+
+  built_in_types = Enum.map(Descr.__built_in_types__(), &Atom.to_string/1)
+
+  # compound types
+  defp do_decode_descr(%{"type" => type, "args" => []})
+       when type not in unquote(built_in_types) do
+    {String.to_existing_atom(type), []}
   end
 end

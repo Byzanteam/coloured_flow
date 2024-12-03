@@ -75,5 +75,15 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSetTest d
 
       assert_codec(colour_sets)
     end
+
+    test "compound types" do
+      colour_sets = [
+        %ColourSet{name: :data, type: {:binary, []}},
+        %ColourSet{name: :ack, type: {:integer, []}},
+        %ColourSet{name: :packet, type: {:union, %{data: {:data, []}, ack: {:ack, []}}}}
+      ]
+
+      assert_codec(colour_sets)
+    end
   end
 end
