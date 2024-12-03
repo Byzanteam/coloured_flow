@@ -43,7 +43,8 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
         with(
           {:ok, {coefficient, value}} <- eval_arc(arc, binding),
           colour_set = fetch_colour_set!(place.colour_set, cpnet),
-          {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type),
+          of_type_context = build_of_type_context(cpnet),
+          {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type, of_type_context),
           {:ok, true} <- eval_transition_guard(transition, binding),
           marking = get_marking(place, markings),
           tokens = MultiSet.duplicate(value, coefficient),

@@ -5,6 +5,11 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
 
   @type t() :: ColouredFlow.Definition.ColourSet.descr()
 
+  @built_in_types ~w[integer float boolean binary unit tuple map enum union list]a
+
+  @spec __built_in_types__() :: [atom()]
+  def __built_in_types__, do: @built_in_types
+
   @doc """
   Check if the `descr` is valid.
   """
@@ -47,6 +52,9 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
 
   # list
   defp valid?({:list, type}), do: valid?(type)
+
+  # compound types
+  defp valid?({name, []}) when name not in @built_in_types, do: true
 
   defp valid?(_descr), do: false
 
@@ -122,5 +130,10 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
   # list
   def to_quoted({:list, type}) do
     {:list, [], [to_quoted(type)]}
+  end
+
+  # compound types
+  def to_quoted({name, []}) when name not in @built_in_types do
+    {name, [], []}
   end
 end

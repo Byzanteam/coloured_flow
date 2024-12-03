@@ -67,8 +67,9 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
     alias ColouredFlow.Definition.ColourSet.Of
 
     colour_set = fetch_colour_set!(colour_set, %ColouredPetriNet{} = cpnet)
+    context = build_of_type_context(cpnet)
 
-    case Of.of_type(value, colour_set.type) do
+    case Of.of_type(value, colour_set.type, context) do
       {:ok, value} ->
         {:ok, MultiSet.from_pairs([{coefficient, value}])}
 
