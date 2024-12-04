@@ -15,4 +15,15 @@ defmodule ColouredFlow.Definition.Validators.ExceptionsTest do
            The name `:int` is not unique within the colour_set.
            """ === Exception.message(exception)
   end
+
+  test "InvalidColourSetError" do
+    exception =
+      Exceptions.InvalidColourSetError.exception(
+        message: "invalid enum item",
+        reason: :invalid_enum_item,
+        descr: {:enum, [:foo, "bar"]}
+      )
+
+    assert Exception.message(exception) =~ "invalid_enum_item"
+  end
 end

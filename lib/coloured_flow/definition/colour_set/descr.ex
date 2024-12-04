@@ -3,12 +3,19 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
   The `descr` is used to describe the colour set.
   """
 
+  @primitive_types ~w[integer float boolean binary unit]a
+  @built_in_types @primitive_types ++ ~w[tuple map enum union list]a
+
   @type t() :: ColouredFlow.Definition.ColourSet.descr()
 
-  @built_in_types ~w[integer float boolean binary unit tuple map enum union list]a
+  @type primitive_type() :: unquote(ColouredFlow.Types.make_sum_type(@primitive_types))
+  @type built_in_type() :: unquote(ColouredFlow.Types.make_sum_type(@built_in_types))
 
-  @spec __built_in_types__() :: [atom()]
+  @spec __built_in_types__() :: [built_in_type()]
   def __built_in_types__, do: @built_in_types
+
+  @spec __built_in_types__(:primitive) :: [primitive_type()]
+  def __built_in_types__(:primitive), do: @primitive_types
 
   @doc """
   Check if the `descr` is valid.
@@ -23,40 +30,77 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
     end
   end
 
-  # primitive
-  defp valid?({:integer, []}), do: true
-  defp valid?({:float, []}), do: true
-  defp valid?({:boolean, []}), do: true
-  defp valid?({:binary, []}), do: true
-  defp valid?({:unit, []}), do: true
+  defp valid?(descr) do
+    case {match(descr), descr} do
+      {{:built_in, type}, _descr} when type in @primitive_types ->
+        true
 
-  # tuple
-  defp valid?({:tuple, types}) when is_list(types) and length(types) >= 2 do
-    Enum.all?(types, &valid?/1)
+      {{:built_in, :tuple}, {:tuple, types}} ->
+        Enum.all?(types, &valid?/1)
+
+      {{:built_in, :map}, {:map, types}} ->
+        Enum.all?(types, fn {key, type} when is_atom(key) -> valid?(type) end)
+
+      {{:built_in, :enum}, {:enum, items}} ->
+        Enum.all?(items, &is_atom/1)
+
+      {{:built_in, :union}, {:union, types}} ->
+        Enum.all?(types, fn {tag, type} when is_atom(tag) -> valid?(type) end)
+
+      {{:built_in, :list}, {:list, type}} ->
+        valid?(type)
+
+      {{:compound, _name}, _descr} ->
+        true
+
+      {:unknown, _descr} ->
+        false
+    end
   end
 
-  # map
-  defp valid?({:map, types}) when is_map(types) and map_size(types) >= 1 do
-    Enum.all?(types, fn {key, type} when is_atom(key) -> valid?(type) end)
+  @doc """
+  Match the `descr` to the type.
+
+  There are three types of results:
+
+  - `{:built_in, type}`: The `descr` is a built-in type.
+  - `{:compound, name}`: The `descr` is a compound type that needs to be expanded.
+  - `:unknown`: The `descr` is unknown.
+  """
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @spec match(descr :: term()) ::
+          {:built_in, built_in_type()} | {:compound, atom()} | :unknown
+  def match(descr)
+
+  for type <- @primitive_types do
+    def match({unquote(type), []}), do: {:built_in, unquote(type)}
   end
 
-  # enum
-  defp valid?({:enum, items}) when is_list(items) and length(items) >= 2 do
-    Enum.all?(items, &is_atom/1)
-  end
+  def match({:tuple, types}) when is_list(types) and length(types) >= 2,
+    do: {:built_in, :tuple}
 
-  # union
-  defp valid?({:union, types}) when is_map(types) and map_size(types) >= 2 do
-    Enum.all?(types, fn {tag, type} when is_atom(tag) -> valid?(type) end)
-  end
+  def match({:map, types}) when is_map(types) and map_size(types) >= 1,
+    do: {:built_in, :map}
 
-  # list
-  defp valid?({:list, type}), do: valid?(type)
+  def match({:enum, items}) when is_list(items) and length(items) >= 2,
+    do: {:built_in, :enum}
+
+  def match({:union, types}) when is_map(types) and map_size(types) >= 2,
+    do: {:built_in, :union}
+
+  def match({:list, type}) do
+    case match(type) do
+      {:built_in, _type} -> {:built_in, :list}
+      {:compound, _name} -> {:built_in, :list}
+      :unknown -> :unknown
+    end
+  end
 
   # compound types
-  defp valid?({name, []}) when name not in @built_in_types, do: true
+  def match({name, []}) when is_atom(name) and name not in @built_in_types,
+    do: {:compound, name}
 
-  defp valid?(_descr), do: false
+  def match(_descr), do: :unknown
 
   # Type definitions
 
@@ -89,6 +133,9 @@ defmodule ColouredFlow.Definition.ColourSet.Descr do
 
   @spec list(type :: t()) :: t()
   def list(type), do: {:list, type}
+
+  @spec type(name :: atom()) :: t()
+  def type(name), do: {name, []}
 
   @doc """
   Convert the `descr` to quoted expression.
