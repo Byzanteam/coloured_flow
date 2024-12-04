@@ -11,7 +11,7 @@ defmodule ColouredFlow.Types do
   @doc """
   Make [sum type](https://en.wikipedia.org/wiki/Tagged_union).
 
-      iex> ColouredFlow.Runner.Storage.Schemas.Types.make_sum_type([:foo, :bar, :baz])
+      iex> ColouredFlow.Types.make_sum_type([:foo, :bar, :baz])
       quote do :foo | :bar | :baz end
   """
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
