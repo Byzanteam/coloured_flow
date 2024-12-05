@@ -25,7 +25,7 @@ defmodule ColouredFlow.Enactment.BindingElement do
     field :binding, [binding()],
       doc: """
       The binding is a list of variable assignments that are bound to
-      the input places of the transition, or to the guard. The binding
+      the input arcs of the transition, or to the guard. The binding
       may be referred to in the action of the transition, and the
       out-going arcs of the transition.
       """
