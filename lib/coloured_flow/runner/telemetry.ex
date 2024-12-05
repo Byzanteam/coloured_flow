@@ -12,6 +12,7 @@ defmodule ColouredFlow.Runner.Telemetry do
 
   All enactment events share the same measurements and metadata, but their metadata are different.
 
+  | event        | measurements                      | metadata                                                                        |
   | ------------ | --------------------------------- | ------------------------------------------------------------------------------- |
   | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
   | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
