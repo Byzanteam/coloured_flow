@@ -42,6 +42,9 @@ defmodule ColouredFlow.Expression.Arc do
 
       iex> extract_binding(quote do: {x, y})
       {{:cpn_bind_variable, {:x, []}}, {:y, [], __MODULE__}}
+
+      iex> extract_binding(quote do: {x, y when y > 0})
+      {{:cpn_bind_variable, {:x, []}}, {:when, [], [{:y, [], __MODULE__}, {:>, [context: __MODULE__, imports: [{2, Kernel}]], [{:y, [], __MODULE__}, 0]}]}}
   """
   @spec extract_binding(Macro.t()) :: binding()
   def extract_binding({coefficient, value}) do
@@ -84,7 +87,14 @@ defmodule ColouredFlow.Expression.Arc do
     {_result, diagnostics} =
       Code.with_diagnostics(fn ->
         try do
-          env = Macro.Env.to_match(__ENV__)
+          quoted =
+            ColouredFlow.EnabledBindingElements.Binding.build_match_expr(
+              quoted,
+              nil,
+              nil
+            )
+
+          env = __ENV__
           :elixir_expand.expand(quoted, :elixir_env.env_to_ex(env), env)
         rescue
           _error ->

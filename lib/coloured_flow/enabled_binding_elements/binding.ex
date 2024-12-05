@@ -169,12 +169,11 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
           {:ok, [binding()]} | :error
   defp match_value_pattern(token_value, value_pattern, value_var_context) do
     ast =
-      quote do
-        case unquote(Macro.escape(token_value)) do
-          unquote(value_pattern) -> {:ok, binding(unquote(value_var_context))}
-          _other -> :error
-        end
-      end
+      build_match_expr(
+        value_pattern,
+        Macro.escape(token_value),
+        value_var_context
+      )
 
     ast
     |> Code.eval_quoted()
@@ -189,6 +188,17 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
     else
       result = div(token_coefficient, expected_coefficient)
       List.duplicate(binding, result)
+    end
+  end
+
+  @spec build_match_expr(pattern :: Macro.t(), value :: Macro.t(), value_var_context :: atom()) ::
+          Macro.t()
+  def build_match_expr(pattern, value, value_var_context) do
+    quote generated: true do
+      case unquote(value) do
+        unquote(pattern) -> {:ok, binding(unquote(value_var_context))}
+        _ -> :error
+      end
     end
   end
 end
