@@ -8,7 +8,7 @@ defmodule ColouredFlow.MixProject do
     [
       app: :coloured_flow,
       version: @version,
-      elixir: "~> 1.16",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
