@@ -507,10 +507,82 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                },
                %BindingElement{
                  transition: "merge",
+                 binding: [n: 1, x: 1],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[1]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 1],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[1]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 1],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[1]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 1],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[1]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 1],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[1]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
                  binding: [n: 1, x: 2],
                  to_consume: [
                    %Marking{place: "counter", tokens: ~MS[{}]},
                    %Marking{place: "numbers", tokens: ~MS[2]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 2],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[2]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 2],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[2]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 2],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[2]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [n: 1, x: 3],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[{}]},
+                   %Marking{place: "numbers", tokens: ~MS[3]}
                  ]
                },
                %BindingElement{
@@ -722,6 +794,14 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                  to_consume: [
                    %Marking{place: "counter", tokens: ~MS[2]},
                    %Marking{place: "numbers", tokens: ~MS[0**2]}
+                 ]
+               },
+               %BindingElement{
+                 transition: "merge",
+                 binding: [c: 2, x: 1],
+                 to_consume: [
+                   %Marking{place: "counter", tokens: ~MS[2]},
+                   %Marking{place: "numbers", tokens: ~MS[1**2]}
                  ]
                },
                %BindingElement{

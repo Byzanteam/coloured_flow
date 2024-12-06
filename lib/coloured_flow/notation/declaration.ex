@@ -28,7 +28,7 @@ defmodule ColouredFlow.Notation.Declaration do
           | {:error, [Exception.t()]}
   def compile(inscription) when is_binary(inscription) do
     with(
-      {:ok, quoted, _unbound_vars} <- ColouredFlow.Expression.compile(inscription),
+      {:ok, quoted, _unbound_vars} <- compile_inscription(inscription),
       quoted = decorate_inscription(quoted),
       {:ok, result} <- ColouredFlow.Expression.eval(quoted, [], make_env())
     ) do
@@ -39,6 +39,12 @@ defmodule ColouredFlow.Notation.Declaration do
 
       {:error, exception} when is_exception(exception) ->
         {:error, [exception]}
+    end
+  end
+
+  defp compile_inscription(inscription) do
+    with {:error, {_meta, message_info, _token}} <- ColouredFlow.Expression.compile(inscription) do
+      {:error, ArgumentError.exception(message_info)}
     end
   end
 

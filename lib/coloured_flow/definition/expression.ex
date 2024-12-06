@@ -36,13 +36,14 @@ defmodule ColouredFlow.Definition.Expression do
   Note that, `""` and `nil` are valid codes that are always evaluated to `nil`,
   and are treated as `false` in the guard of a transition.
   """
-  @spec build(binary() | nil) ::
+  @spec build(binary() | nil, Macro.Env.t()) ::
           {:ok, t()}
           | {:error, ColouredFlow.Expression.compile_error()}
-  def build(expr) when is_nil(expr) when expr === "", do: {:ok, %__MODULE__{}}
+  def build(expr, env \\ __ENV__)
+  def build(expr, _env) when is_nil(expr) when expr === "", do: {:ok, %__MODULE__{}}
 
-  def build(expr) when is_binary(expr) do
-    with({:ok, quoted, vars} <- ColouredFlow.Expression.compile(expr, __ENV__)) do
+  def build(expr, env) when is_binary(expr) do
+    with({:ok, quoted, vars} <- ColouredFlow.Expression.compile(expr, env)) do
       {:ok, %__MODULE__{code: expr, expr: quoted, vars: Map.keys(vars)}}
     end
   end
@@ -50,9 +51,9 @@ defmodule ColouredFlow.Definition.Expression do
   @doc """
   Build an expression from code, raise if failed. See `build/1`.
   """
-  @spec build!(binary() | nil) :: t()
-  def build!(expr) do
-    case build(expr) do
+  @spec build!(binary() | nil, Macro.Env.t()) :: t()
+  def build!(expr, env \\ __ENV__) do
+    case build(expr, env) do
       {:ok, expr} -> expr
       {:error, reason} -> raise "failed to build expression: #{inspect(reason)}"
     end

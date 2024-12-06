@@ -30,8 +30,10 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
       Enum.map(inputs, fn {arc, place} ->
         marking = get_marking(place, markings)
 
-        Enum.flat_map(arc.bindings, fn arc_binding ->
-          Binding.match_bag(marking.tokens, arc_binding)
+        arc.expression.expr
+        |> ColouredFlow.Expression.Arc.extract_bind_exprs()
+        |> Enum.flat_map(fn arc_bind_expr ->
+          Binding.match_bag(marking.tokens, arc_bind_expr)
         end)
       end)
 
@@ -68,11 +70,14 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   defp eval_arc(%Arc{} = arc, binding) do
     with({:ok, binding} <- build_binding(arc.expression.vars, binding)) do
       case ColouredFlow.Expression.eval(arc.expression.expr, binding) do
-        {:ok, {coefficient, value}} when is_integer(coefficient) and coefficient >= 0 ->
+        {:ok, {:ok, {coefficient, value}}} when is_integer(coefficient) and coefficient >= 0 ->
           {:ok, {coefficient, value}}
 
-        {:ok, {coefficient, _value}} ->
+        {:ok, {:ok, {coefficient, _value}}} ->
           {:error, "The coefficient must be a non-negative integer, got: #{coefficient}"}
+
+        {:ok, :error} ->
+          {:error, "The binding is not matched with the arc expression"}
 
         {:ok, result} ->
           {:error, "The result must be a MultiSet pair, got: #{result}"}

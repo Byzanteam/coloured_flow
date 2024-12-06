@@ -69,7 +69,7 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
       iex> combine([[[x: 1, y: 2]]])
       [[x: 1, y: 2]]
   """
-  @spec combine(bindings_list :: [[binding()]]) :: [binding()]
+  @spec combine(bindings_list :: [[[binding()]]]) :: [[binding()]]
   def combine(bindings_list) do
     Enum.reduce(bindings_list, [[]], fn bindings, prevs ->
       for prev <- prevs, binding <- bindings, reduce: [] do
@@ -87,38 +87,49 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
   """
   @spec match_bag(
           place_tokens_bag :: MultiSet.t(),
-          arc_binding :: ArcExpression.binding(),
+          arc_bind_expr :: ArcExpression.bind_expr(),
           value_var_context :: atom()
         ) :: [binding()]
-  def match_bag(place_tokens_bag, arc_binding, value_var_context \\ nil) do
+  def match_bag(place_tokens_bag, arc_bind_expr, value_var_context \\ nil) do
     place_tokens_bag
     |> MultiSet.to_pairs()
-    |> Enum.flat_map(&match(&1, arc_binding, value_var_context))
+    |> Enum.flat_map(&match(&1, arc_bind_expr, value_var_context))
   end
 
   @doc """
-  Get the bindings from a token (`t:ColouredFlow.MultiSet.pair/0`) that match the arc_binding expression (see detail at`t:ColouredFlow.Expression.Arc.binding/0`).
+  Get the bindings from a token (`t:ColouredFlow.MultiSet.pair/0`) that match the arc_bind expression (see detail at`t:ColouredFlow.Expression.Arc.bind_expr/0`).
   """
   @spec match(
           place_tokens :: MultiSet.pair(),
-          arc_binding :: ArcExpression.binding(),
-          value_var_context :: atom()
+          arc_bind_expr :: ArcExpression.bind_expr(),
+          arc_bind_var_context :: atom()
         ) :: [binding()]
-  def match(place_tokens, arc_binding, value_var_context \\ nil)
+  def match(place_tokens, arc_bind_expr, arc_bind_var_context \\ nil) do
+    coefficient =
+      case arc_bind_expr do
+        {coefficient, _value_pattern} -> coefficient
+        {:when, [], [{coefficient, _value_pattern}, _guard]} -> coefficient
+      end
 
-  def match(place_tokens, {{:cpn_bind_literal, coefficient}, value_pattern}, value_var_context),
-    do: literal_match(place_tokens, coefficient, value_pattern, value_var_context)
-
-  def match(place_tokens, {{:cpn_bind_variable, coefficient}, value_pattern}, value_var_context),
-    do: variable_match(place_tokens, coefficient, value_pattern, value_var_context)
+    if Macro.quoted_literal?(coefficient) do
+      if is_integer(coefficient) and coefficient >= 0 do
+        literal_match(place_tokens, coefficient, arc_bind_expr, arc_bind_var_context)
+      else
+        # skip if coefficient is not a non-negative integer
+        []
+      end
+    else
+      variable_match(place_tokens, arc_bind_expr, arc_bind_var_context)
+    end
+  end
 
   defp literal_match(place_tokens, expected_coefficient, value_pattern, value_var_context)
 
   defp literal_match(
          {token_coefficient, _token_value},
          expected_coefficient,
-         _value_pattern,
-         _binding_context
+         _bind,
+         _bind_context
        )
        when expected_coefficient > token_coefficient,
        do: []
@@ -126,63 +137,63 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
   defp literal_match(
          {token_coefficient, token_value},
          expected_coefficient,
-         value_pattern,
-         value_var_context
+         expr,
+         bind_var_context
        ) do
-    case match_value_pattern(token_value, value_pattern, value_var_context) do
+    case match_bind_expr({expected_coefficient, token_value}, expr, bind_var_context) do
       :error ->
         []
 
-      {:ok, binding} ->
-        prepend_coefficient_binding(token_coefficient, expected_coefficient, binding)
+      {:ok, expr, _place_tokens} ->
+        duplicate_binding(token_coefficient, expected_coefficient, expr)
     end
   end
 
-  defp variable_match(
-         {token_coefficient, token_value},
-         {coefficient_var, _meta},
-         value_pattern,
-         value_var_context
-       ) do
-    case match_value_pattern(token_value, value_pattern, value_var_context) do
-      :error ->
-        []
+  defp variable_match(place_tokens, expr, bind_var_context)
 
-      {:ok, binding} ->
-        case Keyword.fetch(binding, coefficient_var) do
-          :error ->
-            for coeff <- 0..token_coefficient do
-              [{coefficient_var, coeff} | binding]
-            end
+  defp variable_match({token_coefficient, token_value}, expr, bind_var_context) do
+    Enum.flat_map(0..token_coefficient, fn coefficient ->
+      case match_bind_expr({coefficient, token_value}, expr, bind_var_context) do
+        :error ->
+          []
 
-          {:ok, coefficient} ->
-            prepend_coefficient_binding(token_coefficient, coefficient, binding)
-        end
-    end
+        {:ok, expr, {coefficient, _value}} ->
+          duplicate_binding(token_coefficient, coefficient, expr)
+      end
+    end)
   end
 
-  @spec match_value_pattern(
-          MultiSet.value(),
-          ArcExpression.value_pattern(),
-          value_var_context :: atom()
-        ) ::
-          {:ok, [binding()]} | :error
-  defp match_value_pattern(token_value, value_pattern, value_var_context) do
+  @spec match_bind_expr(MultiSet.pair(), ArcExpression.bind_expr(), bind_var_context :: atom()) ::
+          {:ok, Code.binding(), MultiSet.pair()} | :error
+  defp match_bind_expr(place_tokens, expr, bind_var_context) do
+    value = Macro.escape(place_tokens)
+    coefficient_var = Macro.var(:coefficient, __MODULE__)
+    value_var = Macro.var(:value, __MODULE__)
+
     ast =
-      build_match_expr(
-        value_pattern,
-        Macro.escape(token_value),
-        value_var_context
-      )
+      quote generated: true do
+        with(
+          {unquote(coefficient_var), unquote(value_var)} <- unquote(value),
+          unquote(expr) <- {unquote(coefficient_var), unquote(value_var)}
+        ) do
+          {
+            :ok,
+            binding(unquote(bind_var_context)),
+            {unquote(coefficient_var), unquote(value_var)}
+          }
+        else
+          _other -> :error
+        end
+      end
 
     ast
     |> Code.eval_quoted()
     |> elem(0)
   rescue
-    _error -> []
+    _error -> :error
   end
 
-  defp prepend_coefficient_binding(token_coefficient, expected_coefficient, binding) do
+  defp duplicate_binding(token_coefficient, expected_coefficient, binding) do
     if 0 === expected_coefficient do
       [binding]
     else
@@ -191,13 +202,11 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
     end
   end
 
-  @spec build_match_expr(pattern :: Macro.t(), value :: Macro.t(), value_var_context :: atom()) ::
-          Macro.t()
-  def build_match_expr(pattern, value, value_var_context) do
+  @spec build_match_expr(expr :: ArcExpression.bind_expr()) :: Macro.t()
+  def build_match_expr(expr) do
     quote generated: true do
-      case unquote(value) do
-        unquote(pattern) -> {:ok, binding(unquote(value_var_context))}
-        _ -> :error
+      case nil do
+        unquote(expr) -> binding()
       end
     end
   end

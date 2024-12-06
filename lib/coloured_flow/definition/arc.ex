@@ -12,7 +12,6 @@ defmodule ColouredFlow.Definition.Arc do
 
   @type label() :: binary()
   @type orientation() :: :p_to_t | :t_to_p
-  @typep binding() :: ArcExpression.binding()
 
   typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
@@ -57,84 +56,72 @@ defmodule ColouredFlow.Definition.Arc do
       else
         bind {2, 1}
       end
+      ```
 
-      # the bindings are:
-      # [{{:cpn_bind_literal, 2}, 1}, {{:cpn_bind_literal, 1}, {:x, [], nil}}]
+      ```elixir
+      # use `bind` with guard to bind the variable
+      bind {1, x} when x > 2
       ```
       """
-
-    field :bindings,
-          list(binding()),
-          default: [],
-          doc: """
-          The result that are returned by the arc, is form of a multi-set of tokens.
-
-          - `[{{:cpn_bind_literal, 1}, {:x, [], nil}}]`: binds 1 token of colour `:x`
-          - `[{{:cpn_bind_literal, 2}, {:x, [], nil}}, {3, {:cpn_bind_variable, :y}}]`: binds 2 tokens of colour `:x` or 3 tokens of colour `:y`
-          - `[{{:cpn_bind_variable, :x}, {:y, [], nil}}]`: binds `x` tokens of colour `:y`
-          - `[{{:cpn_bind_literal, 0}, {:x, [], nil}}]`: binds 0 tokens (empty tokens) of colour `:x`
-          """
   end
 
   @doc """
-  Build bindings from the expression of the in-coming arc.
+  Build the expression for the arc.
 
   ## Examples
 
-      iex> expression = ColouredFlow.Definition.Expression.build!("bind {a, b}")
-      iex> {:ok, binding} = build_bindings(expression)
-      iex> [{{:cpn_bind_variable, {:a, [line: 1, column: 7]}}, {:b, [line: 1, column: 10], nil}}] = binding
+      iex> {:ok, %ColouredFlow.Definition.Expression{}} = build_expression(:p_to_t, "bind {a, b}")
 
-      iex> expression = ColouredFlow.Definition.Expression.build!("{a, b}")
-      iex> {:error, {[], "missing `bind` in expression", "{a, b}"}} = build_bindings(expression)
+      iex> {:error, {[], "missing `bind` in expression", "{a, b}"}} = build_expression(:p_to_t, "{a, b}")
+
+      iex> {:ok, %ColouredFlow.Definition.Expression{}} = build_expression(:t_to_p, "{a, b}")
   """
-  @spec build_bindings(Expression.t()) ::
-          {:ok, list(binding())} | {:error, ColouredFlow.Expression.compile_error()}
-  def build_bindings(%Expression{} = expression) do
-    case extract_bindings(expression.expr) do
-      [] -> {:error, {[], "missing `bind` in expression", expression.code}}
-      bindings -> check_binding_vars(expression.vars, bindings)
+  @spec build_expression(orientation(), code :: binary() | nil) ::
+          {:ok, Expression.t()} | {:error, ColouredFlow.Expression.compile_error()}
+  def build_expression(orientation, code)
+
+  def build_expression(:p_to_t, code) do
+    with {:ok, expression} <- Expression.build(code) do
+      case validate_bind_exprs(expression.expr) do
+        [] ->
+          {:error, {[], "missing `bind` in expression", code}}
+
+        validations ->
+          case Enum.find(validations, &match?({:error, _reason}, &1)) do
+            nil -> {:ok, expression}
+            {:error, reason} -> {:error, reason}
+          end
+      end
     end
   end
 
-  @spec build_bindings!(Expression.t()) :: list(binding())
-  def build_bindings!(%Expression{} = expression) do
-    case build_bindings(expression) do
-      {:ok, bindings} -> bindings
+  def build_expression(:t_to_p, code) do
+    Expression.build(code)
+  end
+
+  @spec build_expression!(orientation(), code :: binary() | nil) :: Expression.t()
+  def build_expression!(orientation, code) do
+    case build_expression(orientation, code) do
+      {:ok, expression} -> expression
       {:error, reason} -> raise inspect(reason)
     end
   end
 
-  defp extract_bindings(quoted) do
+  defp validate_bind_exprs(quoted) do
     quoted
     |> Macro.prewalk([], fn
-      {:bind, _meta, [binding]} = ast, acc ->
-        {ast, [ArcExpression.extract_binding(binding) | acc]}
+      {:bind, meta, [bind_expr]} = ast, acc ->
+        validation =
+          case ArcExpression.validate_bind_expr(bind_expr) do
+            {:error, reason} -> {:error, {meta, reason, Macro.to_string(ast)}}
+            :ok -> :ok
+          end
+
+        {ast, [validation | acc]}
 
       ast, acc ->
         {ast, acc}
     end)
     |> elem(1)
-  end
-
-  defp check_binding_vars(vars, bindings) do
-    binding_vars = Enum.flat_map(bindings, &ArcExpression.get_var_names/1)
-    binding_vars = Map.new(binding_vars)
-    diff = Map.drop(binding_vars, vars)
-
-    case Map.to_list(diff) do
-      [] ->
-        {:ok, bindings}
-
-      [{name, meta} | _rest] ->
-        {
-          :error,
-          {
-            meta,
-            "missing binding variable in vars: #{inspect(name)}",
-            ""
-          }
-        }
-    end
   end
 end
