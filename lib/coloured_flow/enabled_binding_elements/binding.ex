@@ -108,7 +108,7 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
     coefficient =
       case arc_bind_expr do
         {coefficient, _value_pattern} -> coefficient
-        {:when, [], [{coefficient, _value_pattern}, _guard]} -> coefficient
+        {:when, _meta, [{coefficient, _value_pattern}, _guard]} -> coefficient
       end
 
     if Macro.quoted_literal?(coefficient) do
@@ -209,5 +209,22 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
         unquote(expr) -> binding()
       end
     end
+  end
+
+  @spec apply_constants_to_bind_expr(
+          arc_bind_expr :: ArcExpression.bind_expr(),
+          constants :: %{ColourSet.name() => ColourSet.value()}
+        ) :: ArcExpression.bind_expr()
+  def apply_constants_to_bind_expr(arc_bind_expr, constants) do
+    Macro.postwalk(arc_bind_expr, fn
+      {var, meta, context} when is_atom(var) and is_atom(context) ->
+        case Map.fetch(constants, var) do
+          {:ok, value} -> Macro.escape(value)
+          :error -> {var, meta, context}
+        end
+
+      other ->
+        other
+    end)
   end
 end

@@ -37,8 +37,7 @@ defmodule ColouredFlow.Definition.Expression do
   and are treated as `false` in the guard of a transition.
   """
   @spec build(binary() | nil, Macro.Env.t()) ::
-          {:ok, t()}
-          | {:error, ColouredFlow.Expression.compile_error()}
+          {:ok, t()} | {:error, ColouredFlow.Expression.compile_error()}
   def build(expr, env \\ __ENV__)
   def build(expr, _env) when is_nil(expr) when expr === "", do: {:ok, %__MODULE__{}}
 

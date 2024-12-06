@@ -897,6 +897,120 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
                }
              ] === ebes
     end
+
+    test "works with multiple vars and guarded transition for constants" do
+      import ColouredFlow.Notation.Val
+
+      # merge `batch_size` integers that are divisible by `divisor` into a single integer
+      # eg. batch_size = 3, divisor = 2
+      # integer: [2, 2, 2], result: [2]
+      # (integer) -> [filter] -> (result)
+      colour_sets = [
+        colset(int() :: integer())
+      ]
+
+      constants = [
+        val(batch_size :: int() = 3),
+        val(divisor :: int() = 2)
+      ]
+
+      transition =
+        build_transition!(
+          name: "filter",
+          guard: "Integer.mod(x, divisor) === 0"
+        )
+
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: colour_sets,
+          places: [
+            %Place{name: "integer", colour_set: :int},
+            %Place{name: "result", colour_set: :int}
+          ],
+          transitions: [
+            transition
+          ],
+          arcs: [
+            build_arc!(
+              place: "integer",
+              transition: "filter",
+              orientation: :p_to_t,
+              expression: "bind {batch_size, x}"
+            ),
+            build_arc!(
+              place: "result",
+              transition: "filter",
+              orientation: :t_to_p,
+              expression: "{1, x}"
+            )
+          ],
+          variables: [
+            %Variable{name: :x, colour_set: :int}
+          ],
+          constants: constants
+        }
+
+      markings = [
+        %Marking{place: "integer", tokens: MultiSet.new([2, 2, 2])}
+      ]
+
+      ebes = list_bindings(transition, cpnet, markings)
+
+      assert [
+               %BindingElement{
+                 transition: "filter",
+                 binding: [x: 2],
+                 to_consume: [%Marking{place: "integer", tokens: ~MS[3**2]}]
+               }
+             ] === ebes
+    end
+
+    test "skip binding that its value is invalid" do
+      # (integer) -> [filter] -> (even)
+      colour_sets = [
+        colset(int() :: integer()),
+        colset(str() :: binary())
+      ]
+
+      transition = build_transition!(name: "filter", guard: "true")
+
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: colour_sets,
+          places: [
+            %Place{name: "integer", colour_set: :int},
+            %Place{name: "even", colour_set: :int}
+          ],
+          transitions: [
+            transition
+          ],
+          arcs: [
+            build_arc!(
+              label: "input",
+              place: "integer",
+              transition: "filter",
+              orientation: :p_to_t,
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
+              label: "output",
+              place: "even",
+              transition: "filter",
+              orientation: :t_to_p,
+              expression: "{1, x}"
+            )
+          ],
+          variables: [
+            %Variable{name: :x, colour_set: :str}
+          ]
+        }
+
+      markings = [%Marking{place: "integer", tokens: MultiSet.new([2])}]
+
+      ebes = list_bindings(transition, cpnet, markings)
+
+      assert [] === ebes
+    end
   end
 
   defp list_bindings(transition, cpnet, markings) do

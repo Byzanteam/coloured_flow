@@ -67,68 +67,46 @@ defmodule ColouredFlow.EnabledBindingElements.BindingTest do
     end
   end
 
-  describe "apply_constants_to_arc_binding" do
+  describe "apply_constants_to_bind_expr" do
     test "works " do
-      {coefficient, value_pattern} =
-        arc_binding = build_arc_binding(quote(do: {x, y when y > 0}))
+      expr = quote(do: {x, y})
 
-      assert {
-               ^coefficient,
-               ^value_pattern
-             } = Binding.apply_constants_to_arc_binding(arc_binding, %{})
+      bind_expr = Binding.apply_constants_to_bind_expr(expr, %{x: 1})
+      assert [[y: 1]] = Binding.match({1, 1}, bind_expr, __MODULE__)
+    end
 
-      assert {
-               {:cpn_bind_literal, 1},
-               ^value_pattern
-             } = Binding.apply_constants_to_arc_binding(arc_binding, %{x: 1})
+    test "works for guard " do
+      expr = quote(do: {x, y} when y > 0)
 
-      assert {
-               ^coefficient,
-               {:when, [],
-                [
-                  2,
-                  {:>,
-                   [
-                     context: __MODULE__,
-                     imports: [{2, Kernel}]
-                   ], [2, 0]}
-                ]}
-             } = Binding.apply_constants_to_arc_binding(arc_binding, %{y: 2})
+      bind_expr = Binding.apply_constants_to_bind_expr(expr, %{x: 1})
+      assert [[y: 1], [y: 1]] = Binding.match({2, 1}, bind_expr, __MODULE__)
+
+      bind_expr = Binding.apply_constants_to_bind_expr(expr, %{x: 1, y: 1})
+      assert [[], []] = Binding.match({2, 1}, bind_expr, __MODULE__)
+
+      bind_expr = Binding.apply_constants_to_bind_expr(expr, %{x: 1, y: 0})
+      assert [] = Binding.match({2, 1}, bind_expr, __MODULE__)
     end
 
     test "works for complex value" do
-      {coefficient, _value_pattern} =
-        arc_binding = build_arc_binding(quote(do: {x, {:list, y} when y != []}))
-
+      expr = quote(do: {x, {:list, [%{name: "Alice"} | users]}})
       user_list = [%{name: "Alice"}, %{name: "Bob"}]
-      user_list_ast = Macro.escape(user_list)
 
-      assert {
-               ^coefficient,
-               {:when, [],
-                [
-                  {:list, ^user_list_ast},
-                  {
-                    :!=,
-                    [context: __MODULE__, imports: [{2, Kernel}]],
-                    [^user_list_ast, []]
-                  }
-                ]}
-             } = Binding.apply_constants_to_arc_binding(arc_binding, %{y: user_list})
+      bind_expr = Binding.apply_constants_to_bind_expr(expr, %{users: [%{name: "Bob"}]})
+
+      assert [
+               [x: 0],
+               [x: 1],
+               [x: 1],
+               [x: 2]
+             ] = Binding.match({2, {:list, user_list}}, bind_expr, __MODULE__)
+
+      bind_expr = Binding.apply_constants_to_bind_expr(expr, %{})
+
+      assert [
+               [users: [%{name: "Bob"}], x: 0],
+               [users: [%{name: "Bob"}], x: 1]
+             ] = Binding.match({1, {:list, user_list}}, bind_expr, __MODULE__)
     end
-
-    test "skip for invalid coefficient constant value" do
-      {coefficient, value_pattern} =
-        arc_binding = build_arc_binding(quote(do: {x, y when y > 0}))
-
-      assert {
-               ^coefficient,
-               ^value_pattern
-             } = Binding.apply_constants_to_arc_binding(arc_binding, %{x: -1})
-    end
-  end
-
-  defp build_arc_binding(ast) do
-    ColouredFlow.Expression.Arc.extract_binding(ast)
   end
 end
