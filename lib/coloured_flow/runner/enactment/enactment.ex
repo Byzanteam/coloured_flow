@@ -30,7 +30,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
   """
 
-  use GenServer
+  use GenServer, restart: :transient
   use TypedStructor
 
   alias ColouredFlow.Definition.ColouredPetriNet
