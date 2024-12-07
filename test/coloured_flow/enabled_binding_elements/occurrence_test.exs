@@ -8,6 +8,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
   import ColouredFlow.MultiSet
   import ColouredFlow.Notation.Colset
+  import ColouredFlow.Notation.Val
 
   describe "occur" do
     test "works" do
@@ -398,6 +399,64 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
                  value: true
                }
              ] = exceptions
+    end
+
+    test "works with constants" do
+      # (integer) -> [filter] -> (even)
+      colour_sets = [
+        colset(int() :: integer())
+      ]
+
+      constants = [
+        val(n :: int() = 5)
+      ]
+
+      transition = build_transition!(name: "filter", guard: "Integer.mod(x, 2) == 0")
+
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: colour_sets,
+          places: [
+            %Place{name: "integer", colour_set: :int},
+            %Place{name: "even", colour_set: :int}
+          ],
+          transitions: [
+            transition
+          ],
+          arcs: [
+            build_arc!(
+              label: "input",
+              place: "integer",
+              transition: "filter",
+              orientation: :p_to_t,
+              expression: "bind {1, x}"
+            ),
+            build_arc!(
+              label: "output",
+              place: "even",
+              transition: "filter",
+              orientation: :t_to_p,
+              expression: "{n, x}"
+            )
+          ],
+          variables: [
+            %Variable{name: :x, colour_set: :int}
+          ],
+          constants: constants
+        }
+
+      binding_element = %BindingElement{
+        transition: "filter",
+        binding: [x: 2],
+        to_consume: [%Marking{place: "integer", tokens: ~MS[2]}]
+      }
+
+      free_binding = []
+
+      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
+
+      assert [] === occurrence.free_binding
+      assert [%Marking{place: "even", tokens: ~MS[5**2]}] === occurrence.to_produce
     end
   end
 

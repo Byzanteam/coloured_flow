@@ -81,11 +81,6 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
     end)
   end
 
-  @spec build_constants(ColouredPetriNet.t()) :: %{ColourSet.name() => ColourSet.value()}
-  defp build_constants(%ColouredPetriNet{} = cpnet) do
-    Map.new(cpnet.constants, &{&1.name, &1.value})
-  end
-
   @spec reject_invalid_bandings([[[BindingElement.binding()]]], ColouredPetriNet.t()) ::
           [[[BindingElement.binding()]]]
   defp reject_invalid_bandings(bindings_list, cpnet) do

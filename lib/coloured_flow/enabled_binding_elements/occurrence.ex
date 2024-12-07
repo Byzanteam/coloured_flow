@@ -5,6 +5,7 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
   and produces a set of markings to output places.
   """
 
+  alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Variable
@@ -27,12 +28,16 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
   def occur(binding_element, free_binding, cpnet) do
     transition = fetch_transition!(binding_element.transition, cpnet)
 
+    constants = build_constants(cpnet)
     binding = Enum.concat(binding_element.binding, free_binding)
 
     outputs = get_arcs_with_place(transition, :t_to_p, cpnet)
 
     {to_produce, exceptions} =
       Enum.map_reduce(outputs, [], fn {arc, place}, acc ->
+        # place constants into binding
+        binding = merge_constants(binding, arc, constants)
+
         with {:ok, result} <- ColouredFlow.Expression.eval(arc.expression.expr, binding),
              {:ok, tokens} <- build_tokens(result, place.colour_set, cpnet) do
           {%Marking{place: place.name, tokens: tokens}, acc}
@@ -53,6 +58,13 @@ defmodule ColouredFlow.EnabledBindingElements.Occurrence do
     else
       {:error, exceptions}
     end
+  end
+
+  defp merge_constants(binding, %Arc{} = arc, constants) do
+    constants = constants |> Map.take(arc.expression.vars) |> Enum.to_list()
+    # the order of keywords does not matter,
+    # as we apply constants to bind expressions earlier
+    Keyword.merge(constants, binding)
   end
 
   @spec build_tokens(

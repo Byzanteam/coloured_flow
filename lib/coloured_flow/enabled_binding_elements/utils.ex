@@ -108,4 +108,9 @@ defmodule ColouredFlow.EnabledBindingElements.Utils do
       Enum.filter(cpnet.transitions, &MapSet.member?(transition_names, &1.name))
     end)
   end
+
+  @spec build_constants(ColouredPetriNet.t()) :: %{ColourSet.name() => ColourSet.value()}
+  def build_constants(%ColouredPetriNet{} = cpnet) do
+    Map.new(cpnet.constants, &{&1.name, &1.value})
+  end
 end
