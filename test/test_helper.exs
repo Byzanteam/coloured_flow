@@ -1,9 +1,10 @@
-Mix.Task.run("ecto.create")
-
-repo_config = ColouredFlow.TestRepo.config()
-
-ColouredFlow.TestRepo.__adapter__().storage_down(repo_config)
-ColouredFlow.TestRepo.__adapter__().storage_up(repo_config)
+if System.get_env("RESET_DB") do
+  Mix.Task.run("ecto.drop")
+  Mix.Task.run("ecto.create")
+else
+  # Ensure the database is created
+  Mix.Task.run("ecto.create")
+end
 
 {:ok, _pid} = ColouredFlow.Runner.Supervisor.start_link([])
 {:ok, _pid} = ColouredFlow.TestRepo.start_link()
