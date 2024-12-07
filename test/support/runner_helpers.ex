@@ -175,7 +175,8 @@ defmodule ColouredFlow.RunnerHelpers do
     |> Enum.sort_by(fn %Enactment.Workitem{} = workitem ->
       {
         Enum.find_index(Enactment.Workitem.__states__(), &(workitem.state === &1)),
-        workitem.binding_element.transition
+        workitem.binding_element.transition,
+        workitem.binding_element.binding
       }
     end)
   end
