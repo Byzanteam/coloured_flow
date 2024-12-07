@@ -3,49 +3,50 @@ defmodule ColouredFlow.Expression.ArcTest do
 
   doctest ColouredFlow.Expression.Arc, import: true
 
-  alias ColouredFlow.Expression.Arc
+  import ColouredFlow.Expression.Arc, only: [bind: 1]
 
-  describe "extract_binding/1" do
+  describe "bind evaluation" do
     test "works" do
-      assert {{:cpn_bind_literal, 1}, {:x, [], __MODULE__}} =
-               Arc.extract_binding(quote do: {1, x})
+      quoted = quote(do: bind({1, 2}))
+      assert {{:ok, {1, 2}}, _binding} = Code.eval_quoted(quoted)
 
-      assert {{:cpn_bind_variable, {:x, []}}, 1} =
-               Arc.extract_binding(quote do: {x, 1})
+      quoted = quote(do: bind({x, y}))
+      assert {{:ok, {1, 2}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 1, y: 2))
 
-      assert {{:cpn_bind_variable, {:x, []}}, {:y, [], __MODULE__}} =
-               Arc.extract_binding(quote do: {x, y})
+      quoted = quote(do: bind({x, {1, 2}}))
+      assert {{:ok, {1, {1, 2}}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 1))
 
-      assert {{:cpn_bind_literal, 1}, {{:x, [], __MODULE__}, {:y, [], __MODULE__}}} =
-               Arc.extract_binding(quote do: {1, {x, y}})
+      quoted = quote(do: bind({x, {1, y}}))
+      assert {{:ok, {1, {1, 2}}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 1, y: 2))
 
-      assert {{:cpn_bind_literal, 1}, [{:|, [], [1, {:y, [], __MODULE__}]}]} =
-               Arc.extract_binding(quote do: {1, [1 | y]})
+      quoted = quote(do: bind({x, y, z}))
 
-      assert {{:cpn_bind_variable, {:x, []}}, {:{}, [], [{:y, [], __MODULE__}]}} =
-               Arc.extract_binding(quote do: {x, {y}})
-    end
-
-    test "errors" do
-      assert_raise ArgumentError, fn ->
-        Arc.extract_binding(quote do: {1.0, x})
-      end
-
-      assert_raise ArgumentError, fn ->
-        Arc.extract_binding(quote do: {-1, x})
-      end
-
-      assert_raise ArgumentError, fn ->
-        Arc.extract_binding(quote do: {x, y, z})
-      end
-
-      assert_raise ArgumentError, fn ->
-        Arc.extract_binding(quote do: {x, y, z})
-      end
-
-      assert_raise ArgumentError, fn ->
-        Arc.extract_binding(quote do: {1, y + z})
+      assert_raise ArgumentError, ~r/Invalid bind expression/, fn ->
+        Code.eval_quoted(quoted, make_binding(x: 1, y: 2, z: 3))
       end
     end
+
+    test "support guards" do
+      quoted = quote do: bind({x, y} when x > y)
+      assert {{:ok, {2, 1}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 2, y: 1))
+      assert {:error, _binding} = Code.eval_quoted(quoted, make_binding(x: 2, y: 2))
+
+      quoted = quote do: bind({x, y} when x > 5 when x < 5 and x > y)
+      assert {{:ok, {6, 7}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 6, y: 7))
+      assert {{:ok, {2, 1}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 2, y: 1))
+
+      quoted = quote do: bind({x, [1 | y]})
+      assert {{:ok, {2, [1, 2]}}, _binding} = Code.eval_quoted(quoted, make_binding(x: 2, y: [2]))
+
+      quoted = quote do: bind({x, [1 | y]} when length(y) > 1)
+      assert {:error, _binding} = Code.eval_quoted(quoted, make_binding(x: 2, y: [2]))
+
+      assert {{:ok, {2, [1, 2, 3]}}, _binding} =
+               Code.eval_quoted(quoted, make_binding(x: 2, y: [2, 3]))
+    end
+  end
+
+  defp make_binding(binding) do
+    Enum.map(binding, fn {name, value} -> {{name, __MODULE__}, value} end)
   end
 end

@@ -24,19 +24,13 @@ defmodule ColouredFlow.Definition.Helper do
   @spec build_arc!([{:transition, Transition.name()} | transition_arc_param()]) :: Arc.t()
   def build_arc!(params) do
     params = Keyword.validate!(params, [:label, :place, :transition, :orientation, :expression])
-    expr = Expression.build!(params[:expression])
-
-    bindings =
-      case params[:orientation] do
-        :p_to_t -> Arc.build_bindings!(expr)
-        :t_to_p -> []
-      end
+    expr = Arc.build_expression!(params[:orientation], params[:expression])
 
     struct!(
       Arc,
       params
       |> Keyword.take([:label, :place, :transition, :orientation])
-      |> Keyword.merge(expression: expr, bindings: bindings)
+      |> Keyword.merge(expression: expr)
     )
   end
 
