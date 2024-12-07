@@ -43,7 +43,7 @@ defmodule ColouredFlow.Definition.Expression do
 
   def build(expr, env) when is_binary(expr) do
     with({:ok, quoted, vars} <- ColouredFlow.Expression.compile(expr, env)) do
-      {:ok, %__MODULE__{code: expr, expr: quoted, vars: Map.keys(vars)}}
+      {:ok, %__MODULE__{code: expr, expr: quoted, vars: vars |> Map.keys() |> Enum.sort()}}
     end
   end
 
