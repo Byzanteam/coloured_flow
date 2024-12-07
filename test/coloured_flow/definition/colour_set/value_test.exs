@@ -34,6 +34,7 @@ defmodule ColouredFlow.Definition.ColourSet.ValueTest do
       # list
       assert Value.valid?([1, 2])
       assert Value.valid?([1])
+      refute Value.valid?([1, "a"])
     end
   end
 
