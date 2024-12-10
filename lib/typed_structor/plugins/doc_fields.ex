@@ -89,7 +89,7 @@ defmodule TypedStructor.Plugins.DocFields do
 
   defp expand_type(type, caller) do
     type
-    |> Macro.prewalk(&Macro.expand(&1, caller))
+    |> Macro.prewalk(&Macro.expand_literals(&1, caller))
     |> Macro.to_string()
   end
 
