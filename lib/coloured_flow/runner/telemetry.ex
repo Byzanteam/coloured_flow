@@ -74,7 +74,10 @@ defmodule ColouredFlow.Runner.Telemetry do
   | `:complete_workitems` | `:workitem_ids`, `:workitem_id_and_outputs` | `:workitems`  |
   """
 
+  @type handler_id() :: :telemetry.handler_id()
   @type event_name() :: :telemetry.event_name()
+  @type handler_function() :: :telemetry.handler_function()
+  @type handler_config() :: :telemetry.handler_config()
   @type event_prefix() :: :telemetry.event_prefix()
   @type event_metadata() :: :telemetry.event_metadata()
   @type event_measurements() :: :telemetry.event_measurements()
@@ -218,6 +221,27 @@ defmodule ColouredFlow.Runner.Telemetry do
   alias ColouredFlow.Runner.Telemetry.DefaultLogger
 
   @handler_id :coloured_flow_runner_default_logger
+  @events [
+    [:coloured_flow, :runner, :enactment, :start],
+    [:coloured_flow, :runner, :enactment, :stop],
+    [:coloured_flow, :runner, :enactment, :terminate],
+    [:coloured_flow, :runner, :enactment, :exception],
+    [:coloured_flow, :runner, :enactment, :produce_workitems, :start],
+    [:coloured_flow, :runner, :enactment, :produce_workitems, :stop],
+    [:coloured_flow, :runner, :enactment, :produce_workitems, :exception],
+    [:coloured_flow, :runner, :enactment, :allocate_workitems, :start],
+    [:coloured_flow, :runner, :enactment, :allocate_workitems, :stop],
+    [:coloured_flow, :runner, :enactment, :allocate_workitems, :exception],
+    [:coloured_flow, :runner, :enactment, :start_workitems, :start],
+    [:coloured_flow, :runner, :enactment, :start_workitems, :stop],
+    [:coloured_flow, :runner, :enactment, :start_workitems, :exception],
+    [:coloured_flow, :runner, :enactment, :withdraw_workitems, :start],
+    [:coloured_flow, :runner, :enactment, :withdraw_workitems, :stop],
+    [:coloured_flow, :runner, :enactment, :withdraw_workitems, :exception],
+    [:coloured_flow, :runner, :enactment, :complete_workitems, :start],
+    [:coloured_flow, :runner, :enactment, :complete_workitems, :stop],
+    [:coloured_flow, :runner, :enactment, :complete_workitems, :exception]
+  ]
 
   @doc """
   Attaches a default `Logger` handler for logging structured JSON output.
@@ -266,34 +290,12 @@ defmodule ColouredFlow.Runner.Telemetry do
   def attach_default_logger(opts \\ [])
 
   def attach_default_logger(opts) when is_list(opts) do
-    events = [
-      [:coloured_flow, :runner, :enactment, :start],
-      [:coloured_flow, :runner, :enactment, :stop],
-      [:coloured_flow, :runner, :enactment, :terminate],
-      [:coloured_flow, :runner, :enactment, :exception],
-      [:coloured_flow, :runner, :enactment, :produce_workitems, :start],
-      [:coloured_flow, :runner, :enactment, :produce_workitems, :stop],
-      [:coloured_flow, :runner, :enactment, :produce_workitems, :exception],
-      [:coloured_flow, :runner, :enactment, :allocate_workitems, :start],
-      [:coloured_flow, :runner, :enactment, :allocate_workitems, :stop],
-      [:coloured_flow, :runner, :enactment, :allocate_workitems, :exception],
-      [:coloured_flow, :runner, :enactment, :start_workitems, :start],
-      [:coloured_flow, :runner, :enactment, :start_workitems, :stop],
-      [:coloured_flow, :runner, :enactment, :start_workitems, :exception],
-      [:coloured_flow, :runner, :enactment, :withdraw_workitems, :start],
-      [:coloured_flow, :runner, :enactment, :withdraw_workitems, :stop],
-      [:coloured_flow, :runner, :enactment, :withdraw_workitems, :exception],
-      [:coloured_flow, :runner, :enactment, :complete_workitems, :start],
-      [:coloured_flow, :runner, :enactment, :complete_workitems, :stop],
-      [:coloured_flow, :runner, :enactment, :complete_workitems, :exception]
-    ]
-
     opts =
       opts
       |> Keyword.put_new(:encode, false)
       |> Keyword.put_new(:level, :info)
 
-    :telemetry.attach_many(@handler_id, events, &DefaultLogger.handle_event/4, opts)
+    :telemetry.attach_many(@handler_id, @events, &DefaultLogger.handle_event/4, opts)
   end
 
   @doc """
@@ -313,5 +315,26 @@ defmodule ColouredFlow.Runner.Telemetry do
   @spec detach_default_logger() :: :ok | {:error, :not_found}
   def detach_default_logger do
     :telemetry.detach(@handler_id)
+  end
+
+  @doc """
+  Attaches a telemetry handler to the given event names.
+
+  This is a convenience function for `:telemetry.attach_many/4` to attach a handler to multiple
+  event names, which are the same as the default logger handler, at once.
+  """
+  @spec attach(handler_id(), [event_name()], handler_function(), handler_config()) ::
+          :ok | {:error, :already_exists}
+  def attach(handler_id, event_names \\ @events, handler_function, handler_config \\ [])
+      when is_list(event_names) and is_function(handler_function, 4) do
+    :telemetry.attach_many(handler_id, event_names, handler_function, handler_config)
+  end
+
+  @doc """
+  Detaches a telemetry handler.
+  """
+  @spec detach(handler_id()) :: :ok | {:error, :not_found}
+  def detach(handler_id) do
+    :telemetry.detach(handler_id)
   end
 end
