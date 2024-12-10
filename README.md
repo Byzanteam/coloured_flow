@@ -1,5 +1,8 @@
 # ColouredFlow
 
+> [!WARNING]  
+> The document is WIP.
+
 ColouredFlow is a workflow engine based on Coloured Petri Nets (CPN). It provides a flexible and powerful way to model and execute workflows with complex logic and concurrency. ColouredFlow allows you to define places, transitions, arcs, and tokens with different data types (colours) and expressions.
 
 ## Features
@@ -8,8 +11,6 @@ ColouredFlow is a workflow engine based on Coloured Petri Nets (CPN). It provide
 - Support for various data types (colours) and expressions
 - Execute workflows with concurrency and complex logic
 - Integration with Ecto for persistence
-- Generate documentation with ExDoc
-- Example usage with Kino for interactive visualizations
 
 ## Installation
 
@@ -636,17 +637,3 @@ flow = TrafficLight.setup_flow()
 
 grid
 ```
-```
-
-## Contributing
-
-We welcome contributions to the `coloured_flow` project! If you would like to contribute, please follow these guidelines:
-
-1. Fork the repository and create a new branch for your feature or bugfix.
-2. Write tests for your changes and ensure all existing tests pass.
-3. Follow the coding style and conventions used in the project.
-4. Submit a pull request with a clear description of your changes.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
