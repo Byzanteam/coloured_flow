@@ -441,6 +441,11 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  @impl GenServer
+  def terminate(_reason, state) do
+    emit_event(:stop, state)
+  end
+
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
   @spec to_map(Enumerable.t(item)) :: %{Workitem.id() => item} when item: Workitem.t()
   def to_map([]), do: %{}

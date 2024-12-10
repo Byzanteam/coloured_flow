@@ -35,6 +35,24 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLoggerTest do
     end
   end
 
+  describe "enactment stop event" do
+    setup :setup_flow
+    setup :setup_enactment
+
+    @describetag cpnet: :simple_sequence
+
+    @tag initial_markings: [%Marking{place: "output", tokens: ~MS[1]}]
+    test "works", %{enactment: enactment} do
+      log =
+        capture_log(fn ->
+          [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+          wait_enactment_to_stop!(enactment_server)
+        end)
+
+      assert log =~ ~S|"event":"enactment:stop"|
+    end
+  end
+
   describe "enactment terminate event" do
     setup :setup_flow
     setup :setup_enactment
