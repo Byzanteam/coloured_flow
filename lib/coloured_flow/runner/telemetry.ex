@@ -7,6 +7,7 @@ defmodule ColouredFlow.Runner.Telemetry do
   `ColouredFlow.Runner` emits telemetry events for the enactment transitions:
 
   - `[:coloured_flow, :runner, :enactment, :start]`
+  - `[:coloured_flow, :runner, :enactment, :stop]`
   - `[:coloured_flow, :runner, :enactment, :terminate]`
   - `[:coloured_flow, :runner, :enactment, :exception]`
 
@@ -15,8 +16,12 @@ defmodule ColouredFlow.Runner.Telemetry do
   | event        | measurements                      | metadata                                                                        |
   | ------------ | --------------------------------- | ------------------------------------------------------------------------------- |
   | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
+  | `:stop`      | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
   | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
   | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception`          |
+
+  Note that `:start` and `:stop` events will be emitted when the enactment server starts and stops respectively.
+  So a `:stop` event will be emitted right after `:terminate` and `:exception` events are emitted.
 
   #### Metadata
 
@@ -263,6 +268,7 @@ defmodule ColouredFlow.Runner.Telemetry do
   def attach_default_logger(opts) when is_list(opts) do
     events = [
       [:coloured_flow, :runner, :enactment, :start],
+      [:coloured_flow, :runner, :enactment, :stop],
       [:coloured_flow, :runner, :enactment, :terminate],
       [:coloured_flow, :runner, :enactment, :exception],
       [:coloured_flow, :runner, :enactment, :produce_workitems, :start],

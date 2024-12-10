@@ -11,13 +11,19 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
         metadata,
         opts
       )
-      when transition in [:start, :terminate, :exception] do
+      when transition in [:start, :stop, :terminate, :exception] do
     log(:enactment, opts, fn ->
       basic =
         case transition do
           :start ->
             %{
               event: "enactment:start",
+              system_time: convert_system_time(measurements.system_time)
+            }
+
+          :stop ->
+            %{
+              event: "enactment:stop",
               system_time: convert_system_time(measurements.system_time)
             }
 
