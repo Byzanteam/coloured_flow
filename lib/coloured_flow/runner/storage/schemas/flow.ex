@@ -12,7 +12,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Flow do
     field :name, String.t()
     field :data, %{definition: ColouredPetriNet.t()}
 
-    field :inserted_at, NaiveDateTime.t()
+    field :inserted_at, DateTime.t()
   end
 
   schema "flows" do

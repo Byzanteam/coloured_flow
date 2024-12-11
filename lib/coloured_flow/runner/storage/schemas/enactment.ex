@@ -27,8 +27,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
 
     field :steps, Types.association([Occurrence.t()])
 
-    field :inserted_at, NaiveDateTime.t()
-    field :updated_at, NaiveDateTime.t()
+    field :inserted_at, DateTime.t()
+    field :updated_at, DateTime.t()
   end
 
   schema "enactments" do

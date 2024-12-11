@@ -18,7 +18,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
     field :workitem, Types.association(Workitem.t())
     field :data, %{occurrence: Occurrence.t()}
 
-    field :inserted_at, NaiveDateTime.t()
+    field :inserted_at, DateTime.t()
   end
 
   @primary_key false
