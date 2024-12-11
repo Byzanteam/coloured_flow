@@ -15,8 +15,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
     field :version, pos_integer()
     field :data, %{markings: [Marking.t()]}
 
-    field :inserted_at, NaiveDateTime.t()
-    field :updated_at, NaiveDateTime.t()
+    field :inserted_at, DateTime.t()
+    field :updated_at, DateTime.t()
   end
 
   @primary_key false

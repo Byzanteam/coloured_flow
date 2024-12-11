@@ -13,7 +13,7 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   @type list_option() :: {:after_cursor, cursor_binary()} | {:limit, limit()}
   @type list_options() :: [list_option()]
 
-  @typep cursor() :: %{updated_at: NaiveDateTime.t(), id: Schemas.Types.id()}
+  @typep cursor() :: %{updated_at: DateTime.t(), id: Schemas.Types.id()}
 
   @live_states ColouredFlow.Runner.Enactment.Workitem.__live_states__()
   @default_limit 100
@@ -90,7 +90,7 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   defp decode_cursor(cursor) when is_binary(cursor) do
     %{updated_at: updated_at, id: id} = :erlang.binary_to_term(cursor, [:safe])
 
-    true = is_struct(updated_at, NaiveDateTime)
+    true = is_struct(updated_at, DateTime)
     id = Ecto.UUID.cast!(id)
 
     %{updated_at: updated_at, id: id}

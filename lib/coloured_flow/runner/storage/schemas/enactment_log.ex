@@ -21,7 +21,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
     field :exception, %{type: String.t(), message: String.t(), original: String.t()},
       enforce: false
 
-    field :inserted_at, NaiveDateTime.t()
+    field :inserted_at, DateTime.t()
   end
 
   schema "enactment_logs" do

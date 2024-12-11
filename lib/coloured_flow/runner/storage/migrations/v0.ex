@@ -9,7 +9,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
     primary_key: false
   ]
 
-  @timestamps_opts [type: :naive_datetime_usec]
+  @timestamps_opts [type: :utc_datetime_usec]
 
   @spec change(prefix: String.t()) :: :ok
   def change(opts \\ []) do

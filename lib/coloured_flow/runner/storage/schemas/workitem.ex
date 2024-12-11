@@ -19,8 +19,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
     field :state, state()
     field :data, %{binding_element: BindingElement.t()}
 
-    field :inserted_at, NaiveDateTime.t()
-    field :updated_at, NaiveDateTime.t()
+    field :inserted_at, DateTime.t()
+    field :updated_at, DateTime.t()
   end
 
   schema "workitems" do
