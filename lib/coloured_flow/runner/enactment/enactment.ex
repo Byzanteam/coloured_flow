@@ -273,11 +273,46 @@ defmodule ColouredFlow.Runner.Enactment do
       when is_list(workitem_ids) do
     :start_workitems
     |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
-      start_workitems(state, workitem_ids)
+      case preflight_to_start_workitems(state, workitem_ids) do
+        {:ok, :enabled} ->
+          # if the workitems are enabled, we need to allocate them first
+          with(
+            {
+              :ok,
+              {new_state, {enabled_workitems, _allocated_workitems}},
+              _event_metadata
+            } <- allocate_workitems(state, workitem_ids),
+            {:ok, {new_state, workitem_changes}, event_metadata} <-
+              start_workitems(new_state, workitem_ids)
+          ) do
+            {
+              :ok,
+              {
+                new_state,
+                workitem_changes,
+                # we need calibrate_workitems after allocated workitems
+                {
+                  :continue,
+                  {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}
+                }
+              },
+              event_metadata
+            }
+          end
+
+        {:ok, :allocated} ->
+          start_workitems(state, workitem_ids)
+
+        {:error, exception} ->
+          {:error, exception}
+      end
     end)
     |> case do
       {:ok, {new_state, {_allocated_workitems, started_workitems}}} ->
         {:reply, {:ok, started_workitems}, new_state}
+
+      {:ok, {new_state, {_allocated_workitems, started_workitems}, continue}} ->
+        {:reply, {:ok, started_workitems}, new_state, continue}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -318,6 +353,43 @@ defmodule ColouredFlow.Runner.Enactment do
     })
 
     {:noreply, state}
+  end
+
+  # we peek at the first workitem to pre-check the state
+  @spec preflight_to_start_workitems(state(), [Workitem.id()]) ::
+          {:ok, :enabled | :allocated} | {:error, Exception.t()}
+  defp preflight_to_start_workitems(%__MODULE__{} = state, workitem_ids)
+       when is_list(workitem_ids) do
+    state.workitems
+    |> Enum.find_value(fn {workitem_id, %Workitem{} = workitem} ->
+      if workitem_id in workitem_ids do
+        {workitem.state, workitem_id}
+      end
+    end)
+    |> case do
+      nil ->
+        exception =
+          Exceptions.NonLiveWorkitem.exception(
+            id: List.first(workitem_ids),
+            enactment_id: state.enactment_id
+          )
+
+        {:error, exception}
+
+      {workitem_state, _workitem_id} when workitem_state in [:enabled, :allocated] ->
+        {:ok, workitem_state}
+
+      {workitem_state, workitem_id} ->
+        exception =
+          Exceptions.InvalidWorkitemTransition.exception(
+            id: workitem_id,
+            enactment_id: state.enactment_id,
+            state: workitem_state,
+            transition: :start_e
+          )
+
+        {:error, exception}
+    end
   end
 
   defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition, expected_state) do

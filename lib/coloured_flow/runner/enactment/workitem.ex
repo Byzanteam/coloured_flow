@@ -10,6 +10,7 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   @transitions [
     # normal
     {:enabled, :allocate, :allocated},
+    {:enabled, :start_e, :started},
     {:allocated, :start, :started},
     {:started, :complete, :completed},
     # exception
@@ -36,6 +37,7 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
       %% normal
       [*] --> enabled: *create
       enabled --> allocated: *allocate
+      enabled --> started: start-e
       allocated --> started: *start
       started --> completed: *complete
       completed --> [*]
