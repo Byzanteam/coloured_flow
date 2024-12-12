@@ -256,8 +256,13 @@ defmodule ColouredFlow.Runner.Enactment do
       allocate_workitems(state, workitem_ids)
     end)
     |> case do
-      {:ok, {reply, new_state, continue}} ->
-        {:reply, reply, new_state, continue}
+      {:ok, {new_state, {enabled_workitems, allocated_workitems}}} ->
+        {
+          :reply,
+          {:ok, allocated_workitems},
+          new_state,
+          {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
+        }
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -271,8 +276,8 @@ defmodule ColouredFlow.Runner.Enactment do
       start_workitems(state, workitem_ids)
     end)
     |> case do
-      {:ok, {reply, new_state}} ->
-        {:reply, reply, new_state}
+      {:ok, {new_state, {_allocated_workitems, started_workitems}}} ->
+        {:reply, {:ok, started_workitems}, new_state}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -342,6 +347,16 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  @spec allocate_workitems(state(), [Workitem.id()]) ::
+          {
+            :ok,
+            {
+              new_state :: state(),
+              {[Workitem.t(:enabled)], [Workitem.t(:allocated)]}
+            },
+            Telemetry.event_metadata()
+          }
+          | {:error, Exception.t()}
   defp allocate_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
     with(
       {:ok, enabled_workitems, workitems} <-
@@ -355,18 +370,14 @@ defmodule ColouredFlow.Runner.Enactment do
     ) do
       allocated_workitems = Storage.allocate_workitems(enabled_workitems)
 
-      state = %__MODULE__{
+      new_state = %__MODULE__{
         state
         | workitems: merge_maps(allocated_workitems, workitems)
       }
 
       {
         :ok,
-        {
-          {:ok, allocated_workitems},
-          state,
-          {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
-        },
+        {new_state, {enabled_workitems, allocated_workitems}},
         %{workitems: allocated_workitems}
       }
     else
@@ -385,6 +396,16 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  @spec start_workitems(state(), [Workitem.id()]) ::
+          {
+            :ok,
+            {
+              new_state :: state(),
+              {[Workitem.t(:allocated)], [Workitem.t(:started)]}
+            },
+            Telemetry.event_metadata()
+          }
+          | {:error, Exception.t()}
   defp start_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
     case pop_workitems(state, workitem_ids, :start, :allocated) do
       {:ok, allocated_workitems, workitems} ->
@@ -396,7 +417,7 @@ defmodule ColouredFlow.Runner.Enactment do
           | workitems: merge_maps(started_workitems, workitems)
         }
 
-        {:ok, {{:ok, started_workitems}, state}, %{workitems: started_workitems}}
+        {:ok, {state, {allocated_workitems, started_workitems}}, %{workitems: started_workitems}}
 
       {:error, exception} when is_exception(exception) ->
         {:error, exception}
