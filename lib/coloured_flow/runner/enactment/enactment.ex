@@ -256,8 +256,13 @@ defmodule ColouredFlow.Runner.Enactment do
       allocate_workitems(state, workitem_ids)
     end)
     |> case do
-      {:ok, {reply, new_state, continue}} ->
-        {:reply, reply, new_state, continue}
+      {:ok, {new_state, {enabled_workitems, allocated_workitems}}} ->
+        {
+          :reply,
+          {:ok, allocated_workitems},
+          new_state,
+          {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
+        }
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -268,11 +273,46 @@ defmodule ColouredFlow.Runner.Enactment do
       when is_list(workitem_ids) do
     :start_workitems
     |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
-      start_workitems(state, workitem_ids)
+      case preflight_to_start_workitems(state, workitem_ids) do
+        {:ok, :enabled} ->
+          # if the workitems are enabled, we need to allocate them first
+          with(
+            {
+              :ok,
+              {new_state, {enabled_workitems, _allocated_workitems}},
+              _event_metadata
+            } <- allocate_workitems(state, workitem_ids),
+            {:ok, {new_state, workitem_changes}, event_metadata} <-
+              start_workitems(new_state, workitem_ids)
+          ) do
+            {
+              :ok,
+              {
+                new_state,
+                workitem_changes,
+                # we need calibrate_workitems after allocated workitems
+                {
+                  :continue,
+                  {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}
+                }
+              },
+              event_metadata
+            }
+          end
+
+        {:ok, :allocated} ->
+          start_workitems(state, workitem_ids)
+
+        {:error, exception} ->
+          {:error, exception}
+      end
     end)
     |> case do
-      {:ok, {reply, new_state}} ->
-        {:reply, reply, new_state}
+      {:ok, {new_state, {_allocated_workitems, started_workitems}}} ->
+        {:reply, {:ok, started_workitems}, new_state}
+
+      {:ok, {new_state, {_allocated_workitems, started_workitems}, continue}} ->
+        {:reply, {:ok, started_workitems}, new_state, continue}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -315,6 +355,43 @@ defmodule ColouredFlow.Runner.Enactment do
     {:noreply, state}
   end
 
+  # we peek at the first workitem to pre-check the state
+  @spec preflight_to_start_workitems(state(), [Workitem.id()]) ::
+          {:ok, :enabled | :allocated} | {:error, Exception.t()}
+  defp preflight_to_start_workitems(%__MODULE__{} = state, workitem_ids)
+       when is_list(workitem_ids) do
+    state.workitems
+    |> Enum.find_value(fn {workitem_id, %Workitem{} = workitem} ->
+      if workitem_id in workitem_ids do
+        {workitem.state, workitem_id}
+      end
+    end)
+    |> case do
+      nil ->
+        exception =
+          Exceptions.NonLiveWorkitem.exception(
+            id: List.first(workitem_ids),
+            enactment_id: state.enactment_id
+          )
+
+        {:error, exception}
+
+      {workitem_state, _workitem_id} when workitem_state in [:enabled, :allocated] ->
+        {:ok, workitem_state}
+
+      {workitem_state, workitem_id} ->
+        exception =
+          Exceptions.InvalidWorkitemTransition.exception(
+            id: workitem_id,
+            enactment_id: state.enactment_id,
+            state: workitem_state,
+            transition: :start_e
+          )
+
+        {:error, exception}
+    end
+  end
+
   defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition, expected_state) do
     case WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, expected_state) do
       {:ok, _popped_workitems, _workitems} = ok ->
@@ -342,6 +419,16 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  @spec allocate_workitems(state(), [Workitem.id()]) ::
+          {
+            :ok,
+            {
+              new_state :: state(),
+              {[Workitem.t(:enabled)], [Workitem.t(:allocated)]}
+            },
+            Telemetry.event_metadata()
+          }
+          | {:error, Exception.t()}
   defp allocate_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
     with(
       {:ok, enabled_workitems, workitems} <-
@@ -355,18 +442,14 @@ defmodule ColouredFlow.Runner.Enactment do
     ) do
       allocated_workitems = Storage.allocate_workitems(enabled_workitems)
 
-      state = %__MODULE__{
+      new_state = %__MODULE__{
         state
         | workitems: merge_maps(allocated_workitems, workitems)
       }
 
       {
         :ok,
-        {
-          {:ok, allocated_workitems},
-          state,
-          {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
-        },
+        {new_state, {enabled_workitems, allocated_workitems}},
         %{workitems: allocated_workitems}
       }
     else
@@ -385,6 +468,16 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
+  @spec start_workitems(state(), [Workitem.id()]) ::
+          {
+            :ok,
+            {
+              new_state :: state(),
+              {[Workitem.t(:allocated)], [Workitem.t(:started)]}
+            },
+            Telemetry.event_metadata()
+          }
+          | {:error, Exception.t()}
   defp start_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
     case pop_workitems(state, workitem_ids, :start, :allocated) do
       {:ok, allocated_workitems, workitems} ->
@@ -396,7 +489,7 @@ defmodule ColouredFlow.Runner.Enactment do
           | workitems: merge_maps(started_workitems, workitems)
         }
 
-        {:ok, {{:ok, started_workitems}, state}, %{workitems: started_workitems}}
+        {:ok, {state, {allocated_workitems, started_workitems}}, %{workitems: started_workitems}}
 
       {:error, exception} when is_exception(exception) ->
         {:error, exception}
