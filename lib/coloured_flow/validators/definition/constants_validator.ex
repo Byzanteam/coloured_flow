@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.ConstantsValidator do
+defmodule ColouredFlow.Validators.Definition.ConstantsValidator do
   @moduledoc """
   This validator ensures that constants within a ColouredFlow definition are valid.
 

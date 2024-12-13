@@ -1,12 +1,12 @@
-defmodule ColouredFlow.Definition.Validators.InvalidColourSetTest do
+defmodule ColouredFlow.Validators.Definition.InvalidColourSetTest do
   use ExUnit.Case, async: true
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColourSet.Descr
   alias ColouredFlow.Definition.ColouredPetriNet
 
-  alias ColouredFlow.Definition.Validators.ColourSetValidator
-  alias ColouredFlow.Definition.Validators.Exceptions.InvalidColourSetError
+  alias ColouredFlow.Validators.Definition.ColourSetValidator
+  alias ColouredFlow.Validators.Exceptions.InvalidColourSetError
 
   test "valid" do
     assert {:ok, _cpnet} =

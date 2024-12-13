@@ -1,6 +1,6 @@
-defmodule ColouredFlow.Definition.Validators.ExceptionsTest do
+defmodule ColouredFlow.Validators.ExceptionsTest do
   use ExUnit.Case, async: true
-  alias ColouredFlow.Definition.Validators.Exceptions
+  alias ColouredFlow.Validators.Exceptions
 
   test "UniqueNameViolationError.message/1" do
     exception = Exceptions.UniqueNameViolationError.exception(scope: :place, name: "input")

@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Enactment.Validators.MarkingsValidatorTest do
+defmodule ColouredFlow.Validators.Enactment.MarkingsValidatorTest do
   use ExUnit.Case, async: true
 
   import ColouredFlow.MultiSet
@@ -7,9 +7,9 @@ defmodule ColouredFlow.Enactment.Validators.MarkingsValidatorTest do
   alias ColouredFlow.Definition.ColourSet.ColourSetMismatch
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
-  alias ColouredFlow.Definition.Validators.Exceptions.MissingPlaceError
   alias ColouredFlow.Enactment.Marking
-  alias ColouredFlow.Enactment.Validators.MarkingsValidator
+  alias ColouredFlow.Validators.Enactment.MarkingsValidator
+  alias ColouredFlow.Validators.Exceptions.MissingPlaceError
 
   describe "validate/2" do
     setup do

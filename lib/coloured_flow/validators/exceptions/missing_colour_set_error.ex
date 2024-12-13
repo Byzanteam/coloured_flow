@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.Exceptions.MissingColourSetError do
+defmodule ColouredFlow.Validators.Exceptions.MissingColourSetError do
   @moduledoc """
   This exception is raised when the colour set is missing,
   but it is referred to by variables, constants, etc.

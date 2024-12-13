@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.Exceptions.MissingPlaceError do
+defmodule ColouredFlow.Validators.Exceptions.MissingPlaceError do
   @moduledoc """
   This exception is raised when a place is missing,
   e.g., one of the markings is not found in the cpnet.

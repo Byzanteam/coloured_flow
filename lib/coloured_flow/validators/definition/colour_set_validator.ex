@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.ColourSetValidator do
+defmodule ColouredFlow.Validators.Definition.ColourSetValidator do
   @moduledoc """
   This validator ensures that colour sets within a ColouredFlow definition are valid.
 
@@ -11,7 +11,7 @@ defmodule ColouredFlow.Definition.Validators.ColourSetValidator do
 
   alias ColouredFlow.Definition.ColourSet.Descr
   alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Validators.Exceptions.InvalidColourSetError
+  alias ColouredFlow.Validators.Exceptions.InvalidColourSetError
 
   @spec validate(ColouredPetriNet.t()) ::
           {:ok, ColouredPetriNet.t()} | {:error, InvalidColourSetError.t()}

@@ -1,13 +1,12 @@
-defmodule ColouredFlow.Definition.Validators.VariablesValidatorTest do
+defmodule ColouredFlow.Validators.Definition.VariablesValidatorTest do
   use ExUnit.Case, async: true
 
   import ColouredFlow.Notation.Colset
 
   alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Validators.Exceptions.MissingColourSetError
   alias ColouredFlow.Definition.Variable
-
-  alias ColouredFlow.Definition.Validators.VariablesValidator
+  alias ColouredFlow.Validators.Definition.VariablesValidator
+  alias ColouredFlow.Validators.Exceptions.MissingColourSetError
 
   setup do
     cpnet = %ColouredPetriNet{
