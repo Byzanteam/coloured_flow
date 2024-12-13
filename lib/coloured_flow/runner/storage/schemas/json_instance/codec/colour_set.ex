@@ -78,8 +78,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
     %{
       "type" => "map",
       "args" =>
-        Enum.map(map, fn {key, value} ->
-          {encode_value(key), encode_value(value)}
+        Map.new(map, fn {key, value} ->
+          {Atom.to_string(key), encode_value(value)}
         end)
     }
   end
@@ -125,7 +125,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
   # map
   def decode_value(%{"type" => "map", "args" => values}) do
     Map.new(values, fn {key, value} ->
-      {decode_value(key), decode_value(value)}
+      # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
+      {String.to_atom(key), decode_value(value)}
     end)
   end
 

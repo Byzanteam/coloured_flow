@@ -44,6 +44,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSetTest d
          }}
 
       json = Codec.encode_value(value)
+      assert_json_encoding(json)
       assert value === Codec.decode_value(json)
     end
   end
@@ -85,5 +86,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSetTest d
 
       assert_codec(colour_sets)
     end
+  end
+
+  defp assert_json_encoding(value) do
+    assert {:ok, _json} = Jason.encode(value)
   end
 end
