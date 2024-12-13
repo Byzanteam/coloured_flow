@@ -26,4 +26,13 @@ defmodule ColouredFlow.Definition.Validators.ExceptionsTest do
 
     assert Exception.message(exception) =~ "invalid_enum_item"
   end
+
+  test "MissingPlaceError" do
+    exception = Exceptions.MissingPlaceError.exception(place: "input", message: "invalid")
+
+    assert """
+           The place with name input not found in the coloured petri net.
+           invalid
+           """ === Exception.message(exception)
+  end
 end
