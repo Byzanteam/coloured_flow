@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.VariablesValidator do
+defmodule ColouredFlow.Validators.Definition.VariablesValidator do
   @moduledoc """
   The variables validator ensures that the variables in a ColouredFlow definition are valid.
 
@@ -6,8 +6,8 @@ defmodule ColouredFlow.Definition.Validators.VariablesValidator do
   """
 
   alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Validators.Exceptions.MissingColourSetError
   alias ColouredFlow.Definition.Variable
+  alias ColouredFlow.Validators.Exceptions.MissingColourSetError
 
   @spec validate(variables, ColouredPetriNet.t()) ::
           {:ok, variables} | {:error, MissingColourSetError.t()}

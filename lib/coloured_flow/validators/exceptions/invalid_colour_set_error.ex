@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.Exceptions.InvalidColourSetError do
+defmodule ColouredFlow.Validators.Exceptions.InvalidColourSetError do
   @moduledoc """
   This exception is raised when the colour set is invalid.
   """

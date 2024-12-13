@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.ConstantsValidatorTest do
+defmodule ColouredFlow.Validators.Definition.ConstantsValidatorTest do
   use ExUnit.Case, async: true
 
   import ColouredFlow.Notation.Colset
@@ -7,7 +7,7 @@ defmodule ColouredFlow.Definition.Validators.ConstantsValidatorTest do
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Constant
 
-  alias ColouredFlow.Definition.Validators.ConstantsValidator
+  alias ColouredFlow.Validators.Definition.ConstantsValidator
 
   setup do
     cpnet = %ColouredPetriNet{

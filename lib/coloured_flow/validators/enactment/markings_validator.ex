@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Enactment.Validators.MarkingsValidator do
+defmodule ColouredFlow.Validators.Enactment.MarkingsValidator do
   @moduledoc """
   The markings validator ensures that the place of markings is valid,
   and that the tokens for the corresponding place are valid.
@@ -10,9 +10,9 @@ defmodule ColouredFlow.Enactment.Validators.MarkingsValidator do
   alias ColouredFlow.Definition.ColourSet.ColourSetMismatch
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
-  alias ColouredFlow.Definition.Validators.Exceptions.MissingPlaceError
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
+  alias ColouredFlow.Validators.Exceptions.MissingPlaceError
 
   @spec validate(markings, ColouredPetriNet.t()) ::
           {:ok, markings} | {:error, MissingPlaceError.t() | ColourSetMismatch.t()}

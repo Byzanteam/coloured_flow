@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Validators.UniqueNameValidator do
+defmodule ColouredFlow.Validators.Definition.UniqueNameValidator do
   @moduledoc """
   This validator ensures that names within a ColouredFlow definition are unique.
   It validates the uniqueness of:
@@ -19,7 +19,7 @@ defmodule ColouredFlow.Definition.Validators.UniqueNameValidator do
   alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Definition.Variable
 
-  alias ColouredFlow.Definition.Validators.Exceptions.UniqueNameViolationError
+  alias ColouredFlow.Validators.Exceptions.UniqueNameViolationError
 
   @spec validate(ColouredPetriNet.t()) ::
           {:ok, ColouredPetriNet.t()} | {:error, UniqueNameViolationError.t()}

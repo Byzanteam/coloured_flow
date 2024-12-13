@@ -1,11 +1,11 @@
-defmodule ColouredFlow.Definition.Validators.UniqueNameValidatorTest do
+defmodule ColouredFlow.Validators.Definition.UniqueNameValidatorTest do
   use ExUnit.Case, async: true
 
   use ColouredFlow.DefinitionHelpers
   import ColouredFlow.Notation.Colset
 
-  alias ColouredFlow.Definition.Validators.Exceptions.UniqueNameViolationError
-  alias ColouredFlow.Definition.Validators.UniqueNameValidator
+  alias ColouredFlow.Validators.Definition.UniqueNameValidator
+  alias ColouredFlow.Validators.Exceptions.UniqueNameViolationError
 
   setup :setup_cpnet
 
