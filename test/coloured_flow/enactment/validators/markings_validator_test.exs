@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Enactment.Validators.MarkingValidatorTest do
+defmodule ColouredFlow.Enactment.Validators.MarkingsValidatorTest do
   use ExUnit.Case, async: true
 
   import ColouredFlow.MultiSet
@@ -9,7 +9,7 @@ defmodule ColouredFlow.Enactment.Validators.MarkingValidatorTest do
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Validators.Exceptions.MissingPlaceError
-  alias ColouredFlow.Enactment.Validators.MarkingValidator
+  alias ColouredFlow.Enactment.Validators.MarkingsValidator
 
   describe "validate/2" do
     setup do
@@ -26,25 +26,30 @@ defmodule ColouredFlow.Enactment.Validators.MarkingValidatorTest do
 
     test "works", %{cpnet: cpnet} do
       assert {:ok, _marking} =
-               MarkingValidator.validate(%Marking{place: "input", tokens: ~MS[]}, cpnet)
-
-      assert {:ok, _marking} =
-               MarkingValidator.validate(%Marking{place: "input", tokens: ~MS[1]}, cpnet)
-
-      assert {:ok, _marking} =
-               MarkingValidator.validate(%Marking{place: "input", tokens: ~MS[2**1 2]}, cpnet)
+               MarkingsValidator.validate(
+                 [
+                   %Marking{place: "input", tokens: ~MS[]},
+                   %Marking{place: "input", tokens: ~MS[1]},
+                   %Marking{place: "input", tokens: ~MS[2**1 2]}
+                 ],
+                 cpnet
+               )
     end
 
     test "MissingPlaceError", %{cpnet: cpnet} do
       assert {:error, %MissingPlaceError{place: "output"}} =
-               MarkingValidator.validate(%Marking{place: "output", tokens: ~MS[1]}, cpnet)
+               MarkingsValidator.validate([%Marking{place: "output", tokens: ~MS[1]}], cpnet)
     end
 
     test "ColourSetMismatch", %{cpnet: cpnet} do
       assert {
                :error,
                %ColourSetMismatch{colour_set: :int, value: "2"}
-             } = MarkingValidator.validate(%Marking{place: "input", tokens: ~MS[2**1 "2"]}, cpnet)
+             } =
+               MarkingsValidator.validate(
+                 [%Marking{place: "input", tokens: ~MS[2**1 "2"]}],
+                 cpnet
+               )
     end
   end
 end
