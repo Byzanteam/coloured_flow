@@ -10,8 +10,8 @@ defmodule ColouredFlow.Enactment.Validators.MarkingsValidator do
   alias ColouredFlow.Definition.ColourSet.ColourSetMismatch
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
+  alias ColouredFlow.Definition.Validators.Exceptions.MissingPlaceError
   alias ColouredFlow.Enactment.Marking
-  alias ColouredFlow.Enactment.Validators.Exceptions.MissingPlaceError
   alias ColouredFlow.MultiSet
 
   @spec validate(markings, ColouredPetriNet.t()) ::
@@ -24,7 +24,7 @@ defmodule ColouredFlow.Enactment.Validators.MarkingsValidator do
 
     markings
     |> Enum.find_value(fn %Marking{} = marking ->
-      with {:ok, place} <- fetch_place(marking.place, cpnet),
+      with {:ok, place} <- fetch_place(marking, cpnet),
            {:ok, _tokens} <- check_tokens(place, marking.tokens, context) do
         false
       else
@@ -46,10 +46,22 @@ defmodule ColouredFlow.Enactment.Validators.MarkingsValidator do
     %{fetch_type: &Map.fetch(types, &1)}
   end
 
-  defp fetch_place(place_name, %ColouredPetriNet{} = cpnet) do
-    case Enum.find(cpnet.places, &(&1.name == place_name)) do
-      nil -> {:error, MissingPlaceError.exception(place: place_name)}
-      place -> {:ok, place}
+  defp fetch_place(%Marking{} = marking, %ColouredPetriNet{} = cpnet) do
+    case Enum.find(cpnet.places, &(&1.name == marking.place)) do
+      nil ->
+        {
+          :error,
+          MissingPlaceError.exception(
+            place: marking.place,
+            message: """
+            marking: #{inspect(marking)}
+
+            """
+          )
+        }
+
+      place ->
+        {:ok, place}
     end
   end
 
