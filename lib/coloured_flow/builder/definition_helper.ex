@@ -1,4 +1,4 @@
-defmodule ColouredFlow.Definition.Helper do
+defmodule ColouredFlow.Builder.DefinitionHelper do
   @moduledoc """
   Helper functions for building ColouredFlow definitions.
   """
