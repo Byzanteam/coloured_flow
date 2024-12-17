@@ -67,10 +67,6 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
   @spec validate_outputs(Transition.t(), Occurrence.free_binding(), ColouredPetriNet.t()) ::
           {:ok, [Occurrence.free_binding()]}
           | {:error, {:unbound_action_output | :colour_set_mismatch, Keyword.t()}}
-  defp validate_outputs(%Transition{action: nil}, _outputs, _cpnet) do
-    {:ok, []}
-  end
-
   defp validate_outputs(%Transition{action: %Action{outputs: output_vars}}, outputs, cpnet) do
     context = build_of_type_context(cpnet)
 
