@@ -273,7 +273,6 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
               name: "pass_through",
               action: [
                 payload: "{1 + x}",
-                inputs: [:x],
                 outputs: [:y]
               ]
             )

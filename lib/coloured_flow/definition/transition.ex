@@ -22,7 +22,8 @@ defmodule ColouredFlow.Definition.Transition do
       The guard of the transition.
       If not specified, the transition is always enabled.
 
-      Note that, the guard can't refer to an unbound variable.
+      Note that, the guard can't refer to an unbound variable,
+      it can only refer to variables from incoming arcs or constants.
 
       If the guard is `nil`, the transition is always enabled.
       However, if the guard code is `""`, the transition is never enabled.
@@ -30,6 +31,7 @@ defmodule ColouredFlow.Definition.Transition do
       """
 
     field :action, Action.t(),
+      enforce: true,
       doc: """
       The action to be executed when the transition is fired,
       you can utilize it to do side effects,

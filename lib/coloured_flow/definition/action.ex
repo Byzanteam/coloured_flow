@@ -9,7 +9,6 @@ defmodule ColouredFlow.Definition.Action do
 
   use TypedStructor
 
-  alias ColouredFlow.Definition.Constant
   alias ColouredFlow.Definition.Variable
 
   @type payload() :: binary()
@@ -30,7 +29,7 @@ defmodule ColouredFlow.Definition.Action do
       quotient = div(dividend, divisor)
       modulo = Integer.mod(dividend, divisor)
 
-      {quotient, modulo}
+      [quotient: quotient, modulo: modulo]
       ```
 
       ```typescript
@@ -38,7 +37,7 @@ defmodule ColouredFlow.Definition.Action do
       const quotient = Math.floor(dividend / divisor);
       const modulo = dividend % divisor;
 
-      return [quotient, modulo];
+      return {quotient, modulo};
       ```
 
       ```json
@@ -51,24 +50,13 @@ defmodule ColouredFlow.Definition.Action do
       ```
       """
 
-    field :inputs, [Variable.name() | Constant.name()],
-      doc: """
-      The CPNet variables or constants listed in inputs can be used in the code expression.
-      The variables will be bound and passed to the action when the transition is fired.
-      If `nil` is specified, all the variables and constants in the current scope are allowed to be used.
-
-      Examples:
-
-      ```elixir
-      [:dividend, :divisor]
-      ```
-      """
-
     field :outputs, [Variable.name()],
       default: [],
       doc: """
       The CPNet variables listed in outputs must be **free variables**,
       that are not bound by the incoming arcs, but are bound by the outgoing arcs.
+
+      You can use `ColouredFlow.Builder.SetActionOutputs` phase to set the `outputs`.
       """
   end
 end

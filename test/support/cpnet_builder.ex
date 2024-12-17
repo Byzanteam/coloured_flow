@@ -540,7 +540,6 @@ defmodule ColouredFlow.CpnetBuilder do
           guard: binary(),
           action: [
             payload: binary(),
-            inputs: [Variable.name()],
             outputs: [Variable.name()]
           ]
         ) :: ColouredPetriNet.t()

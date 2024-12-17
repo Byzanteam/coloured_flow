@@ -212,7 +212,6 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
             output {quotient, modulo}
             """,
-            inputs: [],
             outputs: [:quotient, :modulo]
           ]
         )

@@ -18,7 +18,6 @@ defmodule ColouredFlow.Builder.DefinitionHelper do
 
   @typep action_param() ::
            {:payload, binary()}
-           | {:inputs, [Variable.name()]}
            | {:outputs, [Variable.name()]}
 
   @spec build_arc!([{:transition, Transition.name()} | transition_arc_param()]) :: Arc.t()
@@ -46,7 +45,7 @@ defmodule ColouredFlow.Builder.DefinitionHelper do
 
   @spec build_action!([action_param()]) :: Action.t()
   def build_action!(params) do
-    params = Keyword.validate!(params, [:payload, :inputs, :outputs])
+    params = Keyword.validate!(params, [:payload, :outputs])
 
     struct!(Action, params)
   end
