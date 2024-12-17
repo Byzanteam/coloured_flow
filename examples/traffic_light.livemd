@@ -141,7 +141,7 @@ defmodule TrafficLight do
     alias ColouredFlow.Definition.Place
     alias ColouredFlow.Definition.Variable
 
-    import ColouredFlow.Definition.Helper
+    import ColouredFlow.Builder.DefinitionHelper
     import ColouredFlow.Notation.Colset
 
     %ColouredPetriNet{

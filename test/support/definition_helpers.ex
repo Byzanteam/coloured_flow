@@ -12,7 +12,7 @@ defmodule ColouredFlow.DefinitionHelpers do
       alias ColouredFlow.Definition.Transition
       alias ColouredFlow.Definition.Variable
 
-      import ColouredFlow.Definition.Helper
+      import ColouredFlow.Builder.DefinitionHelper
     end
   end
 end

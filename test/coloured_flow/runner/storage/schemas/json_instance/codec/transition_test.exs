@@ -1,6 +1,6 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.TransitionTest do
   use ColouredFlow.Runner.CodecCase, codec: Transition, async: true
-  import ColouredFlow.Definition.Helper, only: [build_transition!: 1]
+  import ColouredFlow.Builder.DefinitionHelper, only: [build_transition!: 1]
 
   describe "codec" do
     test "works" do

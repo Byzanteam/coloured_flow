@@ -523,7 +523,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
         [
           in_arc,
-          ColouredFlow.Definition.Helper.build_arc!(out_arc_params)
+          ColouredFlow.Builder.DefinitionHelper.build_arc!(out_arc_params)
         ]
       end)
 
