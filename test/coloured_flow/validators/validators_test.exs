@@ -1,4 +1,4 @@
-defmodule ColouredFlow.BuilderTest do
+defmodule ColouredFlow.ValidatorsTest do
   use ExUnit.Case, async: true
 
   import ColouredFlow.Builder.DefinitionHelper
@@ -44,7 +44,7 @@ defmodule ColouredFlow.BuilderTest do
   end
 
   test "valid", %{cpnet: cpnet} do
-    assert {:ok, _cpnet} = ColouredFlow.Builder.build(cpnet)
+    assert {:ok, _cpnet} = ColouredFlow.Validators.run(cpnet)
   end
 
   test "invalid", %{cpnet: cpnet} do
@@ -59,6 +59,6 @@ defmodule ColouredFlow.BuilderTest do
     }
 
     assert {:error, %UniqueNameViolationError{scope: :place, name: "input"}} ===
-             ColouredFlow.Builder.build(cpnet)
+             ColouredFlow.Validators.run(cpnet)
   end
 end
