@@ -57,7 +57,7 @@ defmodule ColouredFlow.Builder.DefinitionHelper do
       params
       |> Keyword.validate!([:name, :guard, :action])
       |> Keyword.update(:guard, nil, &Expression.build!/1)
-      |> Keyword.update(:action, nil, &build_action!/1)
+      |> Keyword.update(:action, %Action{}, &build_action!/1)
 
     struct!(Transition, params)
   end
