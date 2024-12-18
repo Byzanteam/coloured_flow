@@ -45,22 +45,26 @@ defmodule ColouredFlow.Validators.Definition.GuardValidator do
 
     vars_and_consts = MapSet.union(bound_vars, constants)
 
-    diff = MapSet.difference(MapSet.new(guard.vars), vars_and_consts)
+    guard.vars
+    |> MapSet.new()
+    |> MapSet.difference(vars_and_consts)
+    |> MapSet.to_list()
+    |> case do
+      [] ->
+        :ok
 
-    if diff === MapSet.new() do
-      :ok
-    else
-      {
-        :error,
-        InvalidGuardError.exception(
-          reason: :unbound_vars,
-          message: """
-          Found unbound variables: #{inspect(MapSet.to_list(diff))},
-          variables from incoming-arcs are #{inspect(MapSet.to_list(bound_vars))},
-          constants are #{inspect(MapSet.to_list(constants))}.
-          """
-        )
-      }
+      vars ->
+        {
+          :error,
+          InvalidGuardError.exception(
+            reason: :unbound_vars,
+            message: """
+            Found unbound variables: #{inspect(vars)},
+            variables from incoming-arcs are #{inspect(MapSet.to_list(bound_vars))},
+            constants are #{inspect(MapSet.to_list(constants))}.
+            """
+          )
+        }
     end
   end
 end
