@@ -83,6 +83,7 @@ defmodule ColouredFlow.MixProject do
       source_ref: "v#{@version}",
       extras: ["README.md"],
       nest_modules_by_prefix: [
+        ColouredFlow.Builder,
         ColouredFlow.Definition,
         ColouredFlow.EnabledBindingElements,
         ColouredFlow.Enactment,
@@ -90,7 +91,8 @@ defmodule ColouredFlow.MixProject do
         ColouredFlow.Notation,
         ColouredFlow.Runner,
         ColouredFlow.Runner.Enactment,
-        ColouredFlow.Runner.Storage
+        ColouredFlow.Runner.Storage,
+        ColouredFlow.Validators
       ],
       groups_for_docs: [
         enactment: &(&1[:group] == :enactment),
