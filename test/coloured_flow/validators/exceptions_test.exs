@@ -56,4 +56,14 @@ defmodule ColouredFlow.Validators.ExceptionsTest do
 
     assert Exception.message(exception) =~ ~r/unbound_vars/
   end
+
+  test "InvalidArcError" do
+    exception =
+      Exceptions.InvalidArcError.exception(
+        reason: :incoming_unbound_vars,
+        message: "invalid"
+      )
+
+    assert Exception.message(exception) =~ ~r/incoming_unbound_vars/
+  end
 end

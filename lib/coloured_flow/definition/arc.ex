@@ -1,6 +1,11 @@
 defmodule ColouredFlow.Definition.Arc do
   @moduledoc """
   An arc is a directed connection between a transition and a place.
+
+  > #### TIP {: .tip}
+  > Note that the terms `incoming` and `outgoing` are relevant to the transition.
+  > If the arc is linked from a place such that the orientation is `:p_to_t`,
+  > it is considered an incoming arc; otherwise, it is considered an outgoing arc.
   """
 
   use TypedStructor
