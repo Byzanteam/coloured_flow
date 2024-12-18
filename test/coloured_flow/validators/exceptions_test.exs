@@ -46,4 +46,14 @@ defmodule ColouredFlow.Validators.ExceptionsTest do
 
     assert Exception.message(exception) =~ ~r/missing_place/
   end
+
+  test "InvalidGuardError" do
+    exception =
+      Exceptions.InvalidGuardError.exception(
+        reason: :unbound_vars,
+        message: "invalid"
+      )
+
+    assert Exception.message(exception) =~ ~r/unbound_vars/
+  end
 end
