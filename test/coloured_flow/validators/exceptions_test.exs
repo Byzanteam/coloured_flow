@@ -35,4 +35,14 @@ defmodule ColouredFlow.Validators.ExceptionsTest do
            invalid
            """ === Exception.message(exception)
   end
+
+  test "InvalidStructureError" do
+    exception =
+      Exceptions.InvalidStructureError.exception(
+        message: "invalid",
+        reason: :missing_place
+      )
+
+    assert Exception.message(exception) =~ ~r/missing_place/
+  end
 end

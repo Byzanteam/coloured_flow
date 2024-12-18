@@ -7,12 +7,14 @@ defmodule ColouredFlow.Validators do
 
   alias ColouredFlow.Validators.Definition.ColourSetValidator
   alias ColouredFlow.Validators.Definition.ConstantsValidator
+  alias ColouredFlow.Validators.Definition.StructureValidator
   alias ColouredFlow.Validators.Definition.UniqueNameValidator
   alias ColouredFlow.Validators.Definition.VariablesValidator
 
   @spec run(ColouredPetriNet.t()) :: {:ok, ColouredPetriNet.t()} | {:error, Exception.t()}
   def run(%ColouredPetriNet{} = cpnet) do
     with(
+      {:ok, cpnet} <- StructureValidator.validate(cpnet),
       {:ok, cpnet} <- UniqueNameValidator.validate(cpnet),
       {:ok, cpnet} <- ColourSetValidator.validate(cpnet),
       {:ok, constants} <- ConstantsValidator.validate(cpnet.constants, cpnet),
