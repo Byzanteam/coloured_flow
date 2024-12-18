@@ -52,10 +52,7 @@ defmodule ColouredFlow.ValidatorsTest do
 
     cpnet = %ColouredPetriNet{
       cpnet
-      | places: [
-          %Place{name: "input", colour_set: :int},
-          %Place{name: "input", colour_set: :int}
-        ]
+      | places: [%Place{name: "input", colour_set: :int}] ++ cpnet.places
     }
 
     assert {:error, %UniqueNameViolationError{scope: :place, name: "input"}} ===

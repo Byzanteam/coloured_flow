@@ -4,12 +4,11 @@ defmodule ColouredFlow.Validators.Enactment.MarkingsValidatorTest do
   import ColouredFlow.MultiSet
   import ColouredFlow.Notation.Colset
 
-  alias ColouredFlow.Definition.ColourSet.ColourSetMismatch
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Validators.Enactment.MarkingsValidator
-  alias ColouredFlow.Validators.Exceptions.MissingPlaceError
+  alias ColouredFlow.Validators.Exceptions.InvalidMarkingError
 
   describe "validate/2" do
     setup do
@@ -36,16 +35,13 @@ defmodule ColouredFlow.Validators.Enactment.MarkingsValidatorTest do
                )
     end
 
-    test "MissingPlaceError", %{cpnet: cpnet} do
-      assert {:error, %MissingPlaceError{place: "output"}} =
+    test "InvalidMarkingError", %{cpnet: cpnet} do
+      assert {:error, %InvalidMarkingError{reason: :missing_place}} =
                MarkingsValidator.validate([%Marking{place: "output", tokens: ~MS[1]}], cpnet)
     end
 
     test "ColourSetMismatch", %{cpnet: cpnet} do
-      assert {
-               :error,
-               %ColourSetMismatch{colour_set: :int, value: "2"}
-             } =
+      assert {:error, %InvalidMarkingError{reason: :invalid_tokens}} =
                MarkingsValidator.validate(
                  [%Marking{place: "input", tokens: ~MS[2**1 "2"]}],
                  cpnet
