@@ -5,6 +5,7 @@ defmodule ColouredFlow.Validators do
 
   alias ColouredFlow.Definition.ColouredPetriNet
 
+  alias ColouredFlow.Validators.Definition.ActionValidator
   alias ColouredFlow.Validators.Definition.ArcValidator
   alias ColouredFlow.Validators.Definition.ColourSetValidator
   alias ColouredFlow.Validators.Definition.ConstantsValidator
@@ -25,7 +26,8 @@ defmodule ColouredFlow.Validators do
       {:ok, variables} <- VariablesValidator.validate(cpnet.variables, cpnet),
       cpnet = %ColouredPetriNet{cpnet | variables: variables},
       {:ok, cpnet} <- ArcValidator.validate(cpnet),
-      {:ok, cpnet} <- GuardValidator.validate(cpnet)
+      {:ok, cpnet} <- GuardValidator.validate(cpnet),
+      {:ok, cpnet} <- ActionValidator.validate(cpnet)
     ) do
       {:ok, cpnet}
     end
