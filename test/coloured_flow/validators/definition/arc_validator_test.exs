@@ -49,6 +49,35 @@ defmodule ColouredFlow.Validators.Definition.ArcValidatorTest do
     assert {:ok, _cpnet} = ArcValidator.validate(cpnet)
   end
 
+  test "works while outgoing_arc refers to outputs of the action", %{cpnet: cpnet} do
+    cpnet = %ColouredPetriNet{
+      cpnet
+      | arcs: [
+          build_arc!(
+            label: "incoming-arc",
+            place: "input",
+            transition: "pass_through",
+            orientation: :p_to_t,
+            expression: "bind {n, x}"
+          ),
+          build_arc!(
+            place: "output",
+            transition: "pass_through",
+            orientation: :t_to_p,
+            expression: "{y, x}"
+          )
+        ],
+        variables: [
+          %Variable{name: :x, colour_set: :int},
+          %Variable{name: :y, colour_set: :int}
+        ]
+    }
+
+    action = build_action!(outputs: [:y])
+    cpnet = update_action(cpnet, action)
+    assert {:ok, _cpnet} = ArcValidator.validate(cpnet)
+  end
+
   test "incoming_unbound_vars error", %{cpnet: cpnet} do
     %{arcs: [_incoming_arc, outgoing_arc]} = cpnet
 
@@ -88,5 +117,13 @@ defmodule ColouredFlow.Validators.Definition.ArcValidatorTest do
 
     assert {:error, %InvalidArcError{reason: :outgoing_unbound_vars}} =
              ArcValidator.validate(cpnet)
+  end
+
+  defp update_action(%ColouredPetriNet{} = cpnet, %Action{} = action) do
+    put_in(
+      cpnet,
+      [Access.key(:transitions), Access.at(0), Access.key(:action)],
+      action
+    )
   end
 end
