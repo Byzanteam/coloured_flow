@@ -1,12 +1,12 @@
-defmodule ColouredFlow.Validators.Exceptions.InvalidArcError do
+defmodule ColouredFlow.Validators.Exceptions.InvalidActionError do
   @moduledoc """
-  This exception is raised when an arc is invalid.
-  See the definition of a valid arc in `ColouredFlow.Validators.Definition.ArcValidator`.
+  This exception is raised when an action is invalid.
+  See the definition of a valid arc in `ColouredFlow.Validators.Definition.ActionValidator`.
   """
 
   use TypedStructor
 
-  @type reason() :: :incoming_unbound_vars | :outgoing_unbound_vars
+  @type reason() :: :output_not_variable | :bound_output
 
   typed_structor definer: :defexception, enforce: true do
     field :reason, reason()
@@ -21,7 +21,7 @@ defmodule ColouredFlow.Validators.Exceptions.InvalidArcError do
   @impl Exception
   def message(%__MODULE__{} = exception) do
     """
-    The Arc is invalid, due to #{inspect(exception.reason)}.
+    The Action is invalid, due to #{inspect(exception.reason)}.
     #{exception.message}
     """
   end

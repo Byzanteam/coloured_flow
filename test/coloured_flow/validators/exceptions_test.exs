@@ -66,4 +66,14 @@ defmodule ColouredFlow.Validators.ExceptionsTest do
 
     assert Exception.message(exception) =~ ~r/incoming_unbound_vars/
   end
+
+  test "InvalidActionError" do
+    exception =
+      Exceptions.InvalidActionError.exception(
+        reason: :output_not_variable,
+        message: "invalid"
+      )
+
+    assert Exception.message(exception) =~ ~r/output_not_variable/
+  end
 end

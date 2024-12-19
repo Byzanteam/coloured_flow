@@ -11,16 +11,18 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
 
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Validators.Exceptions.InvalidArcError
 
   @spec validate(ColouredPetriNet.t()) ::
           {:ok, ColouredPetriNet.t()} | {:error, InvalidArcError.t()}
   def validate(%ColouredPetriNet{} = cpnet) do
     vars_and_consts = build_vars_and_consts(cpnet)
+    outputs = build_outputs(cpnet)
 
     cpnet.arcs
     |> Enum.find_value(fn %Arc{} = arc ->
-      case validate_arc(arc, vars_and_consts, cpnet) do
+      case validate_arc(arc, vars_and_consts, outputs, cpnet) do
         :ok -> nil
         {:error, reason} -> reason
       end
@@ -31,7 +33,12 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
     end
   end
 
-  defp validate_arc(%Arc{orientation: :p_to_t} = arc, {vars, consts}, %ColouredPetriNet{}) do
+  defp validate_arc(
+         %Arc{orientation: :p_to_t} = arc,
+         {vars, consts},
+         _outputs,
+         %ColouredPetriNet{}
+       ) do
     arc.expression.vars
     |> MapSet.new()
     |> MapSet.difference(vars)
@@ -62,6 +69,7 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
   defp validate_arc(
          %Arc{orientation: :t_to_p} = arc,
          {_vars, consts},
+         outputs,
          %ColouredPetriNet{} = cpnet
        ) do
     bound_vars =
@@ -72,7 +80,10 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
       end)
       |> MapSet.new()
 
-    vars_and_consts = MapSet.union(bound_vars, consts)
+    vars_and_consts =
+      bound_vars
+      |> MapSet.union(consts)
+      |> MapSet.union(Map.get(outputs, arc.transition, []))
 
     arc.expression.vars
     |> MapSet.new()
@@ -105,5 +116,11 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
       MapSet.new(cpnet.variables, & &1.name),
       MapSet.new(cpnet.constants, & &1.name)
     }
+  end
+
+  defp build_outputs(%ColouredPetriNet{} = cpnet) do
+    Map.new(cpnet.transitions, fn %Transition{} = transition ->
+      {transition.name, MapSet.new(transition.action.outputs)}
+    end)
   end
 end
