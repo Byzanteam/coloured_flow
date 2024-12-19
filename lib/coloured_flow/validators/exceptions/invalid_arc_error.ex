@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Validators.Exceptions.InvalidArcError do
   @moduledoc """
-  This exception is raised when an arc is invalid:
-  1. 
+  This exception is raised when an arc is invalid.
+  See the definition of a valid arc in `ColouredFlow.Validators.Definition.ArcValidator`.
   """
 
   use TypedStructor
