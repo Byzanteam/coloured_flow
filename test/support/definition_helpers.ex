@@ -9,6 +9,7 @@ defmodule ColouredFlow.DefinitionHelpers do
       alias ColouredFlow.Definition.Constant
       alias ColouredFlow.Definition.Expression
       alias ColouredFlow.Definition.Place
+      alias ColouredFlow.Definition.TerminationCriteria
       alias ColouredFlow.Definition.Transition
       alias ColouredFlow.Definition.Variable
 
