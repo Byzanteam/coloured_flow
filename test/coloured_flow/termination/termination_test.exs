@@ -23,10 +23,6 @@ defmodule ColouredFlow.Runner.TerminationTest do
       assert {:ok, true} = Termination.should_terminate(criteria, %{"output" => ~MS[{}]})
     end
 
-    test "return false when expression is nil" do
-      assert {:ok, false} = Termination.should_terminate(%Markings{}, %{})
-    end
-
     test "invalid result" do
       markings = %{}
 
@@ -42,6 +38,9 @@ defmodule ColouredFlow.Runner.TerminationTest do
 
     test "errors raised" do
       markings = %{}
+
+      assert {:error, [%InvalidResult{}]} =
+               Termination.should_terminate(build_markings_criteria(nil), markings)
 
       criteria =
         build_markings_criteria("""

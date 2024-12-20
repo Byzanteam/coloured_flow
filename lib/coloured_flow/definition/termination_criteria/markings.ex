@@ -8,7 +8,7 @@ defmodule ColouredFlow.Definition.TerminationCriteria.Markings do
 
   alias ColouredFlow.Definition.Expression
 
-  typed_structor do
+  typed_structor enforce: true do
     plugin TypedStructor.Plugins.DocFields
 
     # NOTE (fahchen): Should we put `markings` into a context, like `Termination`?

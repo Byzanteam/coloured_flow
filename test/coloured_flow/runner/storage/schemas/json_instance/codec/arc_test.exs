@@ -31,6 +31,13 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ArcTest do
           transition: "t1",
           place: "p1",
           expression: Arc.build_expression!(:p_to_t, code)
+        },
+        %Arc{
+          # label is nil
+          orientation: :p_to_t,
+          transition: "t1",
+          place: "p1",
+          expression: Arc.build_expression!(:p_to_t, simple_code)
         }
       ]
 

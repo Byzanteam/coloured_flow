@@ -14,7 +14,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ExpressionTest 
         else
           x - y
         end
-        """)
+        """),
+        # nil code
+        Expression.build!(nil)
       ]
 
       assert_codec(list)

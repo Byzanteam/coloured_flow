@@ -209,8 +209,6 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
     end
   end
 
-  defp to_map([]), do: %{}
-
   defp to_map([%Enactment.Workitem{} | _rest] = workitems) do
     Map.new(workitems, &{&1.id, &1})
   end

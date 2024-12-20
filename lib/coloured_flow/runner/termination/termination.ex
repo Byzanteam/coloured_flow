@@ -18,11 +18,6 @@ defmodule ColouredFlow.Runner.Termination do
   """
   @spec should_terminate(markings_criteria :: Markings.t(), markings :: markings_binding()) ::
           {:error, [Exception.t()]} | {:ok, boolean()}
-  def should_terminate(markings_criteria, markings)
-
-  def should_terminate(%Markings{expression: nil}, _markings),
-    do: {:ok, false}
-
   def should_terminate(%Markings{} = markings_criteria, markings) when is_map(markings) do
     binding = [markings: markings]
 
