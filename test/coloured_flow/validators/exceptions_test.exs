@@ -76,4 +76,14 @@ defmodule ColouredFlow.Validators.ExceptionsTest do
 
     assert Exception.message(exception) =~ ~r/output_not_variable/
   end
+
+  test "InvalidTerminationCriteriaError" do
+    exception =
+      Exceptions.InvalidTerminationCriteriaError.exception(
+        reason: :unknown_vars,
+        message: "invalid"
+      )
+
+    assert Exception.message(exception) =~ ~r/unknown_vars/
+  end
 end
