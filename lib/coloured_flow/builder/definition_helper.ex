@@ -61,4 +61,65 @@ defmodule ColouredFlow.Builder.DefinitionHelper do
 
     struct!(Transition, params)
   end
+
+  @doc """
+  Use arc macro to define an arc between a transition and a place.
+
+  ### Examples
+
+  #### Define a place and a transition
+  ```elixir
+  arc turn_green_ew <~ red_ew :: "bind {1, u}"
+  ```
+  is equal to the following code:
+  ```elixir
+  build_arc!(
+    place: "red_ew",
+    transition: "turn_green_ew",
+    orientation: :p_to_t,
+    expression: "bind {1, u}"
+  )
+  ```
+
+  #### Define a transition to a place
+  ```elixir
+  arc turn_green_ew ~> green_ew :: "{1, u}"
+  ```
+  is equal to the following code:
+  ```elixir
+  build_arc!(
+    place: "green_ew",
+    transition: "turn_green_ew",
+    orientation: :t_to_p,
+    expression: "{1, u}"
+  )
+  ```
+  """
+  defmacro arc({:"::", _meta, [{op, _op_meta, [transition, place]}, expression]})
+           when op in [:~>, :<~] do
+    orientation =
+      case op do
+        :~> -> :t_to_p
+        :<~ -> :p_to_t
+      end
+
+    quote do
+      build_arc!(
+        place: unquote(var_to_string(place)),
+        transition: unquote(var_to_string(transition)),
+        orientation: unquote(orientation),
+        expression: unquote(expression)
+      )
+    end
+  end
+
+  defp var_to_string({name, _meta, context}) when is_atom(name) and is_atom(context) do
+    Atom.to_string(name)
+  end
+
+  defp var_to_string({name, _meta, context} = var) when is_atom(name) and is_atom(context) do
+    raise """
+    Expected a variable name, got #{inspect(var)}
+    """
+  end
 end

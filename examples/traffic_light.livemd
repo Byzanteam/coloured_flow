@@ -162,106 +162,26 @@ defmodule TrafficLight do
         ),
       arcs:
         [
-          build_arc!(
-            place: "red_ew",
-            transition: "turn_green_ew",
-            orientation: :p_to_t,
-            expression: "bind {1, u}"
-          ),
-          build_arc!(
-            place: "green_ew",
-            transition: "turn_green_ew",
-            orientation: :t_to_p,
-            expression: "{1, u}"
-          ),
-          build_arc!(
-            place: "green_ew",
-            transition: "turn_yellow_ew",
-            orientation: :p_to_t,
-            expression: "bind {1, u}"
-          ),
-          build_arc!(
-            place: "yellow_ew",
-            transition: "turn_yellow_ew",
-            orientation: :t_to_p,
-            expression: "{1, u}"
-          ),
-          build_arc!(
-            place: "yellow_ew",
-            transition: "turn_red_ew",
-            orientation: :p_to_t,
-            expression: "bind {1, u}"
-          ),
-          build_arc!(
-            place: "red_ew",
-            transition: "turn_red_ew",
-            orientation: :t_to_p,
-            expression: "{1, u}"
-          )
+          arc(turn_green_ew <~ red_ew :: "bind {1, u}"),
+          arc(turn_green_ew ~> green_ew :: "{1, u}"),
+          arc(turn_yellow_ew <~ green_ew :: "bind {1, u}"),
+          arc(turn_yellow_ew ~> yellow_ew :: "{1, u}"),
+          arc(turn_red_ew <~ yellow_ew :: "bind {1, u}"),
+          arc(turn_red_ew ~> red_ew :: "{1, u}")
         ] ++
           [
-            build_arc!(
-              place: "red_ns",
-              transition: "turn_green_ns",
-              orientation: :p_to_t,
-              expression: "bind {1, u}"
-            ),
-            build_arc!(
-              place: "green_ns",
-              transition: "turn_green_ns",
-              orientation: :t_to_p,
-              expression: "{1, u}"
-            ),
-            build_arc!(
-              place: "green_ns",
-              transition: "turn_yellow_ns",
-              orientation: :p_to_t,
-              expression: "bind {1, u}"
-            ),
-            build_arc!(
-              place: "yellow_ns",
-              transition: "turn_yellow_ns",
-              orientation: :t_to_p,
-              expression: "{1, u}"
-            ),
-            build_arc!(
-              place: "yellow_ns",
-              transition: "turn_red_ns",
-              orientation: :p_to_t,
-              expression: "bind {1, u}"
-            ),
-            build_arc!(
-              place: "red_ns",
-              transition: "turn_red_ns",
-              orientation: :t_to_p,
-              expression: "{1, u}"
-            )
+            arc(turn_green_ns <~ red_ns :: "bind {1, u}"),
+            arc(turn_green_ns ~> green_ns :: "{1, u}"),
+            arc(turn_yellow_ns <~ green_ns :: "bind {1, u}"),
+            arc(turn_yellow_ns ~> yellow_ns :: "{1, u}"),
+            arc(turn_red_ns <~ yellow_ns :: "bind {1, u}"),
+            arc(turn_red_ns ~> red_ns :: "{1, u}")
           ] ++
           [
-            build_arc!(
-              place: "safe_ew",
-              transition: "turn_red_ns",
-              orientation: :t_to_p,
-              expression: "{1, u}"
-            ),
-            build_arc!(
-              place: "safe_ew",
-              transition: "turn_green_ew",
-              orientation: :p_to_t,
-              expression: "bind {1, u}"
-            ),
-            build_arc!(
-              place: "safe_ns",
-              transition: "turn_red_ew",
-              orientation: :t_to_p,
-              expression: "{1, u}"
-            ),
-            build_arc!(
-              place: "safe_ns",
-              transition: "turn_green_ns",
-              orientation: :p_to_t,
-              expression: "bind {1, u}"
-            )
+            arc(turn_red_ns ~> safe_ew :: "{1, u}"),
+            arc(turn_green_ew <~ safe_ew :: "bind {1, u}"),
+            arc(turn_red_ew ~> safe_ns :: "{1, u}"),
+            arc(turn_green_ns <~ safe_ns :: "bind {1, u}")
           ],
       variables: [
         %Variable{name: :u, colour_set: :unit}
