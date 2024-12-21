@@ -15,8 +15,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
     field :enactment_id, Types.id()
     field :enactment, Types.association(Enactment.t())
     field :step_number, step_number()
+
+    field :workitem_id, Types.id()
     field :workitem, Types.association(Workitem.t())
-    field :data, %{occurrence: Occurrence.t()}
+
+    field :occurrence, Occurrence.t()
 
     field :inserted_at, DateTime.t()
   end
@@ -29,17 +32,13 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
 
     belongs_to :workitem, Workitem
 
-    embeds_one :data, Data, primary_key: false, on_replace: :delete do
-      @moduledoc false
-
-      field :occurrence, Object, codec: Codec.Occurrence
-    end
+    field :occurrence, Object, codec: Codec.Occurrence
 
     timestamps(updated_at: false)
   end
 
   @spec to_occurrence(t()) :: Occurrence.t()
   def to_occurrence(%__MODULE__{} = occurrence) do
-    occurrence.data.occurrence
+    occurrence.occurrence
   end
 end

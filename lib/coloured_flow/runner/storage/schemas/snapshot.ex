@@ -12,8 +12,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
   typed_structor define_struct: false, enforce: true do
     field :enactment_id, Types.id()
     field :enactment, Types.association(Enactment.t())
+
     field :version, pos_integer()
-    field :data, %{markings: [Marking.t()]}
+    field :markings, [Marking.t()]
 
     field :inserted_at, DateTime.t()
     field :updated_at, DateTime.t()
@@ -25,12 +26,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
     belongs_to :enactment, Enactment, primary_key: true
 
     field :version, :integer
-
-    embeds_one :data, Data, primary_key: false, on_replace: :delete do
-      @moduledoc false
-
-      field :markings, {:array, Object}, codec: Codec.Marking
-    end
+    field :markings, {:array, Object}, codec: Codec.Marking
 
     timestamps()
   end
@@ -39,7 +35,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
   def to_snapshot(%__MODULE__{} = snapshot) do
     %Snapshot{
       version: snapshot.version,
-      markings: snapshot.data.markings
+      markings: snapshot.markings
     }
   end
 end

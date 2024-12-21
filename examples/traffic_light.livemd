@@ -274,29 +274,17 @@ defmodule TrafficLight do
     |> Ecto.Changeset.cast(
       %{
         name: "TrafficLight",
-        data: %{
-          definition: flow()
-        }
+        definition: flow()
       },
-      [:name]
-    )
-    |> Ecto.Changeset.cast_embed(:data,
-      with: fn schema, params ->
-        Ecto.Changeset.cast(schema, params, [:definition])
-      end
+      [:name, :definition]
     )
     |> TrafficLight.Repo.insert!()
   end
 
   def setup_enactment(flow, initial_markings) do
     %Schemas.Enactment{}
-    |> Ecto.Changeset.cast(%{data: %{initial_markings: initial_markings}}, [])
+    |> Ecto.Changeset.cast(%{initial_markings: initial_markings}, [:initial_markings])
     |> Ecto.Changeset.put_assoc(:flow, flow)
-    |> Ecto.Changeset.cast_embed(:data,
-      with: fn schema, params ->
-        Ecto.Changeset.cast(schema, params, [:initial_markings])
-      end
-    )
     |> TrafficLight.Repo.insert!()
   end
 
@@ -398,7 +386,7 @@ defmodule TrafficLight.WorkitemPubSub do
 
   defp get_light(%Schemas.Workitem{} = workitem) do
     dir =
-      case workitem.data.binding_element.transition do
+      case workitem.binding_element.transition do
         "turn_red_" <> dir -> dir
         "turn_yellow_" <> dir -> dir
         "turn_green_" <> dir -> dir

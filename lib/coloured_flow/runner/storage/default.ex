@@ -110,11 +110,9 @@ defmodule ColouredFlow.Runner.Storage.Default do
       where(Schemas.Enactment, id: ^enactment_id)
     end)
     |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
-      data = Map.put(enactment.data, :final_markings, final_markings)
-
       enactment
       |> Ecto.Changeset.change(state: :terminated)
-      |> Ecto.Changeset.put_embed(:data, data)
+      |> Ecto.Changeset.change(final_markings: final_markings)
     end)
     |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
       Schemas.EnactmentLog.build_termination(enactment, type, options)
@@ -152,9 +150,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
         %{
           enactment_id: enactment_id,
           state: :enabled,
-          data: %Schemas.Workitem.Data{
-            binding_element: binding_element
-          },
+          binding_element: binding_element,
           inserted_at: {:placeholder, :now},
           updated_at: {:placeholder, :now}
         }
@@ -326,9 +322,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
             enactment_id: {:placeholder, :enactment_id},
             workitem_id: workitem.id,
             step_number: version,
-            data: %Schemas.Occurrence.Data{
-              occurrence: occurrence
-            },
+            occurrence: occurrence,
             inserted_at: {:placeholder, :now}
           },
           version
@@ -343,7 +337,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
     %Schemas.Snapshot{enactment_id: enactment_id}
     |> Ecto.Changeset.change(
       version: snapshot.version,
-      data: %{markings: snapshot.markings}
+      markings: snapshot.markings
     )
     |> Repo.insert!(
       conflict_target: [:enactment_id],
