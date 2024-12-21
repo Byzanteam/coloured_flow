@@ -183,24 +183,9 @@ defmodule ColouredFlow.RunnerHelpers do
 
   ## Workitem helpers
 
-  @spec allocate_workitem(Enactment.Workitem.t(:enabled), GenServer.server()) ::
-          Enactment.Workitem.t(:allocated)
-  def allocate_workitem(%Enactment.Workitem{state: :enabled} = workitem, server) do
-    {:ok, [%Enactment.Workitem{state: :allocated} = workitem]} =
-      GenServer.call(server, {:allocate_workitems, [workitem.id]})
-
-    workitem
-  end
-
-  @spec start_workitem(Enactment.Workitem.t(:enabled | :allocated), GenServer.server()) ::
+  @spec start_workitem(Enactment.Workitem.t(:enabled), GenServer.server()) ::
           Enactment.Workitem.t(:started)
   def start_workitem(%Enactment.Workitem{state: :enabled} = workitem, server) do
-    workitem
-    |> allocate_workitem(server)
-    |> start_workitem(server)
-  end
-
-  def start_workitem(%Enactment.Workitem{state: :allocated} = workitem, server) do
     {:ok, [%Enactment.Workitem{state: :started} = workitem]} =
       GenServer.call(server, {:start_workitems, [workitem.id]})
 

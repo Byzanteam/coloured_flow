@@ -506,11 +506,8 @@ defmodule TrafficLight.DirectionalLight do
   end
 
   defp start_workitem(enactment_id, workitem_id) do
-    {:ok, allocated_workitem} =
-      WorkitemTransition.allocate_workitem(enactment_id, workitem_id)
-
     {:ok, started_workitem} =
-      WorkitemTransition.start_workitem(enactment_id, allocated_workitem.id)
+      WorkitemTransition.start_workitem(enactment_id, workitem_id)
 
     started_workitem
   end
@@ -638,4 +635,3 @@ flow = TrafficLight.setup_flow()
 
 grid
 ```
-

@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Runner.Exceptions.UnsufficientTokensToConsume do
   @moduledoc """
   This exception is raised when there are not enough tokens to consume.
-  For example, when the binding elements of the allocating workitems require
+  For example, when the binding elements of the starting workitems require
   more tokens than are available in the place marking.
   """
 

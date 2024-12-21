@@ -36,6 +36,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.Marking
+  alias ColouredFlow.Enactment.Occurrence
 
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
@@ -177,7 +178,20 @@ defmodule ColouredFlow.Runner.Enactment do
       state,
       %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
       fn ->
-        workitems = Storage.withdraw_workitems(calibration.to_withdraw)
+        # the workitems from calibration.to_withdraw are not in `withdrawn` state
+        grouped_wokitems =
+          Enum.group_by(calibration.to_withdraw, & &1.state, &%Workitem{&1 | state: :withdrawn})
+
+        workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
+
+        Enum.each(grouped_wokitems, fn
+          {:enabled, workitems} ->
+            :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
+
+          {:started, workitems} ->
+            :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
+        end)
+
         {:ok, workitems, %{workitems: workitems}}
       end
     )
@@ -189,6 +203,7 @@ defmodule ColouredFlow.Runner.Enactment do
         %{binding_elements: calibration.to_produce},
         fn ->
           workitems = Storage.produce_workitems(state.enactment_id, calibration.to_produce)
+
           {:ok, to_map(workitems), %{workitems: workitems}}
         end
       )
@@ -249,70 +264,24 @@ defmodule ColouredFlow.Runner.Enactment do
     {:stop, :normal, :ok, state}
   end
 
-  def handle_call({:allocate_workitems, workitem_ids}, _from, %__MODULE__{} = state)
-      when is_list(workitem_ids) do
-    :allocate_workitems
-    |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
-      allocate_workitems(state, workitem_ids)
-    end)
-    |> case do
-      {:ok, {new_state, {enabled_workitems, allocated_workitems}}} ->
-        {
-          :reply,
-          {:ok, allocated_workitems},
-          new_state,
-          {:continue, {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}}
-        }
-
-      {:error, exception} ->
-        {:reply, {:error, exception}, state}
-    end
-  end
-
   def handle_call({:start_workitems, workitem_ids}, _from, %__MODULE__{} = state)
       when is_list(workitem_ids) do
     :start_workitems
     |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
-      case preflight_to_start_workitems(state, workitem_ids) do
-        {:ok, :enabled} ->
-          # if the workitems are enabled, we need to allocate them first
-          with(
-            {
-              :ok,
-              {new_state, {enabled_workitems, _allocated_workitems}},
-              _event_metadata
-            } <- allocate_workitems(state, workitem_ids),
-            {:ok, {new_state, workitem_changes}, event_metadata} <-
-              start_workitems(new_state, workitem_ids)
-          ) do
-            {
-              :ok,
-              {
-                new_state,
-                workitem_changes,
-                # we need calibrate_workitems after allocated workitems
-                {
-                  :continue,
-                  {:calibrate_workitems, :allocate, [workitems: enabled_workitems]}
-                }
-              },
-              event_metadata
-            }
-          end
+      with {:ok, {started_workitems, new_state}} <- start_workitems(state, workitem_ids) do
+        :ok = Storage.start_workitems(started_workitems, action: :start)
 
-        {:ok, :allocated} ->
-          start_workitems(state, workitem_ids)
-
-        {:error, exception} ->
-          {:error, exception}
+        {:ok, {started_workitems, new_state}, %{workitems: started_workitems}}
       end
     end)
     |> case do
-      {:ok, {new_state, {_allocated_workitems, started_workitems}}} ->
-        {:reply, {:ok, started_workitems}, new_state}
-
-      {:ok, {new_state, {_allocated_workitems, started_workitems}, continue}} ->
-        {:reply, {:ok, started_workitems}, new_state, continue}
+      {:ok, {started_workitems, new_state}} ->
+        {
+          :reply,
+          {:ok, started_workitems},
+          new_state,
+          {:continue, {:calibrate_workitems, :start, [workitems: started_workitems]}}
+        }
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -331,14 +300,37 @@ defmodule ColouredFlow.Runner.Enactment do
       state,
       %{workitem_ids: workitem_ids, workitem_id_and_outputs: workitem_id_and_outputs},
       fn ->
-        complete_workitems(state, workitem_ids, workitem_id_and_outputs)
+        with(
+          {:ok, transition_action, state} <- preflight_completion(state, workitem_ids),
+          {:ok, {workitem_occurrences, new_state, calibration_options}} <-
+            complete_workitems(state, workitem_ids, workitem_id_and_outputs)
+        ) do
+          :ok =
+            Storage.complete_workitems(
+              new_state.enactment_id,
+              new_state.version,
+              workitem_occurrences,
+              action: transition_action
+            )
+
+          completed_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
+
+          {
+            :ok,
+            {
+              {completed_workitems, new_state},
+              {:continue, {:calibrate_workitems, :complete, calibration_options}}
+            },
+            %{workitems: completed_workitems}
+          }
+        end
       end
     )
     |> case do
-      {:ok, {reply, new_state, continue}} ->
+      {:ok, {{completed_workitems, new_state}, continue}} ->
         :ok = GenServer.cast(self(), :take_snapshot)
 
-        {:reply, reply, new_state, continue}
+        {:reply, {:ok, completed_workitems}, new_state, continue}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state}
@@ -356,9 +348,9 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   # we peek at the first workitem to pre-check the state
-  @spec preflight_to_start_workitems(state(), [Workitem.id()]) ::
-          {:ok, :enabled | :allocated} | {:error, Exception.t()}
-  defp preflight_to_start_workitems(%__MODULE__{} = state, workitem_ids)
+  @spec preflight_completion(state(), [Workitem.id()]) ::
+          {:ok, :complete_e | :complete, state()} | {:error, Exception.t()}
+  defp preflight_completion(%__MODULE__{} = state, workitem_ids)
        when is_list(workitem_ids) do
     state.workitems
     |> Enum.find_value(fn {workitem_id, %Workitem{} = workitem} ->
@@ -376,8 +368,13 @@ defmodule ColouredFlow.Runner.Enactment do
 
         {:error, exception}
 
-      {workitem_state, _workitem_id} when workitem_state in [:enabled, :allocated] ->
-        {:ok, workitem_state}
+      {:enabled, _workitem_id} ->
+        with {:ok, {_started_workitems, new_state}} <- start_workitems(state, workitem_ids) do
+          {:ok, :complete_e, new_state}
+        end
+
+      {:started, _workitem_id} ->
+        {:ok, :complete, state}
 
       {workitem_state, workitem_id} ->
         exception =
@@ -385,14 +382,14 @@ defmodule ColouredFlow.Runner.Enactment do
             id: workitem_id,
             enactment_id: state.enactment_id,
             state: workitem_state,
-            transition: :start_e
+            transition: :complete
           )
 
         {:error, exception}
     end
   end
 
-  defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition, expected_state) do
+  defp pop_workitems(%__MODULE__{} = state, workitem_ids, transition_action, expected_state) do
     case WorkitemConsumption.pop_workitems(state.workitems, workitem_ids, expected_state) do
       {:ok, _popped_workitems, _workitems} = ok ->
         ok
@@ -412,46 +409,38 @@ defmodule ColouredFlow.Runner.Enactment do
             id: workitem.id,
             enactment_id: state.enactment_id,
             state: workitem.state,
-            transition: transition
+            transition: transition_action
           )
 
         {:error, exception}
     end
   end
 
-  @spec allocate_workitems(state(), [Workitem.id()]) ::
+  @spec start_workitems(state(), [Workitem.id()]) ::
           {
             :ok,
-            {
-              new_state :: state(),
-              {[Workitem.t(:enabled)], [Workitem.t(:allocated)]}
-            },
-            Telemetry.event_metadata()
+            {[Workitem.t(:started)], new_state :: state()}
           }
           | {:error, Exception.t()}
-  defp allocate_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
+  defp start_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
     with(
       {:ok, enabled_workitems, workitems} <-
-        pop_workitems(state, workitem_ids, :allocate, :enabled),
+        pop_workitems(state, workitem_ids, :start, :enabled),
       enabled_workitems = to_list(enabled_workitems),
       binding_elements = Enum.map(enabled_workitems, & &1.binding_element),
-      # We don't need to remove the markings of the allocated workitems before `consume_tokens`,
+      # We don't need to remove the markings of the started workitems before `consume_tokens`,
       # because we withdraw workitems that are not enabled any more
-      # after each `allocated_workitems` step by `calibrate_workitems`.
+      # after each `start_workitems` step by `calibrate_workitems`.
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
-      allocated_workitems = Storage.allocate_workitems(enabled_workitems)
+      started_workitems = Enum.map(enabled_workitems, &%Workitem{&1 | state: :started})
 
       new_state = %__MODULE__{
         state
-        | workitems: merge_maps(allocated_workitems, workitems)
+        | workitems: merge_maps(started_workitems, workitems)
       }
 
-      {
-        :ok,
-        {new_state, {enabled_workitems, allocated_workitems}},
-        %{workitems: allocated_workitems}
-      }
+      {:ok, {started_workitems, new_state}}
     else
       {:error, exception} when is_exception(exception) ->
         {:error, exception}
@@ -468,34 +457,20 @@ defmodule ColouredFlow.Runner.Enactment do
     end
   end
 
-  @spec start_workitems(state(), [Workitem.id()]) ::
+  @spec complete_workitems(
+          state(),
+          [Workitem.id()],
+          Enumerable.t({Workitem.id(), Occurrence.free_binding()})
+        ) ::
           {
             :ok,
             {
+              workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
               new_state :: state(),
-              {[Workitem.t(:allocated)], [Workitem.t(:started)]}
-            },
-            Telemetry.event_metadata()
+              calibration_options :: Keyword.t()
+            }
           }
           | {:error, Exception.t()}
-  defp start_workitems(%__MODULE__{} = state, workitem_ids) when is_list(workitem_ids) do
-    case pop_workitems(state, workitem_ids, :start, :allocated) do
-      {:ok, allocated_workitems, workitems} ->
-        allocated_workitems = to_list(allocated_workitems)
-        started_workitems = Storage.start_workitems(allocated_workitems)
-
-        state = %__MODULE__{
-          state
-          | workitems: merge_maps(started_workitems, workitems)
-        }
-
-        {:ok, {state, {allocated_workitems, started_workitems}}, %{workitems: started_workitems}}
-
-      {:error, exception} when is_exception(exception) ->
-        {:error, exception}
-    end
-  end
-
   defp complete_workitems(%__MODULE__{} = state, workitem_ids, workitem_id_and_outputs)
        when is_list(workitem_ids) do
     with(
@@ -508,25 +483,15 @@ defmodule ColouredFlow.Runner.Enactment do
       cpnet = Storage.get_flow_by_enactment(state.enactment_id),
       {:ok, workitem_occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
     ) do
-      #  wrapped in a transaction
-      completed_workitems =
-        Storage.complete_workitems(state.enactment_id, state.version, workitem_occurrences)
+      calibration_options = [cpnet: cpnet, workitem_occurrences: workitem_occurrences]
 
       {
         :ok,
         {
-          {:ok, completed_workitems},
+          workitem_occurrences,
           %__MODULE__{state | workitems: workitems},
-          {
-            :continue,
-            {
-              :calibrate_workitems,
-              :complete,
-              [cpnet: cpnet, workitem_occurrences: workitem_occurrences]
-            }
-          }
-        },
-        %{workitems: completed_workitems}
+          calibration_options
+        }
       }
     else
       {:error, exception} when is_exception(exception) ->

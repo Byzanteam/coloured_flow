@@ -27,7 +27,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   typed_structor enforce: true do
     field :state, enactment_state()
-    field :to_withdraw, [Workitem.t()], default: []
+    field :to_withdraw, [Workitem.t(:withdrawn)], default: []
     field :to_produce, MultiSet.t(BindingElement.t()), default: []
   end
 

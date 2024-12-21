@@ -38,7 +38,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
       assert {:ok,
               [
                 {
-                  workitem,
+                  %{workitem | state: :completed},
                   %Occurrence{
                     binding_element: workitem.binding_element,
                     free_binding: [],
@@ -68,7 +68,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
       assert {:ok,
               [
                 {
-                  workitem_1,
+                  %{workitem_1 | state: :completed},
                   %Occurrence{
                     binding_element: workitem_1.binding_element,
                     free_binding: [],
@@ -76,7 +76,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   }
                 },
                 {
-                  workitem_2,
+                  %{workitem_2 | state: :completed},
                   %Occurrence{
                     binding_element: workitem_2.binding_element,
                     free_binding: [],
@@ -149,7 +149,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
       assert {:ok,
               [
                 {
-                  workitem,
+                  %{workitem | state: :completed},
                   %Occurrence{
                     binding_element: workitem.binding_element,
                     free_binding: [y: 1],
@@ -179,7 +179,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
       assert {:ok,
               [
                 {
-                  workitem_1,
+                  %{workitem_1 | state: :completed},
                   %Occurrence{
                     binding_element: workitem_1.binding_element,
                     free_binding: [y: 2],
@@ -187,7 +187,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                   }
                 },
                 {
-                  workitem_2,
+                  %{workitem_2 | state: :completed},
                   %Occurrence{
                     binding_element: workitem_2.binding_element,
                     free_binding: [y: 3],

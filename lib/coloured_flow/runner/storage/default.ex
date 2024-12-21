@@ -169,73 +169,43 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Enum.map(&Schemas.Workitem.to_workitem/1)
   end
 
+  @typep transition_option() :: ColouredFlow.Runner.Storage.transition_option()
+
   @doc """
   Transition a workitem from one state to another.
   This is a shortcut for `ColouredFlow.Runner.Default.transition_workitems/2`.
   """
-  @spec transition_workitem(Workitem.t(), target_state :: Workitem.state()) :: Workitem.t()
-  def transition_workitem(workitem, target_state) do
+  @spec transition_workitem(Workitem.t(), [transition_option()]) :: :ok
+  def transition_workitem(workitem, options) do
     workitem
     |> List.wrap()
-    |> transition_workitems(target_state)
-    |> hd()
+    |> transition_workitems(options)
   end
 
   @doc """
   Transition the workitems from one state to another in accordance with the state machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
   """
-  @spec transition_workitems([Workitem.t()], target_state) :: [Workitem.t(target_state)]
-        when target_state: Workitem.state()
-  def transition_workitems([], _target_state), do: []
+  @spec transition_workitems([Workitem.t()], [transition_option()]) :: :ok
+  def transition_workitems([], _options), do: :ok
 
-  valid_transitions = Enum.group_by(Workitem.__transitions__(), &elem(&1, 2), &elem(&1, 0))
+  def transition_workitems(workitems, options) when is_list(workitems) do
+    action = Keyword.fetch!(options, :action)
 
-  for {target_state, valid_states} <- valid_transitions do
-    def transition_workitems(workitems, unquote(target_state))
-        when is_list(workitems) do
-      do_transition_workitems(workitems, unquote(target_state), unquote(valid_states))
-    end
-  end
-
-  defp do_transition_workitems(workitems, target_state, valid_states)
-       when is_list(workitems) do
-    {ids, length} = check_state!(workitems, valid_states)
-
-    ids
-    |> update_all_multi(length, target_state)
+    workitems
+    |> update_all_multi(action)
     |> Repo.transaction()
     |> case do
       {:ok, _changes} ->
         :ok
 
-      {:error, :result, reason, _changes_so_far} ->
-        {:error, reason}
+      {
+        :error,
+        :result,
+        {:unexpected_updated_rows, exception_ctx},
+        _changes_so_far
+      } ->
+        unexpected_updated_rows!(workitems, action, exception_ctx)
     end
-    |> case do
-      :ok ->
-        Enum.map(workitems, &Map.put(&1, :state, target_state))
-
-      {:error, {:unexpected_updated_rows, [expected: length, actual: actual]}} ->
-        unexpected_updated_rows!(workitems, target_state, {length, actual})
-    end
-  end
-
-  @spec check_state!([Workitem.t()], [Workitem.state()]) ::
-          {ids :: [Workitem.id()], length :: pos_integer()}
-  defp check_state!(workitems, valid_states)
-       when is_list(workitems) and is_list(valid_states) do
-    Enum.map_reduce(workitems, 0, fn %Workitem{state: state} = workitem, acc ->
-      if state in valid_states do
-        {workitem.id, acc + 1}
-      else
-        raise ArgumentError,
-              """
-              The workitem state is not in valid states.
-              Valid states: #{inspect(valid_states)}
-              Workitem: #{inspect(workitem)}
-              """
-      end
-    end)
   end
 
   # Operations
@@ -243,17 +213,22 @@ defmodule ColouredFlow.Runner.Storage.Default do
   # `:result` returns:
   #     - `:ok`
   #     - `{:error, {:unexpected_updated_rows, [expected: pos_integer(), actual: pos_integer()]}}`
-  @spec update_all_multi(
-          ids :: [Workitem.id()],
-          expected_length :: pos_integer(),
-          target_state :: Workitem.state()
-        ) :: Ecto.Multi.t()
-  defp update_all_multi(ids, expected_length, target_state) do
+  @spec update_all_multi([Workitem.t()], Workitem.transition_action()) :: Ecto.Multi.t()
+  defp update_all_multi([%Workitem{state: state} | _rest] = workitems, action) do
+    from_state = get_from_state(state, action)
+
+    {ids, expected_length} =
+      Enum.map_reduce(
+        workitems,
+        0,
+        fn workitem, acc -> {workitem.id, acc + 1} end
+      )
+
     Ecto.Multi.new()
     |> Ecto.Multi.update_all(
       :update,
-      where(Schemas.Workitem, [wi], wi.id in ^ids),
-      set: [state: target_state, updated_at: DateTime.utc_now()]
+      where(Schemas.Workitem, [wi], wi.id in ^ids and wi.state == ^from_state),
+      set: [state: state, updated_at: DateTime.utc_now()]
     )
     |> Ecto.Multi.run(:result, fn _repo, %{update: update} ->
       case update do
@@ -266,45 +241,50 @@ defmodule ColouredFlow.Runner.Storage.Default do
     end)
   end
 
-  defp unexpected_updated_rows!(workitems, target_state, {expected, actual}) do
+  defp get_from_state(to_state, action)
+
+  defp get_from_state(%Workitem{} = workitem, action) do
+    get_from_state(workitem.state, action)
+  end
+
+  for {from, action, to} <- Workitem.__transitions__() do
+    defp get_from_state(unquote(to), unquote(action)), do: unquote(from)
+  end
+
+  defp unexpected_updated_rows!(workitems, transition, options) do
     # When the actual number is not equal to the expected number,
     # it means the workitems in the gen_server are not consistent with the database.
     # So we just raise an error to crash the process, and let the supervisor
     # restart the gen_server and retry.
+    expected = Keyword.fetch!(options, :expected)
+    actual = Keyword.fetch!(options, :actual)
+
     raise """
-    The number of workitems to transition to #{inspect(target_state)} is not equal to the actual number.
+    The number of workitems to #{transition} is not equal to the actual number.
     Expected: #{expected}, Actual: #{actual}
     Workitems: #{Enum.map_join(workitems, ", ", & &1.id)}
     """
   end
 
   @impl ColouredFlow.Runner.Storage
-  def allocate_workitems(workitems) do
-    transition_workitems(workitems, :allocated)
+  def start_workitems(workitems, options) do
+    transition_workitems(workitems, options)
   end
 
   @impl ColouredFlow.Runner.Storage
-  def start_workitems(workitems) do
-    transition_workitems(workitems, :started)
+  def withdraw_workitems(workitems, options) do
+    transition_workitems(workitems, options)
   end
 
   @impl ColouredFlow.Runner.Storage
-  def withdraw_workitems(workitems) do
-    transition_workitems(workitems, :withdrawn)
-  end
-
-  target_state = :completed
-  valid_states = Map.fetch!(valid_transitions, target_state)
-
-  @impl ColouredFlow.Runner.Storage
-  def complete_workitems(enactment_id, current_version, workitem_occurrences) do
-    started_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
-    {ids, length} = check_state!(started_workitems, unquote(valid_states))
+  def complete_workitems(enactment_id, current_version, workitem_occurrences, options) do
+    action = Keyword.fetch!(options, :action)
+    completed_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
 
     occurrence_entries = build_occurrence_entries(workitem_occurrences, current_version)
 
-    ids
-    |> update_all_multi(length, unquote(target_state))
+    completed_workitems
+    |> update_all_multi(action)
     |> Ecto.Multi.put(:occurrence_entries, occurrence_entries)
     |> Ecto.Multi.insert_all(
       :occurrences,
@@ -318,15 +298,15 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Repo.transaction()
     |> case do
       {:ok, _result} ->
-        Enum.map(started_workitems, &Map.put(&1, :state, unquote(target_state)))
+        :ok
 
       {
         :error,
         :result,
-        {:unexpected_updated_rows, [expected: length, actual: actual]},
+        {:unexpected_updated_rows, exception_ctx},
         _changes_so_far
       } ->
-        unexpected_updated_rows!(started_workitems, unquote(target_state), {length, actual})
+        unexpected_updated_rows!(completed_workitems, action, exception_ctx)
     end
   end
 

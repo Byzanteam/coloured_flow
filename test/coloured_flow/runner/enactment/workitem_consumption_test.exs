@@ -24,7 +24,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
 
       workitem_2 = %Enactment.Workitem{
         id: Ecto.UUID.generate(),
-        state: :allocated,
+        state: :withdrawn,
         binding_element: %BindingElement{
           transition: "pass_through",
           binding: [x: 1],
@@ -38,14 +38,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
     end
 
     test "works", %{workitem_1: workitem_1, workitem_2: workitem_2} do
-      assert {:ok, allocated_workitems, remaning_workitems} =
+      assert {:ok, withdrawn_workitems, remaning_workitems} =
                WorkitemConsumption.pop_workitems(
                  to_map([workitem_1, workitem_2]),
                  [workitem_1.id],
                  :enabled
                )
 
-      assert %{workitem_1.id => workitem_1} === allocated_workitems
+      assert %{workitem_1.id => workitem_1} === withdrawn_workitems
       assert %{workitem_2.id => workitem_2} === remaning_workitems
     end
 

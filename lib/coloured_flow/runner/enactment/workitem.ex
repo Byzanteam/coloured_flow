@@ -11,11 +11,27 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
     # normal
     {:enabled, :start, :started},
     {:started, :complete, :completed},
+    {:enabled, :complete_e, :completed},
     # exception
     {:started, :reoffer_s, :enabled},
     # system
+    {:started, :withdraw_s, :withdrawn},
     {:enabled, :withdraw, :withdrawn}
   ]
+
+  @type transition() ::
+          unquote(
+            @transitions
+            |> Enum.map(fn t -> Macro.escape(t) end)
+            |> ColouredFlow.Types.make_sum_type()
+          )
+
+  @type transition_action() ::
+          unquote(
+            @transitions
+            |> Enum.map(&elem(&1, 1))
+            |> ColouredFlow.Types.make_sum_type()
+          )
 
   @type in_progress_state() :: :started
   @type live_state() :: :enabled | in_progress_state()
@@ -32,6 +48,7 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
       [*] --> enabled: *create
       enabled --> started: *start
       started --> completed: *complete
+      enabled --> completed: complete-e
       completed --> [*]
 
       %% exception
@@ -39,8 +56,13 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
       %% system
       enabled --> withdrawn: withdraw
+      started --> withdrawn: withdraw-s
       withdrawn --> [*]
   ```
+
+  > Note: The suffix `-e` indicates the workitem is `enabled`,
+  > and the suffix `-s` indicates the workitem is `started`.
+  > `*` indicates the normal state transition path.
 
   | State | Description |
   | --- | --- |
@@ -60,9 +82,9 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   ## Available Transitions
 
-  | From | Transition | To |
+  | From | Action | To |
   | --- | --- | --- |
-  #{Enum.map_join(@transitions, "\n", fn {from, transition, to} -> "| `#{from}` | `#{transition}` | `#{to}` |" end)}
+  #{Enum.map_join(@transitions, "\n", fn {from, action, to} -> "| `#{from}` | `#{action}` | `#{to}` |" end)}
 
   ## References
   [^1]: Workflow Patterns: The Definitive Guide.pdf, p. 293.
@@ -120,20 +142,13 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   def __states__, do: __live_states__() ++ __completed_states__()
 
   @doc """
-  The valid transitions of the workitem, represented as a list of a `{from, transition, to}` tuple.
+  The valid transitions of the workitem, represented as a list of a `{from, action, to}` tuple.
 
   For example, `{:enabled, :start, :started}` means the workitem can be
-  transitioned to `started` when it is `enabled` by the `start` transition.
+  transitioned to `started` when it is `enabled` by the `start` action.
 
   See `t:state/0` for the available transitions.
   """
-  @spec __transitions__() ::
-          [
-            unquote(
-              @transitions
-              |> Enum.map(fn t -> Macro.escape(t) end)
-              |> ColouredFlow.Types.make_sum_type()
-            )
-          ]
+  @spec __transitions__() :: [transition()]
   def __transitions__, do: @transitions
 end

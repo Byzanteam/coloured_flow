@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Runner.Exceptions.InvalidWorkitemTransition do
   @moduledoc """
   This exception is raised when the workitem transition is invalid, such as
-  the workitem is not enabled to be allocated, started, or completed.
+  the workitem is not enabled to be started, or completed.
 
   See workitem transition details in `ColouredFlow.Runner.Enactment.WorkitemTransition`.
   """

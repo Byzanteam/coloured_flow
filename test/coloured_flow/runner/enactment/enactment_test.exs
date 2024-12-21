@@ -142,7 +142,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
   describe "calibrate workitems" do
     test "works", %{enactment: enactment} do
-      offered_workitem =
+      unsatisfied_enabled_workitem =
         :workitem
         |> build(enactment: enactment, state: :enabled)
         |> workitem_with_binding_element(
@@ -155,14 +155,15 @@ defmodule ColouredFlow.Runner.EnactmentTest do
         )
         |> insert()
 
-      allocated_workitem =
+      unsatisfied_started_workitem =
         :workitem
-        |> build(enactment: enactment, state: :allocated)
+        |> build(enactment: enactment, state: :started)
         |> workitem_with_binding_element(
           BindingElement.new(
             "pass_through",
-            [x: 1],
-            [%Marking{place: "input", tokens: ~MS[1]}]
+            [x: 2],
+            # there isn't a token `2` in the input place
+            [%Marking{place: "input", tokens: ~MS[2]}]
           )
         )
         |> insert()
@@ -173,9 +174,8 @@ defmodule ColouredFlow.Runner.EnactmentTest do
         |> workitem_with_binding_element(
           BindingElement.new(
             "pass_through",
-            [x: 2],
-            # there isn't a token `2` in the input place
-            [%Marking{place: "input", tokens: ~MS[2]}]
+            [x: 1],
+            [%Marking{place: "input", tokens: ~MS[1]}]
           )
         )
         |> insert()
@@ -216,15 +216,15 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                markings: %{"input" => %Marking{place: "input", tokens: ~MS[2**1]}}
              } = get_enactment_state(enactment_server)
 
-      # withdrawn for the binding_element is not satisfied
-      assert match?(%{state: :withdrawn}, Repo.reload(offered_workitem))
-      assert match?(%{state: :allocated}, Repo.reload(allocated_workitem))
-      # withdrawn for the binding_element is not satisfied
-      assert match?(%{state: :withdrawn}, Repo.reload(started_workitem))
+      # withdraw that the binding_element is not satisfied
+      assert match?(%{state: :withdrawn}, Repo.reload(unsatisfied_enabled_workitem))
+      assert match?(%{state: :withdrawn}, Repo.reload(unsatisfied_started_workitem))
+
+      assert match?(%{state: :started}, Repo.reload(started_workitem))
       assert match?(%{state: :completed}, Repo.reload(completed_workitem))
       assert match?(%{state: :withdrawn}, Repo.reload(withdrawn_workitem))
 
-      allocated_workitem_id = allocated_workitem.id
+      started_workitem_id = started_workitem.id
 
       assert [
                %Enactment.Workitem{
@@ -237,8 +237,8 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                  }
                },
                %Enactment.Workitem{
-                 id: ^allocated_workitem_id,
-                 state: :allocated,
+                 id: ^started_workitem_id,
+                 state: :started,
                  binding_element: %BindingElement{
                    transition: "pass_through",
                    binding: [x: 1],

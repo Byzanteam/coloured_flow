@@ -75,6 +75,8 @@ defmodule ColouredFlow.Runner.Storage do
   @doc group: :workitem
   @callback list_live_workitems(enactment_id()) :: [Workitem.t(Workitem.live_state())]
 
+  @type transition_option() :: {:action, Workitem.transition_action()}
+
   @doc """
   Produces the workitems for the given enactment.
   """
@@ -83,20 +85,18 @@ defmodule ColouredFlow.Runner.Storage do
               [Workitem.t(:enabled)]
 
   @doc group: :workitem
-  @callback allocate_workitems([Workitem.t()]) :: [Workitem.t(:allocated)]
+  @callback start_workitems([Workitem.t(:started)], [transition_option()]) :: :ok
 
   @doc group: :workitem
-  @callback start_workitems([Workitem.t()]) :: [Workitem.t(:started)]
-
-  @doc group: :workitem
-  @callback withdraw_workitems([Workitem.t()]) :: [Workitem.t(:withdrawn)]
+  @callback withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: :ok
 
   @doc group: :workitem
   @callback complete_workitems(
               enactment_id(),
               current_version :: non_neg_integer(),
-              workitem_occurrences :: [{Workitem.t(:started), Occurrence.t()}]
-            ) :: [Workitem.t(:completed)]
+              workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
+              [transition_option()]
+            ) :: :ok
 
   @doc """
   Takes a snapshot of the given enactment.
@@ -161,32 +161,26 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec allocate_workitems([Workitem.t()]) :: [Workitem.t(target_state)]
-        when target_state: :allocated
-  def allocate_workitems(workitems) do
-    __storage__().allocate_workitems(workitems)
+  @spec start_workitems([Workitem.t(:started)], [transition_option()]) :: :ok
+  def start_workitems(workitems, options) do
+    __storage__().start_workitems(workitems, options)
   end
 
   @doc false
-  @spec start_workitems([Workitem.t()]) :: [Workitem.t(:started)]
-  def start_workitems(workitems) do
-    __storage__().start_workitems(workitems)
-  end
-
-  @doc false
-  @spec withdraw_workitems([Workitem.t()]) :: [Workitem.t(:withdrawn)]
-  def withdraw_workitems(workitems) do
-    __storage__().withdraw_workitems(workitems)
+  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: :ok
+  def withdraw_workitems(workitems, options) do
+    __storage__().withdraw_workitems(workitems, options)
   end
 
   @doc false
   @spec complete_workitems(
           enactment_id(),
           current_version :: non_neg_integer(),
-          workitem_occurrences :: [{Workitem.t(:started), Occurrence.t()}]
-        ) :: [Workitem.t(:completed)]
-  def complete_workitems(enactment_id, current_version, workitem_occurrences) do
-    __storage__().complete_workitems(enactment_id, current_version, workitem_occurrences)
+          workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
+          [transition_option()]
+        ) :: :ok
+  def complete_workitems(enactment_id, current_version, workitem_occurrences, options) do
+    __storage__().complete_workitems(enactment_id, current_version, workitem_occurrences, options)
   end
 
   @doc false
