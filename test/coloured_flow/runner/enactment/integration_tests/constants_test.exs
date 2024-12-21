@@ -118,12 +118,10 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.ConstantsTest do
 
     assert %Schemas.Enactment{
              state: :terminated,
-             data: %{
-               final_markings: [
-                 %Marking{place: "input", tokens: ~MS[1**9]},
-                 %Marking{place: "output", tokens: ~MS[2**6 2**9]}
-               ]
-             }
+             final_markings: [
+               %Marking{place: "input", tokens: ~MS[1**9]},
+               %Marking{place: "output", tokens: ~MS[2**6 2**9]}
+             ]
            } = Repo.get!(Schemas.Enactment, enactment.id)
   end
 
@@ -155,12 +153,10 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.ConstantsTest do
 
     assert %Schemas.Enactment{
              state: :terminated,
-             data: %{
-               final_markings: [
-                 %Marking{place: "input", tokens: ~MS[3**3 1**6]},
-                 %Marking{place: "output", tokens: ~MS[2**6]}
-               ]
-             }
+             final_markings: [
+               %Marking{place: "input", tokens: ~MS[3**3 1**6]},
+               %Marking{place: "output", tokens: ~MS[2**6]}
+             ]
            } = Repo.get!(Schemas.Enactment, enactment.id)
 
     assert %Schemas.EnactmentLog{

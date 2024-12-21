@@ -71,7 +71,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
 
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert :terminated === schema.state
-      assert initial_markings === schema.data.final_markings
+      assert initial_markings === schema.final_markings
     end
 
     @tag initial_markings: [%Marking{place: "output", tokens: ~MS[1]}]
@@ -111,7 +111,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
 
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert :terminated === schema.state
-      assert [%Marking{place: "output", tokens: ~MS[2]}] === schema.data.final_markings
+      assert [%Marking{place: "output", tokens: ~MS[2]}] === schema.final_markings
     end
   end
 
@@ -150,7 +150,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
 
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert :terminated === schema.state
-      assert initial_markings === schema.data.final_markings
+      assert initial_markings === schema.final_markings
     end
 
     @tag initial_markings: [%Marking{place: "output", tokens: ~MS[2**1]}]
@@ -195,7 +195,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
 
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert :terminated === schema.state
-      assert [%Marking{place: "output", tokens: ~MS[2**1]}] === schema.data.final_markings
+      assert [%Marking{place: "output", tokens: ~MS[2**1]}] === schema.final_markings
     end
   end
 

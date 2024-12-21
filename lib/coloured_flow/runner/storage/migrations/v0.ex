@@ -23,7 +23,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
     create table("flows", table_options) do
       add :id, :binary_id, primary_key: true
       add :name, :text, null: false
-      add :data, :jsonb, null: false
+      add :definition, :jsonb, null: false
 
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
@@ -33,7 +33,8 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       add :flow_id, references("flows", type: :binary_id, on_delete: :delete_all), null: false
       add :state, :string, null: false, default: "running"
       add :label, :text
-      add :data, :jsonb, null: false
+      add :initial_markings, :jsonb, null: false
+      add :final_markings, :jsonb
 
       timestamps(@timestamps_opts)
     end
@@ -61,7 +62,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
         null: false
 
       add :state, :string, null: false
-      add :data, :jsonb, null: false
+      add :binding_element, :jsonb, null: false
 
       timestamps(@timestamps_opts)
     end
@@ -80,7 +81,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
       add :workitem_id, references("workitems", type: :binary_id, on_delete: :nothing),
         null: false
 
-      add :data, :jsonb, null: false
+      add :occurrence, :jsonb, null: false
 
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
@@ -93,7 +94,7 @@ defmodule ColouredFlow.Runner.Migrations.V0 do
         null: false
 
       add :version, :integer, null: false
-      add :data, :jsonb, null: false
+      add :markings, :jsonb, null: false
 
       timestamps(@timestamps_opts)
     end

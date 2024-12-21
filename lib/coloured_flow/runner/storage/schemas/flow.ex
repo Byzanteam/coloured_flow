@@ -10,25 +10,20 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Flow do
   typed_structor define_struct: false, enforce: true do
     field :id, Types.id()
     field :name, String.t()
-    field :data, %{definition: ColouredPetriNet.t()}
+    field :definition, ColouredPetriNet.t()
 
     field :inserted_at, DateTime.t()
   end
 
   schema "flows" do
     field :name, :string
-
-    embeds_one :data, Data, primary_key: false, on_replace: :delete do
-      @moduledoc false
-
-      field :definition, Object, codec: Codec.ColouredPetriNet
-    end
+    field :definition, Object, codec: Codec.ColouredPetriNet
 
     timestamps(updated_at: false)
   end
 
   @spec to_coloured_petri_net(t()) :: ColouredPetriNet.t()
   def to_coloured_petri_net(%__MODULE__{} = flow) do
-    flow.data.definition
+    flow.definition
   end
 end

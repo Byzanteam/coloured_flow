@@ -17,28 +17,28 @@ defmodule ColouredFlow.Factory do
     %Schemas.Flow{
       id: Ecto.UUID.generate(),
       name: sequence(:flow_name, &"flow-#{&1}"),
-      data: fn -> %{definition: ColouredFlow.CpnetBuilder.build_cpnet(:simple_sequence)} end
+      definition: fn -> ColouredFlow.CpnetBuilder.build_cpnet(:simple_sequence) end
     }
   end
 
   def flow_with_cpnet(flow, %ColouredPetriNet{} = cpnet) do
-    Map.put(flow, :data, %{definition: cpnet})
+    Map.put(flow, :definition, cpnet)
   end
 
   def flow_with_cpnet(flow, flow_name) when is_atom(flow_name) do
-    Map.put(flow, :data, %{definition: ColouredFlow.CpnetBuilder.build_cpnet(flow_name)})
+    Map.put(flow, :definition, ColouredFlow.CpnetBuilder.build_cpnet(flow_name))
   end
 
   def enactment_factory do
     %Schemas.Enactment{
       id: Ecto.UUID.generate(),
       flow: fn -> build(:flow) end,
-      data: %{initial_markings: []}
+      initial_markings: []
     }
   end
 
   def enactment_with_initial_markings(enactment, markings) when is_list(markings) do
-    Map.put(enactment, :data, %{initial_markings: markings})
+    Map.put(enactment, :initial_markings, markings)
   end
 
   def occurrence_factory do
@@ -46,25 +46,23 @@ defmodule ColouredFlow.Factory do
       enactment: fn -> build(:enactment) end,
       workitem: fn -> build(:workitem) end,
       step_number: sequence(:occurrence_step_number, & &1),
-      data: fn ->
-        %{
-          occurrence: %Occurrence{
-            binding_element:
-              BindingElement.new(
-                "pass_through",
-                [x: 1],
-                [%Marking{place: "integer", tokens: ~MS[1]}]
-              ),
-            free_binding: [],
-            to_produce: [%Marking{place: "output", tokens: ~MS[1**2]}]
-          }
+      occurrence: fn ->
+        %Occurrence{
+          binding_element:
+            BindingElement.new(
+              "pass_through",
+              [x: 1],
+              [%Marking{place: "integer", tokens: ~MS[1]}]
+            ),
+          free_binding: [],
+          to_produce: [%Marking{place: "output", tokens: ~MS[1**2]}]
         }
       end
     }
   end
 
   def occurrence_with_occurrence(enactment, %Occurrence{} = occurrence) do
-    Map.put(enactment, :data, %{occurrence: occurrence})
+    Map.put(enactment, :occurrence, occurrence)
   end
 
   def workitem_factory do
@@ -72,32 +70,28 @@ defmodule ColouredFlow.Factory do
       id: Ecto.UUID.generate(),
       enactment: fn -> build(:enactment) end,
       state: :enabled,
-      data: fn ->
-        %{
-          binding_element:
-            BindingElement.new(
-              "pass_through",
-              [x: 1],
-              [%Marking{place: "integer", tokens: ~MS[1]}]
-            )
-        }
-      end
+      binding_element:
+        BindingElement.new(
+          "pass_through",
+          [x: 1],
+          [%Marking{place: "integer", tokens: ~MS[1]}]
+        )
     }
   end
 
   def workitem_with_binding_element(workitem, %BindingElement{} = binding_element) do
-    Map.put(workitem, :data, %{binding_element: binding_element})
+    Map.put(workitem, :binding_element, binding_element)
   end
 
   def snapshot_factory do
     %Schemas.Snapshot{
       enactment: fn -> build(:enactment) end,
       version: sequence(:snapshot_version, & &1),
-      data: fn -> %{markings: []} end
+      markings: []
     }
   end
 
   def snapshot_with_markings(snapshot, markings) when is_list(markings) do
-    Map.put(snapshot, :data, %{markings: markings})
+    Map.put(snapshot, :markings, markings)
   end
 end

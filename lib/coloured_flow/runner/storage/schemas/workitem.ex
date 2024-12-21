@@ -16,8 +16,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
     field :id, Types.id()
     field :enactment_id, Types.id()
     field :enactment, Types.association(Enactment.t())
+
     field :state, state()
-    field :data, %{binding_element: BindingElement.t()}
+    field :binding_element, BindingElement.t()
 
     field :inserted_at, DateTime.t()
     field :updated_at, DateTime.t()
@@ -25,13 +26,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
 
   schema "workitems" do
     belongs_to :enactment, Enactment
+
     field :state, Ecto.Enum, values: states
-
-    embeds_one :data, Data, primary_key: false, on_replace: :delete do
-      @moduledoc false
-
-      field :binding_element, Object, codec: Codec.BindingElement
-    end
+    field :binding_element, Object, codec: Codec.BindingElement
 
     timestamps()
   end
@@ -41,7 +38,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
     %Workitem{
       id: workitem.id,
       state: workitem.state,
-      binding_element: workitem.data.binding_element
+      binding_element: workitem.binding_element
     }
   end
 end
