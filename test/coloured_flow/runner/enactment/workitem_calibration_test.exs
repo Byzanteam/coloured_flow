@@ -175,7 +175,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
     end
   end
 
-  describe "calibrate after allocate" do
+  describe "calibrate after started" do
     # ```mermaid
     # flowchart LR
     #   %% colset int() :: integer()
@@ -239,7 +239,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           to_map([
             %Enactment.Workitem{
               pt1_workitem_1
-              | state: :allocated
+              | state: :started
             },
             pt1_workitem_2,
             pt1_workitem_3,
@@ -253,7 +253,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             to_map([
               %Enactment.Workitem{
                 pt1_workitem_1
-                | state: :allocated
+                | state: :started
               },
               pt1_workitem_2,
               pt1_workitem_3,
@@ -261,7 +261,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [pt1_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :start, workitems: [pt1_workitem_1])
 
       assert expected_state === calibration.state
       assert [] === calibration.to_withdraw
@@ -320,7 +320,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           to_map([
             %Enactment.Workitem{
               pt1_workitem_1
-              | state: :allocated
+              | state: :started
             },
             pt1_workitem_2,
             pt2_workitem
@@ -333,13 +333,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             to_map([
               %Enactment.Workitem{
                 pt1_workitem_1
-                | state: :allocated
+                | state: :started
               },
               pt1_workitem_2
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [pt1_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :start, workitems: [pt1_workitem_1])
 
       assert expected_state === calibration.state
       assert [pt2_workitem] === calibration.to_withdraw
@@ -402,7 +402,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           to_map([
             %Enactment.Workitem{
               aj_workitem_1
-              | state: :allocated
+              | state: :started
             },
             aj_workitem_2
           ])
@@ -414,19 +414,19 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
             to_map([
               %Enactment.Workitem{
                 aj_workitem_1
-                | state: :allocated
+                | state: :started
               }
             ])
       }
 
-      calibration = WorkitemCalibration.calibrate(state, :allocate, workitems: [aj_workitem_1])
+      calibration = WorkitemCalibration.calibrate(state, :start, workitems: [aj_workitem_1])
 
       assert expected_state === calibration.state
       assert [aj_workitem_2] === calibration.to_withdraw
     end
   end
 
-  describe "calibrate after complete" do
+  describe "calibrate after completed" do
     import ColouredFlow.CpnetBuilder
 
     alias ColouredFlow.Enactment.Occurrence

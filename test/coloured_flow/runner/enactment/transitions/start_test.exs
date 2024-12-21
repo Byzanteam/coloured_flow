@@ -4,7 +4,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
 
   alias ColouredFlow.Runner.Exceptions
 
-  describe "start workitems" do
+  describe "returns the started workitem" do
     @describetag cpnet: :simple_sequence
     @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
 
@@ -15,47 +15,22 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
     test "works", %{enactment_server: enactment_server} do
       [workitem] = get_enactment_workitems(enactment_server)
 
-      {:ok, [workitem]} = GenServer.call(enactment_server, {:allocate_workitems, [workitem.id]})
-
-      assert :allocated === workitem.state
-
-      {:ok, [workitem]} = GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
-
-      assert :started === workitem.state
-
-      assert [workitem] === get_enactment_workitems(enactment_server)
-    end
-
-    test "works for starting enabled workitems", %{enactment_server: enactment_server} do
-      [workitem] = get_enactment_workitems(enactment_server)
-
       assert {:ok, [workitem]} =
                GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
 
       assert :started === workitem.state
     end
 
-    test "returns NonLiveWorkitem exception", %{
-      enactment_server: enactment_server,
-      enactment: enactment
-    } do
-      workitem_id = Ecto.UUID.generate()
-
-      {:error, exception} = GenServer.call(enactment_server, {:start_workitems, [workitem_id]})
-
-      assert %Exceptions.NonLiveWorkitem{
-               id: workitem_id,
-               enactment_id: enactment.id
-             } === exception
-    end
-
-    test "returns InvalidWorkitemTransition", %{
+    test "returns InvalidWorkitemTransition exception", %{
       enactment_server: enactment_server,
       enactment: enactment
     } do
       [workitem] = get_enactment_workitems(enactment_server)
 
-      {:ok, [workitem]} = GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
+      assert {:ok, [workitem]} =
+               GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
+
+      assert :started === workitem.state
 
       assert {:error, exception} =
                GenServer.call(enactment_server, {:start_workitems, [workitem.id]})
@@ -64,7 +39,22 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
                id: workitem.id,
                enactment_id: enactment.id,
                state: :started,
-               transition: :start_e
+               transition: :start
+             } === exception
+    end
+
+    test "returns NonLiveWorkitem exception", %{
+      enactment_server: enactment_server,
+      enactment: enactment
+    } do
+      workitem_id = Ecto.UUID.generate()
+
+      assert {:error, exception} =
+               GenServer.call(enactment_server, {:start_workitems, [workitem_id]})
+
+      assert %Exceptions.NonLiveWorkitem{
+               id: workitem_id,
+               enactment_id: enactment.id
              } === exception
     end
 
@@ -88,9 +78,23 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
                tokens: ~MS[1]
              } === exception
     end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
+    test "starts multiple workitems", %{enactment_server: enactment_server} do
+      [workitem_1, workitem_2] = get_enactment_workitems(enactment_server)
+
+      assert {:ok, [workitem_1, workitem_2]} =
+               GenServer.call(
+                 enactment_server,
+                 {:start_workitems, [workitem_1.id, workitem_2.id]}
+               )
+
+      assert :started === workitem_1.state
+      assert :started === workitem_2.state
+    end
   end
 
-  describe "calibrates workitems for starting enabled workitems" do
+  describe "calibrates workitems" do
     setup :setup_flow
     setup :setup_enactment
     setup :start_enactment
@@ -110,7 +114,9 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
 
       assert :started === workitem.state
 
-      assert [workitem] === get_enactment_workitems(enactment_server)
+      [started_workitem] = get_enactment_workitems(enactment_server)
+
+      assert started_workitem === workitem
 
       assert :withdrawn === Repo.get!(Schemas.Workitem, dc2_workitem.id).state
     end

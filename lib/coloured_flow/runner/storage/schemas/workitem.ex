@@ -9,7 +9,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Storage.Schemas.Enactment
 
-  states = ~w[enabled allocated started completed withdrawn]a
+  states = ~w[enabled started completed withdrawn]a
 
   @type state() :: unquote(ColouredFlow.Types.make_sum_type(states))
   typed_structor define_struct: false, enforce: true do

@@ -14,29 +14,25 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
     setup :start_enactment
 
     @describetag cpnet: :simple_sequence
-    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[3**1]}]
+    @describetag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
 
     setup %{enactment_server: enactment_server} do
       [
         %Enactment.Workitem{state: :enabled} = workitem_1,
-        %Enactment.Workitem{state: :enabled} = workitem_2,
-        %Enactment.Workitem{state: :enabled} = workitem_3
+        %Enactment.Workitem{state: :enabled} = workitem_2
       ] = get_enactment_workitems(enactment_server)
 
-      workitem_2 = allocate_workitem(workitem_2, enactment_server)
-      workitem_3 = start_workitem(workitem_3, enactment_server)
+      workitem_2 = start_workitem(workitem_2, enactment_server)
 
       [
         enabled_workitem: workitem_1,
-        allocated_workitem: workitem_2,
-        started_workitem: workitem_3
+        started_workitem: workitem_2
       ]
     end
 
     test "works", %{
       enactment_server: enactment_server,
       enabled_workitem: enabled_workitem,
-      allocated_workitem: allocated_workitem,
       started_workitem: started_workitem
     } do
       {:ok, [completed_workitem]} =
@@ -44,10 +40,30 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
 
       assert :completed === completed_workitem.state
 
-      assert [allocated_workitem, enabled_workitem] ===
+      assert [enabled_workitem] ===
                enactment_server |> get_enactment_workitems() |> Enum.sort_by(& &1.state)
 
-      assert [allocated_workitem, completed_workitem, enabled_workitem] ===
+      assert [completed_workitem, enabled_workitem] ===
+               Schemas.Workitem
+               |> Repo.all()
+               |> Enum.map(&Schemas.Workitem.to_workitem/1)
+               |> Enum.sort_by(& &1.state)
+    end
+
+    test "complete enabled workitems", %{
+      enactment_server: enactment_server,
+      enabled_workitem: enabled_workitem,
+      started_workitem: started_workitem
+    } do
+      {:ok, [completed_workitem]} =
+        GenServer.call(enactment_server, {:complete_workitems, %{enabled_workitem.id => []}})
+
+      assert :completed === completed_workitem.state
+
+      assert [started_workitem] ===
+               enactment_server |> get_enactment_workitems() |> Enum.sort_by(& &1.state)
+
+      assert [completed_workitem, started_workitem] ===
                Schemas.Workitem
                |> Repo.all()
                |> Enum.map(&Schemas.Workitem.to_workitem/1)
@@ -86,25 +102,6 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
                Schemas.Occurrence
                |> Repo.all()
                |> Enum.map(&Schemas.Occurrence.to_occurrence/1)
-    end
-
-    test "returns InvalidWorkitemTransition exception", %{
-      enactment: enactment,
-      enactment_server: enactment_server,
-      allocated_workitem: allocated_workitem
-    } do
-      assert {:error, exception} =
-               GenServer.call(
-                 enactment_server,
-                 {:complete_workitems, %{allocated_workitem.id => []}}
-               )
-
-      assert %Exceptions.InvalidWorkitemTransition{
-               id: allocated_workitem.id,
-               enactment_id: enactment.id,
-               state: :allocated,
-               transition: :complete
-             } === exception
     end
 
     test "returns NonLiveWorkitem exception", %{
@@ -338,6 +335,37 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
              ] === get_enactment_markings(enactment_server)
     end
 
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[2**1]}]
+    test "works for enabled workitems", %{enactment_server: enactment_server} do
+      workitem = enactment_server |> get_enactment_workitems() |> hd()
+      outputs = [y: 2]
+
+      assert {:ok, [completed_workitem]} =
+               GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => outputs}})
+
+      assert %{workitem | state: :completed} === completed_workitem
+
+      assert [
+               %Occurrence{
+                 binding_element: %BindingElement{
+                   transition: "pass_through",
+                   binding: [x: 1],
+                   to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
+                 },
+                 free_binding: [y: 2],
+                 to_produce: [%Marking{place: "output", tokens: ~MS[2**1]}]
+               }
+             ] ===
+               Schemas.Occurrence
+               |> Repo.all()
+               |> Enum.map(&Schemas.Occurrence.to_occurrence/1)
+
+      assert [
+               %Marking{place: "input", tokens: ~MS[1]},
+               %Marking{place: "output", tokens: ~MS[2**1]}
+             ] === get_enactment_markings(enactment_server)
+    end
+
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
     test "returns UnboundActionOutput", %{enactment_server: enactment_server} do
       [workitem] = get_enactment_workitems(enactment_server)
@@ -433,7 +461,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
            %Marking{place: "input", tokens: ~MS[1]},
            %Marking{place: "place", tokens: ~MS[1]}
          ]
-    test "produces new workitems when there is non-enabled workitems", %{
+    test "do not produce new workitems when there is non-enabled workitems", %{
       enactment_server: enactment_server
     } do
       [
@@ -445,7 +473,7 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
         } = pt_workitem
       ] = get_enactment_workitems(enactment_server)
 
-      dc1_workitem = allocate_workitem(dc1_workitem, enactment_server)
+      dc1_workitem = start_workitem(dc1_workitem, enactment_server)
       pt_workitem = start_workitem(pt_workitem, enactment_server)
 
       assert {:ok, [completed_workitem]} =
@@ -460,6 +488,47 @@ defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
                },
                ^dc1_workitem
              ] = get_enactment_workitems(enactment_server)
+    end
+
+    @tag initial_markings: [
+           %Marking{place: "input", tokens: ~MS[1]},
+           %Marking{place: "place", tokens: ~MS[1]}
+         ]
+    test "produces new workitems when completing enabled workitems", %{
+      enactment_server: enactment_server
+    } do
+      [
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "deferred_choice_1"}
+        } = dc1_workitem,
+        %Enactment.Workitem{
+          binding_element: %BindingElement{transition: "pass_through"}
+        } = pt_workitem
+      ] = get_enactment_workitems(enactment_server)
+
+      assert {:ok, [completed_workitem]} =
+               GenServer.call(enactment_server, {:complete_workitems, %{pt_workitem.id => []}})
+
+      assert %Enactment.Workitem{pt_workitem | state: :completed} === completed_workitem
+
+      assert match?(
+               [
+                 %Enactment.Workitem{
+                   state: :enabled,
+                   binding_element: %BindingElement{transition: "deferred_choice_1"}
+                 } = dc_workitem_1,
+                 %Enactment.Workitem{
+                   state: :enabled,
+                   binding_element: %BindingElement{transition: "deferred_choice_1"}
+                 } = dc_workitem_2,
+                 %Enactment.Workitem{
+                   state: :enabled,
+                   binding_element: %BindingElement{transition: "deferred_choice_2"}
+                 }
+               ]
+               when dc1_workitem in [dc_workitem_1, dc_workitem_2],
+               get_enactment_workitems(enactment_server)
+             )
     end
   end
 

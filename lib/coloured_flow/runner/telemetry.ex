@@ -39,7 +39,6 @@ defmodule ColouredFlow.Runner.Telemetry do
   operations during running:
 
   - `[:coloured_flow, :runner, :enactment, :produce_workitems, :start | :stop | :exception]`
-  - `[:coloured_flow, :runner, :enactment, :allocate_workitems, :start | :stop | :exception]`
   - `[:coloured_flow, :runner, :enactment, :start_workitems, :start | :stop | :exception]`
   - `[:coloured_flow, :runner, :enactment, :withdraw_workitems, :start | :stop | :exception]`
   - `[:coloured_flow, :runner, :enactment, :complete_workitems, :start | :stop | :exception]`
@@ -68,7 +67,6 @@ defmodule ColouredFlow.Runner.Telemetry do
   | event                 | start.metadata                              | stop.metadata |
   | --------------------- | ------------------------------------------- | ------------- |
   | `:produce_workitems`  | `:binding_elements`                         | `:workitems`  |
-  | `:allocate_workitems` | `:workitem_ids`                             | `:workitems`  |
   | `:start_workitems`    | `:workitem_ids`                             | `:workitems`  |
   | `:withdraw_workitems` | `:workitem_ids`                             | `:workitems`  |
   | `:complete_workitems` | `:workitem_ids`, `:workitem_id_and_outputs` | `:workitems`  |
@@ -229,9 +227,6 @@ defmodule ColouredFlow.Runner.Telemetry do
     [:coloured_flow, :runner, :enactment, :produce_workitems, :start],
     [:coloured_flow, :runner, :enactment, :produce_workitems, :stop],
     [:coloured_flow, :runner, :enactment, :produce_workitems, :exception],
-    [:coloured_flow, :runner, :enactment, :allocate_workitems, :start],
-    [:coloured_flow, :runner, :enactment, :allocate_workitems, :stop],
-    [:coloured_flow, :runner, :enactment, :allocate_workitems, :exception],
     [:coloured_flow, :runner, :enactment, :start_workitems, :start],
     [:coloured_flow, :runner, :enactment, :start_workitems, :stop],
     [:coloured_flow, :runner, :enactment, :start_workitems, :exception],

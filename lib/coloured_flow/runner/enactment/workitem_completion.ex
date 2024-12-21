@@ -21,21 +21,21 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
     * `cpnet` - The coloured petri net
   """
   @spec complete(
-          workitem_and_outputs :: Enumerable.t({Workitem.t(), Occurrence.free_binding()}),
+          workitem_and_outputs :: Enumerable.t({Workitem.t(:started), Occurrence.free_binding()}),
           ColouredPetriNet.t()
-        ) :: {:ok, [{Workitem.t(), Occurrence.t()}]} | {:error, Exception.t()}
+        ) :: {:ok, [{Workitem.t(:completed), Occurrence.t()}]} | {:error, Exception.t()}
   def complete(workitem_and_outputs, cpnet) do
     workitem_and_outputs
     |> Enum.reduce_while(
       [],
-      fn {%Workitem{} = workitem, ouputs}, acc ->
+      fn {%Workitem{state: :started} = workitem, ouputs}, acc ->
         transition = fetch_transition!(workitem, cpnet)
 
         with(
           {:ok, ouputs} <- validate_outputs(transition, ouputs, cpnet),
           {:ok, occurrence} <- occur(workitem, ouputs, cpnet)
         ) do
-          {:cont, [{workitem, occurrence} | acc]}
+          {:cont, [{%Workitem{workitem | state: :completed}, occurrence} | acc]}
         else
           {:error, {:unbound_action_output, args}} ->
             alias ColouredFlow.Runner.Exceptions.UnboundActionOutput

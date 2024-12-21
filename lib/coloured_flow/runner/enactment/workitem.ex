@@ -9,21 +9,31 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   @transitions [
     # normal
-    {:enabled, :allocate, :allocated},
-    {:enabled, :start_e, :started},
-    {:allocated, :start, :started},
+    {:enabled, :start, :started},
     {:started, :complete, :completed},
+    {:enabled, :complete_e, :completed},
     # exception
-    {:allocated, :reoffer_a, :enabled},
     {:started, :reoffer_s, :enabled},
-    {:started, :reallocate_s, :allocated},
     # system
-    {:enabled, :withdraw_o, :withdrawn},
-    {:allocated, :withdraw_a, :withdrawn},
-    {:started, :withdraw_s, :withdrawn}
+    {:started, :withdraw_s, :withdrawn},
+    {:enabled, :withdraw, :withdrawn}
   ]
 
-  @type in_progress_state() :: :allocated | :started
+  @type transition() ::
+          unquote(
+            @transitions
+            |> Enum.map(fn t -> Macro.escape(t) end)
+            |> ColouredFlow.Types.make_sum_type()
+          )
+
+  @type transition_action() ::
+          unquote(
+            @transitions
+            |> Enum.map(&elem(&1, 1))
+            |> ColouredFlow.Types.make_sum_type()
+          )
+
+  @type in_progress_state() :: :started
   @type live_state() :: :enabled | in_progress_state()
   @type completed_state() :: :completed | :withdrawn
 
@@ -36,38 +46,33 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
       %% normal
       [*] --> enabled: *create
-      enabled --> allocated: *allocate
-      enabled --> started: start-e
-      allocated --> started: *start
+      enabled --> started: *start
       started --> completed: *complete
+      enabled --> completed: complete-e
       completed --> [*]
 
       %% exception
-      allocated --> enabled: reoffer-a
-      started --> enabled: reoffer-s
-      started --> allocated: reallocate−s
+      started --> enabled: reoffer
 
       %% system
-      enabled --> withdrawn: withdraw-o
-      allocated --> withdrawn: withdraw-a
+      enabled --> withdrawn: withdraw
       started --> withdrawn: withdraw-s
       withdrawn --> [*]
   ```
 
-  > Note: The suffix `-a` indicates the workitem is `allocated`,
+  > Note: The suffix `-e` indicates the workitem is `enabled`,
   > and the suffix `-s` indicates the workitem is `started`.
   > `*` indicates the normal state transition path.
 
   | State | Description |
   | --- | --- |
   | `enabled` | The workitem has been enabled to resources. |
-  | `allocated` | The workitem has been allocated to a resource. |
   | `started` | The workitem has been started to handle. |
   | `completed` | The workitem has been completed normally. |
-  | `withdrawn` | The workitem has been withdrawn, perhaps because other workitem has been allocated. |
+  | `withdrawn` | The workitem has been withdrawn, perhaps because other workitem has been started. |
 
-  Among these states, `enabled`, `allocated`, and `started` are the live states.
-  Specifically, `allocated` and `started` are the `in-progress` states,
+  Among these states, `enabled` and `started` are the live states.
+  Specifically, `started` are the `in-progress` states,
   meaning the workitem is being handled by resources. `completed` and `withdrawn`
   are the `completed` states.
 
@@ -77,9 +82,9 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
 
   ## Available Transitions
 
-  | From | Transition | To |
+  | From | Action | To |
   | --- | --- | --- |
-  #{Enum.map_join(@transitions, "\n", fn {from, transition, to} -> "| `#{from}` | `#{transition}` | `#{to}` |" end)}
+  #{Enum.map_join(@transitions, "\n", fn {from, action, to} -> "| `#{from}` | `#{action}` | `#{to}` |" end)}
 
   ## References
   [^1]: Workflow Patterns: The Definitive Guide.pdf, p. 293.
@@ -122,7 +127,7 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   The in-progress states of the workitem. See more at `t:state/0`.
   """
   @spec __in_progress_states__() :: [in_progress_state()]
-  def __in_progress_states__, do: ~w[allocated started]a
+  def __in_progress_states__, do: ~w[started]a
 
   @doc """
   The completed states of the workitem. See more at `t:state/0`.
@@ -137,20 +142,13 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   def __states__, do: __live_states__() ++ __completed_states__()
 
   @doc """
-  The valid transitions of the workitem, represented as a list of a `{from, transition, to}` tuple.
+  The valid transitions of the workitem, represented as a list of a `{from, action, to}` tuple.
 
-  For example, `{:enabled, :allocate, :allocated}` means the workitem can be `allocated`
-  when it is `enabled` by the `allocate` transition.
+  For example, `{:enabled, :start, :started}` means the workitem can be
+  transitioned to `started` when it is `enabled` by the `start` action.
 
   See `t:state/0` for the available transitions.
   """
-  @spec __transitions__() ::
-          [
-            unquote(
-              @transitions
-              |> Enum.map(fn t -> Macro.escape(t) end)
-              |> ColouredFlow.Types.make_sum_type()
-            )
-          ]
+  @spec __transitions__() :: [transition()]
   def __transitions__, do: @transitions
 end
