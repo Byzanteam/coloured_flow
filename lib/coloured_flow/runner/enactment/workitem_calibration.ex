@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   @moduledoc """
   Workitem calibration functions, which are responsible for:
-  1. withdraw the non-enabled workitem caused by a `allocate` transition
+  1. withdraw the non-enabled workitem caused by a `start` transition
   2. produce new workitems for the new enabled binding elements after the `complete` transition
   """
 
@@ -78,23 +78,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
     * `transition` : The transition that caused the calibration. See at `ColouredFlow.Runner.Enactment.Workitem.__transitions__/0`
     * `options` : The transition specefied options. See below options.
 
-  ## Allocate options
+  ## Start options
 
-    * `workitems`: The **original** workitems (before the transition) that are affected by the `allocate` transition.
+    * `workitems`: The workitems (after the transition) that are affected by the `start` transition.
 
   ## Complete options
 
     * `cpnet`: The coloured petri net.
     * `workitem_occurrences`: The workitem and occurrence pairs that are appened after the `complete` transition.
   """
-  @spec calibrate(enactment_state(), :allocate, workitems: [Workitem.t()]) :: t()
+  @spec calibrate(enactment_state(), :start, workitems: [Workitem.t()]) :: t()
   @spec calibrate(enactment_state(), :complete,
           cpnet: ColouredPetriNet.t(),
           occurrences: [Occurrence.t()]
         ) :: t()
   def calibrate(state, transition, options)
 
-  def calibrate(%Enactment{} = state, :allocate, options)
+  def calibrate(%Enactment{} = state, :start, options)
       when is_list(options) do
     workitems = Keyword.fetch!(options, :workitems)
     to_consume_markings = Enum.flat_map(workitems, & &1.binding_element.to_consume)
@@ -103,6 +103,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
     {workitems, to_withdraw} =
       Map.split_with(state.workitems, fn
+        # TODO: only workitems that their input places share with the to_consume_markings should be re-check enabled
         # only enabled workitems should be re-check enabled
         {_workitem_id, %Workitem{state: :enabled} = workitem} ->
           binding_element_enabled?(workitem.binding_element, place_tokens)
@@ -200,7 +201,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   @spec apply_in_progress_workitems!(Enactment.workitems(), Enactment.markings()) ::
           Enactment.markings()
   defp apply_in_progress_workitems!(workitems, markings) do
-    allocated_binding_elements =
+    started_binding_elements =
       workitems
       |> Enactment.to_list()
       |> Stream.filter(in_progress_workitems_filter())
@@ -208,7 +209,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       |> Enum.to_list()
 
     {:ok, markings} =
-      WorkitemConsumption.consume_tokens(markings, allocated_binding_elements)
+      WorkitemConsumption.consume_tokens(markings, started_binding_elements)
 
     markings
   end
