@@ -54,12 +54,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
           | {:error, {:unsufficient_tokens, Marking.t()}}
   def consume_tokens(place_markings, binding_elements)
 
-  def consume_tokens(place_markings, []) when is_map(place_markings), do: {:ok, place_markings}
-
-  def consume_tokens(place_markings, [%BindingElement{} = binding_element | _rest])
-      when map_size(place_markings) == 0 do
-    {:error, {:unsufficient_tokens, binding_element.to_consume}}
-  end
+  def consume_tokens(place_markings, []) when is_map(place_markings),
+    do: {:ok, place_markings}
 
   def consume_tokens(place_markings, binding_elements)
       when is_map(place_markings) and is_list(binding_elements) do
@@ -68,30 +64,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
     |> Enum.reduce(%{}, fn %Marking{} = marking, acc ->
       Map.update(acc, marking.place, marking.tokens, &MultiSet.union(&1, marking.tokens))
     end)
-    |> Enum.reduce_while(place_markings, fn {place, to_consume_tokens}, acc ->
-      place_marking =
-        case Map.fetch(acc, place) do
-          {:ok, marking} ->
-            marking
+    |> Enum.reduce_while(place_markings, fn
+      {place, to_consume_tokens}, acc when is_map_key(acc, place) ->
+        place_marking = Map.fetch!(acc, place)
+
+        case MultiSet.safe_difference(place_marking.tokens, to_consume_tokens) do
+          {:ok, remaining_tokens} when MultiSet.is_empty(remaining_tokens) ->
+            {:cont, Map.delete(acc, place)}
+
+          {:ok, remaining_tokens} ->
+            {:cont, Map.put(acc, place, %Marking{place_marking | tokens: remaining_tokens})}
 
           :error ->
-            raise """
-            The place (#{place}) making is absent in the given place markings.
-            There may be an issue on markings and workitems in the corresponding enactment state,
-            we should let it crash and restart the process to resolve it.
-            """
+            {:halt, {:error, {:unsufficient_tokens, place_marking}}}
         end
 
-      case MultiSet.safe_difference(place_marking.tokens, to_consume_tokens) do
-        {:ok, remaining_tokens} when MultiSet.is_empty(remaining_tokens) ->
-          {:cont, Map.delete(acc, place)}
-
-        {:ok, remaining_tokens} ->
-          {:cont, Map.put(acc, place, %Marking{place_marking | tokens: remaining_tokens})}
-
-        :error ->
-          {:halt, {:error, {:unsufficient_tokens, place_marking}}}
-      end
+      {place, _to_consume_tokens}, _acc ->
+        {:halt, {:error, {:unsufficient_tokens, %Marking{place: place, tokens: []}}}}
     end)
     |> case do
       {:error, _reason} = error -> error
