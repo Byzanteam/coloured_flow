@@ -10,7 +10,7 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
 
   @type cursor_binary() :: binary()
   @type limit() :: non_neg_integer()
-  @type list_option() :: {:after_cursor, cursor_binary()} | {:limit, limit()}
+  @type list_option() :: {:after_cursor, cursor_binary() | nil} | {:limit, limit()}
   @type list_options() :: [list_option()]
 
   @typep cursor() :: %{updated_at: DateTime.t(), id: Schemas.Types.id()}
@@ -69,11 +69,12 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   )
   ```
   """
-  @spec list_live(Ecto.Queryable.t()) :: {[Schemas.Workitem.t()], cursor} | :end_of_stream
+  @spec list_live(Ecto.Queryable.t()) ::
+          {[Schemas.Workitem.t()], cursor_binary()} | :end_of_stream
   def list_live(queryable) do
     queryable
     |> Repo.all()
-    |> then(fn
+    |> case do
       [] ->
         :end_of_stream
 
@@ -81,13 +82,13 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
         cursor = encode_cursor(workitems |> List.last() |> Map.take([:updated_at, :id]))
 
         {workitems, cursor}
-    end)
+    end
   end
 
-  @spec encode_cursor(cursor_binary() | nil) :: cursor() | nil
-  defp decode_cursor(nil), do: nil
+  @spec decode_cursor(cursor_binary() | nil) :: cursor() | nil
+  def decode_cursor(nil), do: nil
 
-  defp decode_cursor(cursor) when is_binary(cursor) do
+  def decode_cursor(cursor) when is_binary(cursor) do
     %{updated_at: updated_at, id: id} = :erlang.binary_to_term(cursor, [:safe])
 
     true = is_struct(updated_at, DateTime)
@@ -103,7 +104,7 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
   end
 
   @spec encode_cursor(cursor()) :: cursor_binary()
-  defp encode_cursor(%{updated_at: updated_at, id: id}),
+  def encode_cursor(%{updated_at: updated_at, id: id}),
     do: :erlang.term_to_binary(%{updated_at: updated_at, id: id})
 
   @spec filter_by_cursor(Ecto.Query.t(), cursor() | nil) :: Ecto.Query.t()
