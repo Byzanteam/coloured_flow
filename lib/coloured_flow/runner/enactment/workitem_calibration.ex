@@ -27,8 +27,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   typed_structor enforce: true do
     field :state, enactment_state()
-    field :to_withdraw, [Workitem.t(:withdrawn)], default: []
-    field :to_produce, MultiSet.t(BindingElement.t()), default: []
+    field :to_withdraw, [Workitem.t(:enabled | :started)], default: []
+    field :to_produce, MultiSet.t(BindingElement.t()), default: MultiSet.new()
   end
 
   @doc """
@@ -78,19 +78,28 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
     * `transition` : The transition that caused the calibration. See at `ColouredFlow.Runner.Enactment.Workitem.__transitions__/0`
     * `options` : The transition specefied options. See below options.
 
-  ## Start options
+  ## `start` transition options
 
-    * `workitems`: The workitems (after the transition) that are affected by the `start` transition.
+    * `workitems`: The workitems (after the transition, in `started` state) that are affected by the `start` transition.
 
-  ## Complete options
+  ## `complete` transition options
 
     * `cpnet`: The coloured petri net.
     * `workitem_occurrences`: The workitem and occurrence pairs that are appened after the `complete` transition.
+
+  ## `complete_e` transition options
+
+    * `cpnet`: The coloured petri net.
+    * `workitem_occurrences`: The workitem and occurrence pairs that are appened after the `complete_e` transition.
   """
-  @spec calibrate(enactment_state(), :start, workitems: [Workitem.t()]) :: t()
+  @spec calibrate(enactment_state(), :start, workitems: [Workitem.t(:started)]) :: t()
   @spec calibrate(enactment_state(), :complete,
           cpnet: ColouredPetriNet.t(),
-          occurrences: [Occurrence.t()]
+          workitem_occurrences: [{Workitem.t(:completed), Occurrence.t()}]
+        ) :: t()
+  @spec calibrate(enactment_state(), :complete_e,
+          cpnet: ColouredPetriNet.t(),
+          workitem_occurrences: [{Workitem.t(:completed), Occurrence.t()}]
         ) :: t()
   def calibrate(state, transition, options)
 
@@ -98,6 +107,39 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       when is_list(options) do
     workitems = Keyword.fetch!(options, :workitems)
     to_consume_markings = Enum.flat_map(workitems, & &1.binding_element.to_consume)
+
+    {state, to_withdraw} = withdraw_workitems(state, to_consume_markings)
+    struct!(__MODULE__, state: state, to_withdraw: to_withdraw)
+  end
+
+  def calibrate(%Enactment{} = state, :complete, options)
+      when is_list(options) do
+    cpnet = Keyword.fetch!(options, :cpnet)
+    workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
+
+    {state, to_produce} = produce_workitems(state, workitem_occurrences, cpnet)
+    struct!(__MODULE__, state: state, to_produce: to_produce)
+  end
+
+  def calibrate(%Enactment{} = state, :complete_e, options)
+      when is_list(options) do
+    cpnet = Keyword.fetch!(options, :cpnet)
+    workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
+
+    to_consume_markings =
+      Enum.flat_map(workitem_occurrences, fn {workitem, _} ->
+        workitem.binding_element.to_consume
+      end)
+
+    {state, to_withdraw} = withdraw_workitems(state, to_consume_markings)
+    {state, to_produce} = produce_workitems(state, workitem_occurrences, cpnet)
+
+    struct!(__MODULE__, state: state, to_withdraw: to_withdraw, to_produce: to_produce)
+  end
+
+  @spec withdraw_workitems(enactment_state(), to_consume_markings :: [Marking.t()]) ::
+          {enactment_state(), [Workitem.t(:withdrawn)]}
+  defp withdraw_workitems(%Enactment{} = state, to_consume_markings) do
     place_tokens = Map.new(state.markings, fn {place, marking} -> {place, marking.tokens} end)
     place_tokens = consume_markings(to_consume_markings, place_tokens)
 
@@ -112,17 +154,15 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
           true
       end)
 
-    struct!(
-      __MODULE__,
-      state: %Enactment{state | workitems: workitems},
-      to_withdraw: Map.values(to_withdraw)
-    )
+    {%Enactment{state | workitems: workitems}, Map.values(to_withdraw)}
   end
 
-  def calibrate(%Enactment{} = state, :complete, options)
-      when is_list(options) do
-    cpnet = Keyword.fetch!(options, :cpnet)
-    workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
+  @spec produce_workitems(
+          enactment_state(),
+          workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
+          ColouredPetriNet.t()
+        ) :: {enactment_state(), MultiSet.t(BindingElement.t())}
+  defp produce_workitems(%Enactment{} = state, workitem_occurrences, %ColouredPetriNet{} = cpnet) do
     completed_workitem_ids = Enum.map(workitem_occurrences, fn {workitem, _} -> workitem.id end)
     occurrences = Enum.map(workitem_occurrences, &elem(&1, 1))
 
@@ -172,11 +212,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
         Map.drop(workitems, completed_workitem_ids)
       end)
 
-    struct!(
-      __MODULE__,
-      state: state,
-      to_produce: MultiSet.to_list(to_produce)
-    )
+    {state, to_produce}
   end
 
   @spec consume_markings(to_consume_markings :: [Marking.t()], place_tokens) :: place_tokens

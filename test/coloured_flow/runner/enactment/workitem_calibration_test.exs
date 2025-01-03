@@ -3,10 +3,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
+  alias ColouredFlow.Enactment.Occurrence
   alias ColouredFlow.Runner.Enactment
 
   alias ColouredFlow.Runner.Enactment.WorkitemCalibration
 
+  alias ColouredFlow.MultiSet
   import ColouredFlow.MultiSet
 
   describe "initial_calibrate" do
@@ -470,7 +472,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         )
 
       assert expected_state === calibration.state
-      assert [] === calibration.to_produce
+      assert MultiSet.new() === calibration.to_produce
     end
 
     test "produces new workitems without considering the in-progress workitems" do
@@ -533,13 +535,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert expected_state === calibration.state
 
-      assert [
+      assert MultiSet.new([
                %BindingElement{
                  transition: "deferred_choice_1",
                  binding: [x: 1],
                  to_consume: [%Marking{place: "place", tokens: ~MS[1]}]
                }
-             ] === calibration.to_produce
+             ]) === calibration.to_produce
     end
 
     test "produces new workitems when there is some live workitems at the transition" do
@@ -595,7 +597,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         )
 
       assert expected_state === calibration.state
-      assert [] === calibration.to_produce
+      assert MultiSet.new() === calibration.to_produce
     end
 
     test "completes mulitple workitems and produces new workitems for mulitple transitions" do
@@ -657,13 +659,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert expected_state === calibration.state
 
-      assert [
+      assert MultiSet.new([
                %BindingElement{
                  transition: "thread_merge",
                  binding: [],
                  to_consume: [%Marking{place: "merge", tokens: ~MS[2**1]}]
                }
-             ] === calibration.to_produce
+             ]) === calibration.to_produce
     end
 
     test "produces new workitems for one transition" do
@@ -710,13 +712,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert expected_state === calibration.state
 
-      assert [
+      assert MultiSet.new([
                %BindingElement{
                  transition: "thread_merge",
                  binding: [],
                  to_consume: [%Marking{place: "merge", tokens: ~MS[2**1]}]
                }
-             ] === calibration.to_produce
+             ]) === calibration.to_produce
     end
 
     test "produces new workitems for mulitple transitions" do
@@ -759,7 +761,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert expected_state === calibration.state
 
-      assert [
+      assert MultiSet.new([
                %BindingElement{
                  transition: "deferred_choice_1",
                  binding: [x: 1],
@@ -770,7 +772,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                  binding: [x: 1],
                  to_consume: [%Marking{place: "place", tokens: ~MS[1]}]
                }
-             ] === calibration.to_produce
+             ]) === calibration.to_produce
     end
 
     test "produces new workitems into mulitple places for mulitple transitions" do
@@ -820,7 +822,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       assert expected_state === calibration.state
 
-      assert [
+      assert MultiSet.new([
                %BindingElement{
                  transition: "pass_through_1",
                  binding: [x: 1],
@@ -831,7 +833,217 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
                  binding: [x: 1],
                  to_consume: [%Marking{place: "place_2", tokens: ~MS[1]}]
                }
-             ] === calibration.to_produce
+             ]) === calibration.to_produce
+    end
+
+    test "produces new workitems when consumed zero tokens from input places" do
+      cpnet =
+        :simple_sequence
+        |> ColouredFlow.CpnetBuilder.build_cpnet()
+        |> ColouredFlow.CpnetBuilder.update_arc!(
+          {:p_to_t, "pass_through", "input"},
+          expression: "bind {0,x}"
+        )
+
+      pt_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :started,
+        binding_element: %BindingElement{
+          transition: "pass_through",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~MS[]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: Ecto.UUID.generate(),
+        version: 0,
+        markings:
+          to_map([
+            %Marking{place: "input", tokens: ~MS[1]}
+          ]),
+        workitems: to_map([])
+      }
+
+      occurrence = %Occurrence{
+        binding_element: pt_workitem.binding_element,
+        free_binding: [],
+        to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
+      }
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete,
+          cpnet: cpnet,
+          workitem_occurrences: [{pt_workitem, occurrence}]
+        )
+
+      expected_state = %Enactment{
+        state
+        | version: 1,
+          markings:
+            to_map([
+              %Marking{place: "input", tokens: ~MS[1]},
+              %Marking{place: "output", tokens: ~MS[1]}
+            ])
+      }
+
+      assert expected_state === calibration.state
+
+      assert MultiSet.new([
+               %BindingElement{
+                 transition: "pass_through",
+                 binding: [x: 1],
+                 to_consume: [%Marking{place: "input", tokens: ~MS[]}]
+               }
+             ]) === calibration.to_produce
+    end
+  end
+
+  describe "calibrate after complete_e" do
+    setup do
+      use ColouredFlow.DefinitionHelpers
+
+      import ColouredFlow.Notation
+
+      # ```mermaid
+      # flowchart TB
+      #   %% colset int() :: integer()
+      #
+      #   i((input))
+      #   im((intermediate))
+      #   o((output))
+      #
+      #   b1[branch_1]
+      #   b2[branch_2]
+      #   pt[pass_through]
+      #
+      #   i --bind {1,x}--> b1 --{1,x}--> im
+      #   i --bind {2,x}--> b2 --{1,x}--> im
+      #   im --bind {1,x}--> pt --{1,x}--> o
+      # ```
+      cpnet =
+        %ColouredPetriNet{
+          colour_sets: [
+            colset(int() :: integer())
+          ],
+          places: [
+            %Place{name: "input", colour_set: :int},
+            %Place{name: "intermediate", colour_set: :int},
+            %Place{name: "output", colour_set: :int}
+          ],
+          transitions: [
+            build_transition!(name: "branch_1"),
+            build_transition!(name: "branch_2"),
+            build_transition!(name: "pass_through")
+          ],
+          arcs: [
+            arc(branch_1 <~ input :: "bind {1, x}"),
+            arc(branch_2 <~ input :: "bind {2, x}"),
+            arc(branch_1 ~> intermediate :: "{1, x}"),
+            arc(branch_2 ~> intermediate :: "{1, x}"),
+            arc(pass_through <~ intermediate :: "bind {1, x}"),
+            arc(pass_through ~> output :: "{1, x}")
+          ],
+          variables: [
+            var(x :: int())
+          ]
+        }
+
+      assert {:ok, cpnet} =
+               cpnet
+               |> ColouredFlow.Builder.build()
+               |> ColouredFlow.Validators.run()
+
+      %{cpnet: cpnet}
+    end
+
+    test "withdraws and produces workitems", %{cpnet: cpnet} do
+      enactment_id = Ecto.UUID.generate()
+
+      br1_workitem_1 = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :enabled,
+        binding_element: %BindingElement{
+          transition: "branch_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
+        }
+      }
+
+      br1_workitem_2 = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :enabled,
+        binding_element: %BindingElement{
+          transition: "branch_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~MS[1]}]
+        }
+      }
+
+      br2_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :enabled,
+        binding_element: %BindingElement{
+          transition: "pass_through_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "input", tokens: ~MS[2**1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: enactment_id,
+        version: 0,
+        markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}]),
+        workitems:
+          to_map([
+            br1_workitem_2,
+            br2_workitem
+          ])
+      }
+
+      workitem_occurrences = [
+        {
+          %{br1_workitem_1 | state: :completed},
+          %Occurrence{
+            binding_element: br1_workitem_1.binding_element,
+            free_binding: [],
+            to_produce: [%Marking{place: "intermediate", tokens: ~MS[1]}]
+          }
+        }
+      ]
+
+      calibration =
+        WorkitemCalibration.calibrate(state, :complete_e,
+          cpnet: cpnet,
+          workitem_occurrences: workitem_occurrences
+        )
+
+      expected_state = %Enactment{
+        state
+        | markings:
+            to_map([
+              %Marking{place: "input", tokens: ~MS[1]},
+              %Marking{place: "intermediate", tokens: ~MS[1]}
+            ]),
+          workitems:
+            to_map([
+              br1_workitem_2
+            ]),
+          version: 1
+      }
+
+      assert expected_state === calibration.state
+      assert [br2_workitem] === calibration.to_withdraw
+
+      assert MultiSet.new([
+               %BindingElement{
+                 transition: "pass_through",
+                 binding: [x: 1],
+                 to_consume: [
+                   %Marking{place: "intermediate", tokens: ~MS[1]}
+                 ]
+               }
+             ]) === calibration.to_produce
     end
   end
 
