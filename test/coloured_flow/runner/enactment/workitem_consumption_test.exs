@@ -110,6 +110,21 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
                ])
     end
 
+    test "works for empty binding_elements" do
+      # use case: persistent trigger
+      assert {:ok, %{}} === WorkitemConsumption.consume_tokens(%{}, [])
+
+      place_markings = [
+        %Marking{place: "a", tokens: ~MS[1]},
+        %Marking{place: "b", tokens: ~MS[1]},
+        %Marking{place: "c", tokens: ~MS[1]}
+      ]
+
+      place_markings = to_map(place_markings)
+
+      assert {:ok, place_markings} === WorkitemConsumption.consume_tokens(place_markings, [])
+    end
+
     test "tokens are consumed partially" do
       place_markings = [
         %Marking{place: "a", tokens: ~MS[2**1]}
@@ -148,7 +163,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
 
       assert {:ok, place_markings} === WorkitemConsumption.consume_tokens(place_markings, [])
 
-      assert {:error, {:unsufficient_tokens, to_consume}} ===
+      assert {:error, {:unsufficient_tokens, %Marking{place: "a", tokens: []}}} ===
                WorkitemConsumption.consume_tokens(%{}, [binding_element])
     end
 
@@ -186,7 +201,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
              } === WorkitemConsumption.consume_tokens(to_map(place_markings), binding_elements)
     end
 
-    test "raises error when place marking is absent" do
+    test "return error when place marking is absent" do
       place_markings = [
         %Marking{place: "a", tokens: ~MS[1]},
         %Marking{place: "b", tokens: ~MS[1]},
@@ -203,9 +218,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumptionTest do
         }
       ]
 
-      assert_raise RuntimeError, ~r/making is absent/, fn ->
-        WorkitemConsumption.consume_tokens(to_map(place_markings), binding_elements)
-      end
+      assert {:error, {:unsufficient_tokens, %Marking{place: "d", tokens: []}}} =
+               WorkitemConsumption.consume_tokens(to_map(place_markings), binding_elements)
     end
   end
 

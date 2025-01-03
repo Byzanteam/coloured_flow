@@ -206,4 +206,14 @@ defmodule ColouredFlow.RunnerHelpers do
         ExUnit.Assertions.flunk("Enactment server is expected to stop, but it's still running")
     end
   end
+
+  @doc """
+  Use `:sys.get_state/1` to ensure that all GenServer requests are handled.
+  """
+  @spec wait_enactment_requests_handled!(GenServer.server()) :: :ok
+  def wait_enactment_requests_handled!(enactment_server) do
+    get_enactment_state(enactment_server)
+
+    :ok
+  end
 end

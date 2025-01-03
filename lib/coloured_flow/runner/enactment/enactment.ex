@@ -147,17 +147,15 @@ defmodule ColouredFlow.Runner.Enactment do
     calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
 
-    case transition do
-      :complete ->
-        cpnet = Storage.get_flow_by_enactment(state.enactment_id)
-        # try to terminate when the transition is `:complete`
-        case check_termination(state, cpnet) do
-          :stop -> {:stop, :normal, state}
-          :cont -> {:noreply, state}
-        end
-
-      _other ->
-        {:noreply, state}
+    if transition in [:complete, :complete_e] do
+      cpnet = Storage.get_flow_by_enactment(state.enactment_id)
+      # try to terminate when the transition is `:complete` or `:complete_e`
+      case check_termination(state, cpnet) do
+        :stop -> {:stop, :normal, state}
+        :cont -> {:noreply, state}
+      end
+    else
+      {:noreply, state}
     end
   end
 
@@ -319,7 +317,7 @@ defmodule ColouredFlow.Runner.Enactment do
             :ok,
             {
               {completed_workitems, new_state},
-              {:continue, {:calibrate_workitems, :complete, calibration_options}}
+              {:continue, {:calibrate_workitems, transition_action, calibration_options}}
             },
             %{workitems: completed_workitems}
           }
