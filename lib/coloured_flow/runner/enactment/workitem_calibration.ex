@@ -138,8 +138,17 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
     # find affected transitions, and then find the binding elements
     binding_elements =
       occurrences
-      |> Stream.flat_map(& &1.to_produce)
-      |> Enum.map(& &1.place)
+      |> Enum.flat_map(fn %Occurrence{} = occurrence ->
+        occurrence.binding_element
+        |> consume_zero_tokens?()
+        |> if do
+          # if the binding element consumes zero tokens, then it should re-check enablement
+          Stream.map(occurrence.binding_element.to_consume, & &1.place)
+        else
+          []
+        end
+        |> Stream.concat(Stream.map(occurrence.to_produce, & &1.place))
+      end)
       |> Utils.list_transitions(cpnet)
       |> Enum.flat_map(fn transition ->
         Computation.list(transition, cpnet, available_markings)
@@ -212,6 +221,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       WorkitemConsumption.consume_tokens(markings, started_binding_elements)
 
     markings
+  end
+
+  defp consume_zero_tokens?(%BindingElement{} = binding_element) do
+    require MultiSet
+
+    Enum.all?(binding_element.to_consume, &MultiSet.is_empty(&1.tokens))
   end
 
   @spec in_progress_workitems_filter() :: (Workitem.t() -> boolean())
