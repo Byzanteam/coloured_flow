@@ -47,11 +47,11 @@ defmodule ColouredFlow.Runner.Telemetry do
   a bit. In addition, `:exception` events will obey the `:telemetry.span/3`
   exception event format.
 
-  | event        | measurements                      | metadata                                                               |
-  | ------------ | --------------------------------- | ---------------------------------------------------------------------- |
-  | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, additional metadata (see below)   |
-  | `:stop`      | `:duration`, `:monotonic_time`    | `:enactment_id`, `:enactment_state`                                    |
-  | `:exception` | `:duration`, `:monotonic_time`    | `:enactment_id`, `:enactment_state`, `:kind`, `:reason`, `:stacktrace` |
+  | event        | measurements                                   | metadata                                                               |
+  | ------------ | ---------------------------------------------- | ---------------------------------------------------------------------- |
+  | `:start`     | `:system_time`, `:monotonic_time`              | `:enactment_id`, `:enactment_state`, additional metadata (see below)   |
+  | `:stop`      | `:system_time`, `:duration`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                    |
+  | `:exception` | `:system_time`, `:duration`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:kind`, `:reason`, `:stacktrace` |
 
   #### Metadata
 
@@ -203,7 +203,11 @@ defmodule ColouredFlow.Runner.Telemetry do
   defp include_duration(start_time, measurements) do
     stop_time = System.monotonic_time()
 
-    Map.merge(measurements, %{duration: stop_time - start_time, monotonic_time: stop_time})
+    Map.merge(measurements, %{
+      system_time: System.system_time(),
+      duration: stop_time - start_time,
+      monotonic_time: stop_time
+    })
   end
 
   @spec execute(event_name(), event_measurements(), event_metadata()) :: :ok
@@ -290,7 +294,7 @@ defmodule ColouredFlow.Runner.Telemetry do
       |> Keyword.put_new(:encode, false)
       |> Keyword.put_new(:level, :info)
 
-    :telemetry.attach_many(@handler_id, @events, &DefaultLogger.handle_event/4, opts)
+    attach(@handler_id, @events, &DefaultLogger.handle_event/4, opts)
   end
 
   @doc """
@@ -318,9 +322,22 @@ defmodule ColouredFlow.Runner.Telemetry do
   This is a convenience function for `:telemetry.attach_many/4` to attach a handler to multiple
   event names, which are the same as the default logger handler, at once.
   """
+  @spec attach(handler_id(), handler_function()) :: :ok | {:error, :already_exists}
+  @spec attach(handler_id(), handler_function(), handler_config()) ::
+          :ok | {:error, :already_exists}
   @spec attach(handler_id(), [event_name()], handler_function(), handler_config()) ::
           :ok | {:error, :already_exists}
-  def attach(handler_id, event_names \\ @events, handler_function, handler_config \\ [])
+  def attach(handler_id, handler_function)
+      when is_function(handler_function, 4) do
+    attach(handler_id, @events, handler_function, [])
+  end
+
+  def attach(handler_id, handler_function, handler_config)
+      when is_function(handler_function, 4) do
+    attach(handler_id, @events, handler_function, handler_config)
+  end
+
+  def attach(handler_id, event_names, handler_function, handler_config)
       when is_list(event_names) and is_function(handler_function, 4) do
     :telemetry.attach_many(handler_id, event_names, handler_function, handler_config)
   end

@@ -81,28 +81,36 @@ defmodule ColouredFlow.Runner.Storage do
   Produces the workitems for the given enactment.
   """
   @doc group: :workitem
-  @callback produce_workitems(enactment_id(), Enumerable.t(BindingElement.t())) ::
-              [Workitem.t(:enabled)]
+  @callback produce_workitems(
+              enactment_id(),
+              binding_elements :: Enumerable.t(BindingElement.t())
+            ) :: [Workitem.t(:enabled)]
 
   @doc group: :workitem
-  @callback start_workitems([Workitem.t(:started)], [transition_option()]) :: :ok
+  @callback start_workitems(
+              started_workitems :: [Workitem.t(:started)],
+              options :: [transition_option()]
+            ) :: :ok
 
   @doc group: :workitem
-  @callback withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: :ok
+  @callback withdraw_workitems(
+              withdrawn_workitems :: [Workitem.t(:withdrawn)],
+              options :: [transition_option()]
+            ) :: :ok
 
   @doc group: :workitem
   @callback complete_workitems(
               enactment_id(),
               current_version :: non_neg_integer(),
               workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
-              [transition_option()]
+              options :: [transition_option()]
             ) :: :ok
 
   @doc """
   Takes a snapshot of the given enactment.
   """
   @doc group: :snapshot
-  @callback take_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok
+  @callback take_enactment_snapshot(enactment_id(), snapshot :: Snapshot.t()) :: :ok
 
   @doc """
   Reads the snapshot of the given enactment.
