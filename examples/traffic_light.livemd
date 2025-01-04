@@ -11,219 +11,90 @@ Mix.install(
       {
         ColouredFlow.Runner.Storage,
         [
-          repo: TrafficLight.Repo,
-          storage: ColouredFlow.Runner.Storage.Default
+          storage: ColouredFlow.Runner.Storage.InMemory
         ]
       }
-    ],
-    traffic_light: [
-      database_url: "ecto://postgres:postgres@localhost/coloured_flow"
     ]
   ]
 )
 ```
 
-## Preparation
-
-We assume you have a PostgreSQL database running, and the `coloured_flow` database exists.
-If not, please create the `coloured_flow` database before proceeding.
-
-The default database URL is `ecto://postgres:postgres@localhost/coloured_flow`,
-you can change it in the above setup block if your database URL is different.
-
-## Coloured Petri Net graph
-
-<details>
-<summary>Open to view the graph</summary>
-
-
-```mermaid
-flowchart TB
-  %% colset unit() :: {}
-
-  subgraph EW
-    %% places
-    %% ~b[{}]
-    r_ew((red_ew))
-    g_ew((green_ew))
-    y_ew((yellow_ew))
-
-    %% transitions
-    tr_ew[turn_red_ew]
-    tg_ew[turn_green_ew]
-    ty_ew[turn_yellow_ew]
-
-    r_ew --{1,u}--> tg_ew
-    tg_ew --{1,u}--> g_ew
-    g_ew --{1,u}--> ty_ew
-    ty_ew --{1,u}--> y_ew
-    y_ew --{1,u}--> tr_ew
-    tr_ew --{1,u}--> r_ew
-  end
-
-  subgraph NS
-    %% places
-    %% ~b[{}]
-    r_ns((red_ns))
-    g_ns((green_ns))
-    y_ns((yellow_ns))
-
-    %% transitions
-    tr_ns[turn_red_ns]
-    tg_ns[turn_green_ns]
-    ty_ns[turn_yellow_ns]
-
-    r_ns --{1,u}--> tg_ns
-    tg_ns --{1,u}--> g_ns
-    g_ns --{1,u}--> ty_ns
-    ty_ns --{1,u}--> y_ns
-    y_ns --{1,u}--> tr_ns
-    tr_ns --{1,u}--> r_ns
-  end
-
-  %% safe
-  %% ~b[{}]
-  s_ew((safe_ew))
-  s_ns((safe_ns))
-
-  tr_ns --{1,u}--> s_ew
-  s_ew --{1,u}--> tg_ew
-  tr_ew --{1,u}--> s_ns
-  s_ns --{1,u}--> tg_ns
-```
-</details>
-
-## Setup
-
-```elixir
-defmodule TrafficLight.Repo do
-  use Ecto.Repo,
-    otp_app: :coloured_flow,
-    adapter: Ecto.Adapters.Postgres
-end
-
-repo_pid =
-  case TrafficLight.Repo.start_link(url: Application.fetch_env!(:traffic_light, :database_url)) do
-    {:ok, pid} -> pid
-    {:error, {:already_started, pid}} -> pid
-    {:error, reason} -> raise inspect(reason)
-  end
-
-Ecto.Migrator.run(
-  TrafficLight.Repo,
-  [{0, ColouredFlow.Runner.Migrations.V0}],
-  :up,
-  all: true
-)
-
-IO.inspect("Repo started: #{inspect(repo_pid)}")
-
-supervisor_pid =
-  case ColouredFlow.Runner.Supervisor.start_link() do
-    {:ok, pid} -> pid
-    {:error, {:already_started, pid}} -> pid
-    {:error, reason} -> raise inspect(reason)
-  end
-
-IO.inspect("Runner supervisor started: #{inspect(supervisor_pid)}")
-
-"Database setup"
-```
-
-## Flow modules
+## Coloured Petri Net
 
 ```elixir
 defmodule TrafficLight do
-  alias ColouredFlow.Runner.Storage.Schemas
+  alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Place
+  alias ColouredFlow.Definition.Variable
+  alias ColouredFlow.Enactment.Marking
 
-  def flow do
-    alias ColouredFlow.Definition.ColouredPetriNet
-    alias ColouredFlow.Definition.Place
-    alias ColouredFlow.Definition.Variable
+  import ColouredFlow.Builder.DefinitionHelper
+  import ColouredFlow.Notation.Colset
 
-    import ColouredFlow.Builder.DefinitionHelper
-    import ColouredFlow.Notation.Colset
+  import Record, only: [is_record: 2]
 
-    %ColouredPetriNet{
-      colour_sets: [
-        colset(unit() :: {})
-      ],
-      places:
-        Enum.map(
-          ~w[red_ew green_ew yellow_ew red_ns green_ns yellow_ns safe_ew safe_ns],
-          fn name ->
-            %Place{name: name, colour_set: :unit}
-          end
-        ),
-      transitions:
-        Enum.map(
-          ~w[turn_red_ew turn_green_ew turn_yellow_ew turn_red_ns turn_green_ns turn_yellow_ns],
-          &build_transition!(name: &1)
-        ),
-      arcs:
+  @flow %ColouredPetriNet{
+    colour_sets: [
+      colset(unit() :: {})
+    ],
+    places:
+      Enum.map(
+        ~w[red_ew green_ew yellow_ew red_ns green_ns yellow_ns safe_ew safe_ns],
+        fn name ->
+          %Place{name: name, colour_set: :unit}
+        end
+      ),
+    transitions:
+      Enum.map(
+        ~w[turn_red_ew turn_green_ew turn_yellow_ew turn_red_ns turn_green_ns turn_yellow_ns],
+        &build_transition!(name: &1)
+      ),
+    arcs:
+      [
+        arc(turn_green_ew <~ red_ew :: "bind {1, u}"),
+        arc(turn_green_ew ~> green_ew :: "{1, u}"),
+        arc(turn_yellow_ew <~ green_ew :: "bind {1, u}"),
+        arc(turn_yellow_ew ~> yellow_ew :: "{1, u}"),
+        arc(turn_red_ew <~ yellow_ew :: "bind {1, u}"),
+        arc(turn_red_ew ~> red_ew :: "{1, u}")
+      ] ++
         [
-          arc(turn_green_ew <~ red_ew :: "bind {1, u}"),
-          arc(turn_green_ew ~> green_ew :: "{1, u}"),
-          arc(turn_yellow_ew <~ green_ew :: "bind {1, u}"),
-          arc(turn_yellow_ew ~> yellow_ew :: "{1, u}"),
-          arc(turn_red_ew <~ yellow_ew :: "bind {1, u}"),
-          arc(turn_red_ew ~> red_ew :: "{1, u}")
+          arc(turn_green_ns <~ red_ns :: "bind {1, u}"),
+          arc(turn_green_ns ~> green_ns :: "{1, u}"),
+          arc(turn_yellow_ns <~ green_ns :: "bind {1, u}"),
+          arc(turn_yellow_ns ~> yellow_ns :: "{1, u}"),
+          arc(turn_red_ns <~ yellow_ns :: "bind {1, u}"),
+          arc(turn_red_ns ~> red_ns :: "{1, u}")
         ] ++
-          [
-            arc(turn_green_ns <~ red_ns :: "bind {1, u}"),
-            arc(turn_green_ns ~> green_ns :: "{1, u}"),
-            arc(turn_yellow_ns <~ green_ns :: "bind {1, u}"),
-            arc(turn_yellow_ns ~> yellow_ns :: "{1, u}"),
-            arc(turn_red_ns <~ yellow_ns :: "bind {1, u}"),
-            arc(turn_red_ns ~> red_ns :: "{1, u}")
-          ] ++
-          [
-            arc(turn_red_ns ~> safe_ew :: "{1, u}"),
-            arc(turn_green_ew <~ safe_ew :: "bind {1, u}"),
-            arc(turn_red_ew ~> safe_ns :: "{1, u}"),
-            arc(turn_green_ns <~ safe_ns :: "bind {1, u}")
-          ],
-      variables: [
-        %Variable{name: :u, colour_set: :unit}
-      ]
-    }
+        [
+          arc(turn_red_ns ~> safe_ew :: "{1, u}"),
+          arc(turn_green_ew <~ safe_ew :: "bind {1, u}"),
+          arc(turn_red_ew ~> safe_ns :: "{1, u}"),
+          arc(turn_green_ns <~ safe_ns :: "bind {1, u}")
+        ],
+    variables: [
+      %Variable{name: :u, colour_set: :unit}
+    ]
+  }
+
+  def to_mermaid do
+    @flow
+    |> ColouredFlow.Definition.Presentation.to_mermaid()
+    |> Kino.Mermaid.new()
   end
 
-  def setup_flow do
-    %Schemas.Flow{}
-    |> Ecto.Changeset.cast(
-      %{
-        name: "TrafficLight",
-        definition: flow()
-      },
-      [:name, :definition]
-    )
-    |> TrafficLight.Repo.insert!()
+  def insert_flow do
+    ColouredFlow.Runner.Storage.InMemory.insert_flow!(@flow)
   end
 
-  def setup_enactment(flow, initial_markings) do
-    %Schemas.Enactment{}
-    |> Ecto.Changeset.cast(%{initial_markings: initial_markings}, [:initial_markings])
-    |> Ecto.Changeset.put_assoc(:flow, flow)
-    |> TrafficLight.Repo.insert!()
-  end
-
-  def start_enactment(flow) do
+  def insert_enactment(flow) when is_record(flow, :flow) do
     import ColouredFlow.MultiSet, only: :sigils
 
-    enactment =
-      TrafficLight.setup_enactment(
-        flow,
-        [
-          %{place: "red_ew", tokens: ~MS[{}]},
-          %{place: "red_ns", tokens: ~MS[{}]},
-          %{place: "safe_ew", tokens: ~MS[{}]}
-        ]
-      )
-
-    {:ok, enactment_pid} = ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment.id)
-
-    {enactment, enactment_pid}
+    ColouredFlow.Runner.Storage.InMemory.insert_enactment!(flow, [
+      %Marking{place: "red_ew", tokens: ~MS[{}]},
+      %Marking{place: "red_ns", tokens: ~MS[{}]},
+      %Marking{place: "safe_ew", tokens: ~MS[{}]}
+    ])
   end
 
   def to_kino do
@@ -238,11 +109,77 @@ defmodule TrafficLight do
   end
 end
 
+TrafficLight.to_mermaid()
+```
+
+## Prepare the storage and supervisor
+
+```elixir
+storage_pid = Kino.start_child!(ColouredFlow.Runner.Storage.InMemory)
+
+Kino.inspect("Storage started: #{inspect(storage_pid)}")
+
+supervisor_pid = Kino.start_child!(ColouredFlow.Runner.Supervisor)
+
+Kino.inspect("Runner supervisor started: #{inspect(supervisor_pid)}")
+
+:ok
+```
+
+## Workitem handler
+
+```elixir
 defmodule TrafficLight.WorkitemPubSub do
   use GenServer
 
-  alias ColouredFlow.Runner.Storage.Schemas
-  alias ColouredFlow.Runner.Worklist.WorkitemStream
+  alias ColouredFlow.Runner.Enactment.Workitem
+
+  def handle_event(
+        [:coloured_flow, :runner, :enactment, _transition],
+        _measurements,
+        %{enactment_id: enactment_id} = metadata,
+        %{enactment_id: enactment_id} = options
+      ) do
+    publish_tick(metadata.enactment_state, options.lights)
+  end
+
+  def handle_event(
+        [:coloured_flow, :runner, :enactment, _operation, :stop],
+        measurements,
+        %{enactment_id: enactment_id} = metadata,
+        %{enactment_id: enactment_id} = options
+      ) do
+    Enum.each(metadata.workitems, fn workitem ->
+      light = get_light(workitem, options.lights)
+      time = measurements |> Map.fetch!(:system_time) |> DateTime.from_unix!(:native)
+
+      Process.send(light, {:workitem, workitem, time}, [])
+    end)
+
+    publish_tick(metadata.enactment_state, options.lights)
+  end
+
+  def handle_event(
+        [:coloured_flow, :runner, :enactment, _operation, _event],
+        _measurements,
+        %{enactment_id: enactment_id} = metadata,
+        %{enactment_id: enactment_id} = options
+      ) do
+    publish_tick(metadata.enactment_state, options.lights)
+  end
+
+  def handle_event(_event_name, _measurements, _metadata, _options) do
+    # ignore events from other enactments
+    :ok
+  end
+
+  defp publish_tick(enactment_state, lights) do
+    lights
+    |> Map.values()
+    |> Enum.each(fn light ->
+      Process.send(light, {:tick, enactment_state}, [])
+    end)
+  end
 
   def start_link(init_arg) do
     GenServer.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -251,60 +188,19 @@ defmodule TrafficLight.WorkitemPubSub do
   @impl GenServer
   def init(init_arg) do
     enactment_id = Keyword.fetch!(init_arg, :enactment_id)
+    ew_pid = Keyword.fetch!(init_arg, :ew_pid)
+    ns_pid = Keyword.fetch!(init_arg, :ns_pid)
 
-    {:ok, %{enactment_id: enactment_id}, {:continue, :subscribe}}
+    lights = %{"ew" => ew_pid, "ns" => ns_pid}
+    state = %{enactment_id: enactment_id, lights: lights}
+
+    ColouredFlow.Runner.Telemetry.detach(__MODULE__)
+    :ok = ColouredFlow.Runner.Telemetry.attach(__MODULE__, &__MODULE__.handle_event/4, state)
+
+    {:ok, state}
   end
 
-  @impl GenServer
-  def handle_continue(:subscribe, state) do
-    stream_task = start_stream(enactment_id: state.enactment_id)
-
-    {:noreply, Map.put(state, :stream_task, stream_task)}
-  end
-
-  @impl GenServer
-  def terminate(_reason, state) do
-    Task.shutdown(state.stream_task)
-  end
-
-  @delay 1000
-  defp start_stream(options) when is_list(options) do
-    import Ecto.Query
-
-    delay = Keyword.get(options, :delay, @delay)
-    enactment_id = Keyword.fetch!(options, :enactment_id)
-
-    Task.async(fn ->
-      stream =
-        Stream.resource(
-          fn -> nil end,
-          fn cursor ->
-            [after_cursor: cursor]
-            |> WorkitemStream.live_query()
-            |> where(enactment_id: ^enactment_id)
-            |> WorkitemStream.list_live()
-            |> case do
-              :end_of_stream ->
-                Process.sleep(delay)
-
-                {[], cursor}
-
-              {workitems, cursor} ->
-                {workitems, cursor}
-            end
-          end,
-          fn _cursor -> :ok end
-        )
-
-      stream
-      |> Stream.each(fn %Schemas.Workitem{} = workitem ->
-        send(get_light(workitem), {:workitem, workitem})
-      end)
-      |> Stream.run()
-    end)
-  end
-
-  defp get_light(%Schemas.Workitem{} = workitem) do
+  defp get_light(%Workitem{} = workitem, lights) do
     dir =
       case workitem.binding_element.transition do
         "turn_red_" <> dir -> dir
@@ -312,19 +208,17 @@ defmodule TrafficLight.WorkitemPubSub do
         "turn_green_" <> dir -> dir
       end
 
-    case dir do
-      "ew" -> TrafficLight.EWLight
-      "ns" -> TrafficLight.NSLight
-    end
+    Map.fetch!(lights, dir)
   end
 end
+```
 
+```elixir
 defmodule TrafficLight.DirectionalLight do
   use GenServer
 
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
   alias ColouredFlow.Runner.Enactment.Workitem
-  alias ColouredFlow.Runner.Storage.Schemas
 
   def start_link(init_arg) when is_list(init_arg) do
     {name, init_arg} = Keyword.pop!(init_arg, :name)
@@ -335,7 +229,6 @@ defmodule TrafficLight.DirectionalLight do
   @impl GenServer
   def init(init_arg) do
     enactment_id = Keyword.fetch!(init_arg, :enactment_id)
-    enactment_pid = Keyword.fetch!(init_arg, :enactment_pid)
     direction = Keyword.fetch!(init_arg, :direction)
     lights = Keyword.fetch!(init_arg, :lights)
 
@@ -343,40 +236,43 @@ defmodule TrafficLight.DirectionalLight do
       :ok,
       %{
         enactment_id: enactment_id,
-        enactment_pid: enactment_pid,
         direction: direction,
         lights: lights
-      },
-      {:continue, :tick}
+      }
     }
   end
 
   @impl GenServer
-  def handle_info({:workitem, %Schemas.Workitem{state: :enabled} = workitem}, state) do
+  def handle_info({:workitem, %Workitem{state: :enabled} = workitem, inserted_at}, state) do
     started_workitem = start_workitem(state.enactment_id, workitem.id)
 
-    schedule_turn(started_workitem, workitem.inserted_at)
+    schedule_turn(started_workitem, inserted_at)
 
-    {:noreply, state, {:continue, :tick}}
+    {:noreply, state}
   end
 
-  def handle_info({:workitem, %Schemas.Workitem{state: workitem_state}}, state)
-      when workitem_state in unquote(Workitem.__in_progress_states__()) do
-    # ignore in progress workitems
+  def handle_info({:workitem, %Workitem{}, _time}, state) do
+    # ignore other workitems
 
-    {:noreply, state, {:continue, :tick}}
+    {:noreply, state}
   end
 
-  def handle_info({:turn, _color, %Workitem{} = workitem}, state) do
+  def handle_info({:turn, %Workitem{} = workitem}, state) do
     {:ok, _completed_workitem} =
       WorkitemTransition.complete_workitem(state.enactment_id, {workitem.id, []})
 
-    {:noreply, state, {:continue, :tick}}
+    {:noreply, state}
   end
 
-  @impl GenServer
-  def handle_continue(:tick, state) do
-    marking_places = get_marking_places(state.enactment_pid, state.direction)
+  def handle_info({:tick, enactment_state}, state) do
+    direction = Atom.to_string(state.direction)
+
+    marking_places =
+      enactment_state
+      |> Map.get(:markings)
+      |> Map.keys()
+      |> Enum.filter(&String.ends_with?(&1, direction))
+
     control(marking_places, state.lights)
 
     {:noreply, state}
@@ -405,7 +301,7 @@ defmodule TrafficLight.DirectionalLight do
       |> then(&Kernel.-(delay, &1))
       |> Kernel.max(0)
 
-    Process.send_after(self(), {:turn, color, workitem}, deplay)
+    Process.send_after(self(), {:turn, workitem}, deplay)
   end
 
   defp get_color(%Workitem{} = workitem) do
@@ -414,16 +310,6 @@ defmodule TrafficLight.DirectionalLight do
       "turn_yellow" <> _dir -> :yellow
       "turn_green" <> _dir -> :green
     end
-  end
-
-  defp get_marking_places(enactment_pid, direction) do
-    direction = Atom.to_string(direction)
-
-    enactment_pid
-    |> :sys.get_state()
-    |> Map.get(:markings)
-    |> Map.keys()
-    |> Enum.filter(&String.ends_with?(&1, direction))
   end
 
   defp control(marking_places, lights) do
@@ -451,64 +337,66 @@ defmodule TrafficLight.DirectionalLight do
     Kino.Text.new("⚫️", terminal: true)
   end
 end
-
-defmodule TrafficLight.Supervisor do
-  use Supervisor
-
-  alias TrafficLight.DirectionalLight
-  alias TrafficLight.WorkitemPubSub
-
-  @spec start_link(Keyword.t()) :: Supervisor.on_start()
-  def start_link(init_arg \\ []) when is_list(init_arg) do
-    Process.whereis(__MODULE__) && Supervisor.stop(__MODULE__)
-    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
-  end
-
-  @impl Supervisor
-  def init(init_arg) do
-    enactment_id = Keyword.fetch!(init_arg, :enactment_id)
-    enactment_pid = Keyword.fetch!(init_arg, :enactment_pid)
-    lights = Keyword.fetch!(init_arg, :lights)
-
-    ew_lights = Enum.filter(lights, fn {name, _frame} -> String.ends_with?(name, "ew") end)
-    ns_lights = Enum.filter(lights, fn {name, _frame} -> String.ends_with?(name, "ns") end)
-
-    light_options = [enactment_id: enactment_id, enactment_pid: enactment_pid]
-
-    children = [
-      {WorkitemPubSub, [enactment_id: enactment_id]},
-      Supervisor.child_spec(
-        {DirectionalLight,
-         [name: TrafficLight.EWLight, direction: :ew, lights: ew_lights] ++ light_options},
-        id: TrafficLight.EWLight
-      ),
-      Supervisor.child_spec(
-        {DirectionalLight,
-         [name: TrafficLight.NSLight, direction: :ns, lights: ns_lights] ++ light_options},
-        id: TrafficLight.NSLight
-      )
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
-  end
-end
 ```
 
 ## Run
 
 ```elixir
-Logger.configure(level: :info)
-flow = TrafficLight.setup_flow()
-{enactment, enactment_pid} = TrafficLight.start_enactment(flow)
+import ColouredFlow.Runner.Storage.InMemory, only: :macros
+
+flow = TrafficLight.insert_flow()
+enactment = TrafficLight.insert_enactment(flow)
 
 {grid, lights} = TrafficLight.to_kino()
 
-{:ok, pid} =
-  TrafficLight.Supervisor.start_link(
-    enactment_id: enactment.id,
-    enactment_pid: enactment_pid,
-    lights: lights
-  )
+enactment_id = enactment(enactment, :id)
+
+groups =
+  Enum.group_by(lights, fn {name, _frame} ->
+    cond do
+      String.ends_with?(name, "ew") -> :ew
+      String.ends_with?(name, "ns") -> :ns
+      true -> raise "Unknown light #{inspect(name)}"
+    end
+  end)
+
+light_options = [enactment_id: enactment_id]
+
+ew_pid =
+  Kino.start_child!({
+    TrafficLight.DirectionalLight,
+    [
+      name: TrafficLight.EWLight,
+      enactment_id: enactment_id,
+      direction: :ew,
+      lights: groups.ew
+    ]
+  })
+
+ns_pid =
+  Kino.start_child!({
+    TrafficLight.DirectionalLight,
+    [
+      name: TrafficLight.NSLight,
+      enactment_id: enactment_id,
+      direction: :ns,
+      lights: groups.ns
+    ]
+  })
+
+Kino.start_child!({
+  TrafficLight.WorkitemPubSub,
+  [
+    enactment_id: enactment_id,
+    ew_pid: ew_pid,
+    ns_pid: ns_pid
+  ]
+})
+
+{:ok, enactment_pid} =
+  ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment_id)
+
+Kino.inspect("Enactment is running: #{inspect(enactment_pid)}")
 
 grid
 ```
