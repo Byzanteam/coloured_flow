@@ -1,16 +1,20 @@
 # ColouredFlow
 
+ColouredFlow is a workflow engine based on [Coloured Petri Nets (CPN)](https://github.com/lmkr/cpnbook).
+It provides a flexible and powerful way to model business processes and archive automation.
+
+## Key Features
+
+- **💻 100% Elixir-based Implementation**: Includes [CPN ML Language](https://github.com/lmkr/cpnbook)
+- **🕸️ Distributed by Design**: Enactments (Workflow instances) are isolated, supporting true concurrency and fault tolerance
+- **🔧 Complete Workflow Control**: Full implementation of 40+ [workflow control patterns](http://www.workflowpatterns.com/patterns/control/)
+- **📊 Event-sourced Enactments**: Enactments(Workflow instances) and Occurrences for detailed analysis and statistics
+- **💾 Abstracted Storage**: In-memory storage for testing; Postgres for production
+- **📝 DSL**: A simple DSL for defining workflows effectively
+- **📡 Built-in Telemetry**: Comprehensive observability and debugging
+
 > [!WARNING]  
 > The document is WIP. Check examples at [examples folder](./examples).
-
-ColouredFlow is a workflow engine based on Coloured Petri Nets (CPN). It provides a flexible and powerful way to model and execute workflows with complex logic and concurrency. ColouredFlow allows you to define places, transitions, arcs, and tokens with different data types (colours) and expressions.
-
-## Features
-
-- Define workflows using Coloured Petri Nets
-- Support for various data types (colours) and expressions
-- Execute workflows with concurrency and complex logic
-- Integration with Ecto for persistence
 
 ## Installation
 
