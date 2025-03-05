@@ -40,6 +40,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
+  alias ColouredFlow.Runner.Enactment.Lifespan
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -70,24 +71,32 @@ defmodule ColouredFlow.Runner.Enactment do
 
     field :markings, markings(), default: %{}, doc: "The current markings of the enactment."
     field :workitems, workitems(), default: %{}, doc: "The live workitems of the enactment."
+
+    field :timeout, timeout(),
+      enforce: false,
+      doc: "The enactment timeout; see `ColouredFlow.Runner.Enactment.Lifespan` for details."
   end
 
-  @typep init_arg() :: [enactment_id: enactment_id()]
+  @type option() ::
+          {:enactment_id, enactment_id()}
+          | {:timeout, timeout()}
 
-  @spec start_link(init_arg()) :: GenServer.on_start()
-  def start_link(init_arg) do
-    enactment_id = Keyword.fetch!(init_arg, :enactment_id)
+  @type options() :: [option()]
 
-    GenServer.start_link(__MODULE__, init_arg,
+  @spec start_link(options()) :: GenServer.on_start()
+  def start_link(options) do
+    enactment_id = Keyword.fetch!(options, :enactment_id)
+
+    GenServer.start_link(
+      __MODULE__,
+      options,
       name: Registry.via_name({:enactment, enactment_id})
     )
   end
 
   @impl GenServer
-  def init(init_arg) do
-    state = %__MODULE__{
-      enactment_id: Keyword.fetch!(init_arg, :enactment_id)
-    }
+  def init(options) do
+    state = struct(__MODULE__, options)
 
     {:ok, state, {:continue, :populate_state}}
   end
@@ -134,8 +143,8 @@ defmodule ColouredFlow.Runner.Enactment do
 
     # try to terminate at the start
     case check_termination(state, cpnet) do
-      :stop -> {:stop, :normal, state}
-      :cont -> {:noreply, state}
+      {:stop, reason} -> {:stop, {:shutdown, reason}, state}
+      :cont -> {:noreply, state, Lifespan.timeout(state)}
     end
   end
 
@@ -151,11 +160,11 @@ defmodule ColouredFlow.Runner.Enactment do
       cpnet = Storage.get_flow_by_enactment(state.enactment_id)
       # try to terminate when the transition is `:complete` or `:complete_e`
       case check_termination(state, cpnet) do
-        :stop -> {:stop, :normal, state}
-        :cont -> {:noreply, state}
+        {:stop, reason} -> {:stop, {:shutdown, reason}, state}
+        :cont -> {:noreply, state, Lifespan.timeout(state)}
       end
     else
-      {:noreply, state}
+      {:noreply, state, Lifespan.timeout(state)}
     end
   end
 
@@ -210,7 +219,7 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   # `:explicit` takes priority over `:implicit`
-  @spec check_termination(state(), ColouredPetriNet.t()) :: :stop | :cont
+  @spec check_termination(state(), ColouredPetriNet.t()) :: {:stop, reason :: binary()} | :cont
   defp check_termination(%__MODULE__{} = state, cpnet) do
     import EnactmentTermination
 
@@ -227,7 +236,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
         emit_event(:terminate, state, %{termination_type: type})
 
-        :stop
+        {:stop, "Terminated as #{type} criteria were met."}
 
       {:error, exception} ->
         :ok =
@@ -242,7 +251,7 @@ defmodule ColouredFlow.Runner.Enactment do
           exception: exception
         })
 
-        :stop
+        {:stop, "Terminated due to an exception in evaluating termination criteria."}
     end
   end
 
@@ -259,7 +268,7 @@ defmodule ColouredFlow.Runner.Enactment do
     message = Keyword.get(options, :message)
     emit_event(:terminate, state, %{termination_type: :force, termination_message: message})
 
-    {:stop, :normal, :ok, state}
+    {:stop, {:shutdown, "Terminated manually"}, :ok, state}
   end
 
   def handle_call({:start_workitems, workitem_ids}, _from, %__MODULE__{} = state)
@@ -282,7 +291,7 @@ defmodule ColouredFlow.Runner.Enactment do
         }
 
       {:error, exception} ->
-        {:reply, {:error, exception}, state}
+        {:reply, {:error, exception}, state, Lifespan.timeout(state)}
     end
   end
 
@@ -331,7 +340,7 @@ defmodule ColouredFlow.Runner.Enactment do
         {:reply, {:ok, completed_workitems}, new_state, continue}
 
       {:error, exception} ->
-        {:reply, {:error, exception}, state}
+        {:reply, {:error, exception}, state, Lifespan.timeout(state)}
     end
   end
 
@@ -342,7 +351,7 @@ defmodule ColouredFlow.Runner.Enactment do
       markings: to_list(state.markings)
     })
 
-    {:noreply, state}
+    {:noreply, state, Lifespan.timeout(state)}
   end
 
   # we peek at the first workitem to pre-check the state
@@ -498,8 +507,17 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   @impl GenServer
+  def handle_info(:timeout, state) do
+    {:stop, {:shutdown, "Terminated due to inactivity"}, state}
+  end
+
+  @impl GenServer
+  def terminate({:shutdown, reason}, state) do
+    emit_event(:stop, state, %{reason: reason})
+  end
+
   def terminate(_reason, state) do
-    emit_event(:stop, state)
+    emit_event(:stop, state, %{reason: "unknown"})
   end
 
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()

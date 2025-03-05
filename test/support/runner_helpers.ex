@@ -136,10 +136,14 @@ defmodule ColouredFlow.RunnerHelpers do
       @tag initial_markings: []
       test "message", %{enactment_server: enactment_server}
   """
-  @spec start_enactment(%{enactment: Schemas.Enactment.t()}) ::
+  @spec start_enactment(%{enactment: Schemas.Enactment.t()}, Enactment.options()) ::
           [enactment_server: GenServer.server()]
-  def start_enactment(%{enactment: enactment}) do
-    pid = start_link_supervised!({Enactment, enactment_id: enactment.id}, id: enactment.id)
+  def start_enactment(%{enactment: enactment}, options \\ []) do
+    pid =
+      start_supervised!(
+        {Enactment, [enactment_id: enactment.id] ++ options},
+        id: enactment.id
+      )
 
     [enactment_server: pid]
   end
@@ -193,12 +197,12 @@ defmodule ColouredFlow.RunnerHelpers do
   end
 
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec wait_enactment_to_stop!(GenServer.server(), term()) :: :ok
-  def wait_enactment_to_stop!(enactment_server, reason \\ :normal) do
+  @spec wait_enactment_to_stop!(GenServer.server()) :: :ok
+  def wait_enactment_to_stop!(enactment_server) do
     ref = Process.monitor(enactment_server)
 
     receive do
-      {:DOWN, ^ref, :process, ^enactment_server, ^reason} -> :ok
+      {:DOWN, ^ref, :process, ^enactment_server, {:shutdown, _reason}} -> :ok
       # when the enactment server was stopped early
       {:DOWN, ^ref, :process, ^enactment_server, :noproc} -> :ok
     after

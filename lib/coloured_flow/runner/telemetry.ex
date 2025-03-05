@@ -16,7 +16,7 @@ defmodule ColouredFlow.Runner.Telemetry do
   | event        | measurements                      | metadata                                                                        |
   | ------------ | --------------------------------- | ------------------------------------------------------------------------------- |
   | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
-  | `:stop`      | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
+  | `:stop`      | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:reason`                                  |
   | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
   | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception`          |
 
