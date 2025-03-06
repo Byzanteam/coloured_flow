@@ -2,6 +2,10 @@ import Config
 
 if config_env() == :test do
   config :coloured_flow,
+         ColouredFlow.Runner.Enactment,
+         timeout: 60 * 1000
+
+  config :coloured_flow,
          ColouredFlow.Runner.Storage,
          repo: ColouredFlow.TestRepo,
          storage: ColouredFlow.Runner.Storage.Default

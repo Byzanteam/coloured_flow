@@ -24,7 +24,8 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
           :stop ->
             %{
               event: "enactment:stop",
-              system_time: convert_system_time(measurements.system_time)
+              system_time: convert_system_time(measurements.system_time),
+              reason: metadata.reason
             }
 
           :terminate ->
@@ -175,6 +176,7 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
         system_time: system_time_spec(),
         termination_type: :atom,
         termination_message: :string,
+        reason: :string,
         exception_reason: :atom,
         error: :string
       ]

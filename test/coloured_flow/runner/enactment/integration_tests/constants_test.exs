@@ -106,7 +106,7 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.ConstantsTest do
       )
 
     ref = Process.monitor(enactment_server)
-    assert_receive {:DOWN, ^ref, :process, ^enactment_server, :normal}
+    assert_receive {:DOWN, ^ref, :process, ^enactment_server, {:shutdown, _reason}}
 
     assert %Schemas.EnactmentLog{
              state: :terminated,
@@ -149,7 +149,7 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.ConstantsTest do
       )
 
     ref = Process.monitor(enactment_server)
-    assert_receive {:DOWN, ^ref, :process, ^enactment_server, :normal}
+    assert_receive {:DOWN, ^ref, :process, ^enactment_server, {:shutdown, _reason}}
 
     assert %Schemas.Enactment{
              state: :terminated,
