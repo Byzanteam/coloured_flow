@@ -13,6 +13,8 @@ defmodule ColouredFlow.Builder.SetActionOutputs do
 
   @spec run(ColouredPetriNet.t()) :: ColouredPetriNet.t()
   def run(%ColouredPetriNet{} = cpnet) do
+    constants = MapSet.new(cpnet.constants, & &1.name)
+
     transitions =
       Enum.map(cpnet.transitions, fn %Transition{} = transition ->
         vars = vars(cpnet)
@@ -28,7 +30,11 @@ defmodule ColouredFlow.Builder.SetActionOutputs do
           )
 
         # We need to sort the outputs to make the list deterministic
-        outputs = outputs_ms |> MapSet.difference(inputs_ms) |> Enum.sort()
+        outputs =
+          outputs_ms
+          |> MapSet.difference(inputs_ms)
+          |> MapSet.difference(constants)
+          |> Enum.sort()
 
         Map.update!(transition, :action, fn
           %Action{} = action -> %Action{action | outputs: outputs}
