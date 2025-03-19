@@ -18,6 +18,9 @@ defmodule ColouredFlow.Builder.SetActionOutputsTest do
       variables: [
         var(x :: int())
       ],
+      constants: [
+        val(zero :: int() = 0)
+      ],
       places: [
         %Place{name: "input", colour_set: :int},
         %Place{name: "output", colour_set: :int}
@@ -69,6 +72,31 @@ defmodule ColouredFlow.Builder.SetActionOutputsTest do
           transition: "pass_through",
           orientation: :t_to_p,
           expression: "{x, y}"
+        )
+      ])
+
+    assert %{transitions: [transition]} = SetActionOutputs.run(cpnet)
+
+    assert [:y] === get_in(transition, [Access.key(:action), Access.key(:outputs)])
+  end
+
+  test "does not add constants into outputs", %{cpnet: cpnet} do
+    %ColouredPetriNet{
+      arcs: [
+        %Arc{orientation: :p_to_t} = input_arc,
+        %Arc{orientation: :t_to_p}
+      ]
+    } = cpnet
+
+    cpnet =
+      Map.put(cpnet, :arcs, [
+        input_arc,
+        build_arc!(
+          label: "out",
+          place: "output",
+          transition: "pass_through",
+          orientation: :t_to_p,
+          expression: "{zero, y}"
         )
       ])
 
