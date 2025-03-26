@@ -17,7 +17,7 @@ defmodule ColouredFlow.Builder.SetActionOutputs do
 
     transitions =
       Enum.map(cpnet.transitions, fn %Transition{} = transition ->
-        vars = vars(cpnet)
+        vars = vars(transition, cpnet)
 
         {inputs_ms, outputs_ms} =
           Enum.reduce(
@@ -45,10 +45,16 @@ defmodule ColouredFlow.Builder.SetActionOutputs do
     %ColouredPetriNet{cpnet | transitions: transitions}
   end
 
-  defp vars(%ColouredPetriNet{} = cpnet) do
+  defp vars(%Transition{name: transition_name}, %ColouredPetriNet{} = cpnet) do
     Stream.flat_map(cpnet.arcs, fn
-      %Arc{orientation: :p_to_t} = arc -> get_vars(:input_arc, arc.expression)
-      %Arc{orientation: :t_to_p} = arc -> get_vars(:output_arc, arc.expression)
+      %Arc{orientation: :p_to_t, transition: ^transition_name} = arc ->
+        get_vars(:input_arc, arc.expression)
+
+      %Arc{orientation: :t_to_p, transition: ^transition_name} = arc ->
+        get_vars(:output_arc, arc.expression)
+
+      _other ->
+        []
     end)
   end
 
