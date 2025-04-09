@@ -7,7 +7,10 @@ defmodule ColouredFlow.TestRepo do
   def migrate do
     Ecto.Migrator.run(
       __MODULE__,
-      [{0, ColouredFlow.Runner.Migrations.V0}],
+      [
+        {0, ColouredFlow.Runner.Migrations.V0},
+        {1, ColouredFlow.Runner.Migrations.V1}
+      ],
       :up,
       all: true
     )
