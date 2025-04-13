@@ -157,6 +157,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
       end)
 
     Schemas.Workitem
+    # TODO: insert workitem logs
     |> Repo.insert_all(workitems,
       returning: true,
       placeholders: %{now: DateTime.utc_now()}
@@ -220,21 +221,42 @@ defmodule ColouredFlow.Runner.Storage.Default do
         fn workitem, acc -> {workitem.id, acc + 1} end
       )
 
+    now = DateTime.utc_now()
+
     Ecto.Multi.new()
     |> Ecto.Multi.update_all(
       :update,
-      where(Schemas.Workitem, [wi], wi.id in ^ids and wi.state == ^from_state),
-      set: [state: state, updated_at: DateTime.utc_now()]
+      Schemas.Workitem
+      |> where([wi], wi.id in ^ids and wi.state == ^from_state)
+      |> select([wi], wi),
+      set: [state: state, updated_at: now]
     )
     |> Ecto.Multi.run(:result, fn _repo, %{update: update} ->
       case update do
-        {^expected_length, nil} ->
+        {^expected_length, _workitems} ->
           {:ok, :ok}
 
-        {actual, nil} ->
+        {actual, _workitems} ->
           {:error, {:unexpected_updated_rows, expected: expected_length, actual: actual}}
       end
     end)
+    |> Ecto.Multi.insert_all(
+      :workitem_logs,
+      Schemas.WorkitemLog,
+      fn %{update: {_length, workitems}} ->
+        Enum.map(workitems, fn %Schemas.Workitem{} = workitem ->
+          %{
+            workitem_id: workitem.id,
+            enactment_id: workitem.enactment_id,
+            from_state: {:placeholder, :from_state},
+            to_state: {:placeholder, :to_state},
+            action: action,
+            inserted_at: {:placeholder, :now}
+          }
+        end)
+      end,
+      placeholders: %{now: now, from_state: from_state, to_state: state}
+    )
   end
 
   defp get_from_state(to_state, action)
