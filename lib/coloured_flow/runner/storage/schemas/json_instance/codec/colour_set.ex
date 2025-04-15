@@ -266,6 +266,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
   # compound types
   defp do_decode_descr(%{"type" => type, "args" => []})
        when type not in unquote(built_in_types) do
-    {String.to_existing_atom(type), []}
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
+    {String.to_atom(type), []}
   end
 end
