@@ -3,10 +3,32 @@ defmodule ColouredFlow.Runner.Storage.Schemas.WorkitemLogTest do
 
   import Ecto.Query
 
+  alias ColouredFlow.Enactment.BindingElement
+
   alias ColouredFlow.Runner.Enactment.Workitem, as: ColouredWorkitem
   alias ColouredFlow.Runner.Storage.Default
   alias ColouredFlow.Runner.Storage.Repo
   alias ColouredFlow.Runner.Storage.Schemas.Workitem
+
+  test "workitem production creates log entry" do
+    enactment = insert(:enactment)
+
+    binding_elements =
+      ColouredFlow.MultiSet.new([
+        %BindingElement{transition: "action", binding: [], to_consume: []}
+      ])
+
+    assert [coloured_workitem] = Default.produce_workitems(enactment.id, binding_elements)
+
+    log =
+      Schemas.WorkitemLog
+      |> where([l], l.workitem_id == ^coloured_workitem.id)
+      |> Repo.one!()
+
+    assert log.from_state == :initial
+    assert log.to_state == :enabled
+    assert log.action == :produce
+  end
 
   test "workitem transition creates log entry" do
     {[workitem], [coloured_workitem]} = insert_workitems({:enabled, :started}, 1)

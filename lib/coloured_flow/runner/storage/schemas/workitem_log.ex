@@ -15,9 +15,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.WorkitemLog do
     field :workitem, Types.association(Workitem.t())
     field :enactment_id, Types.id()
     field :enactment, Types.association(Enactment.t())
-    field :from_state, ColouredWorkitem.state()
+    field :from_state, :initial | ColouredWorkitem.state()
     field :to_state, ColouredWorkitem.state()
-    field :action, ColouredWorkitem.transition_action()
+    field :action, :produce | ColouredWorkitem.transition_action()
 
     field :inserted_at, DateTime.t()
   end
@@ -26,11 +26,13 @@ defmodule ColouredFlow.Runner.Storage.Schemas.WorkitemLog do
     belongs_to :workitem, Workitem
     belongs_to :enactment, Enactment
 
-    field :from_state, Ecto.Enum, values: ColouredWorkitem.__states__()
+    field :from_state, Ecto.Enum, values: [:initial | ColouredWorkitem.__states__()]
     field :to_state, Ecto.Enum, values: ColouredWorkitem.__states__()
 
     field :action, Ecto.Enum,
-      values: ColouredWorkitem.__transitions__() |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
+      values: [
+        :produce | ColouredWorkitem.__transitions__() |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
+      ]
 
     timestamps(updated_at: false)
   end
