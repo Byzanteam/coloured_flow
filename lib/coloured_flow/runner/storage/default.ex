@@ -145,24 +145,58 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
   @impl ColouredFlow.Runner.Storage
   def produce_workitems(enactment_id, binding_elements) do
-    workitems =
-      Enum.map(binding_elements, fn binding_element ->
-        %{
-          enactment_id: enactment_id,
-          state: :enabled,
-          binding_element: binding_element,
-          inserted_at: {:placeholder, :now},
-          updated_at: {:placeholder, :now}
-        }
-      end)
+    now = DateTime.utc_now()
+    count = ColouredFlow.MultiSet.size(binding_elements)
 
-    Schemas.Workitem
-    |> Repo.insert_all(workitems,
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert_all(
+      :workitems,
+      Schemas.Workitem,
+      fn _changes ->
+        Enum.map(binding_elements, fn binding_element ->
+          %{
+            enactment_id: enactment_id,
+            state: :enabled,
+            binding_element: binding_element,
+            inserted_at: {:placeholder, :now},
+            updated_at: {:placeholder, :now}
+          }
+        end)
+      end,
       returning: true,
-      placeholders: %{now: DateTime.utc_now()}
+      placeholders: %{now: now}
     )
-    |> elem(1)
-    |> Enum.map(&Schemas.Workitem.to_workitem/1)
+    |> Ecto.Multi.insert_all(
+      :workitem_logs,
+      Schemas.WorkitemLog,
+      fn %{workitems: {^count, workitems}} ->
+        Enum.map(workitems, fn %Schemas.Workitem{} = workitem ->
+          %{
+            workitem_id: workitem.id,
+            enactment_id: workitem.enactment_id,
+            from_state: :initial,
+            to_state: :enabled,
+            action: :produce,
+            inserted_at: {:placeholder, :now}
+          }
+        end)
+      end,
+      placeholders: %{now: now}
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{workitems: {^count, workitems}}} ->
+        Enum.map(workitems, &Schemas.Workitem.to_workitem/1)
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to produce workitems.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
   end
 
   @typep transition_option() :: ColouredFlow.Runner.Storage.transition_option()
@@ -205,7 +239,8 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   # Operations
-  # `:update` returns {updated_rows, nil}
+  # `:workitems` returns {updated_rows, workitems}
+  # `:workitem_logs` returns {inserted_rows, nil}
   # `:result` returns:
   #     - `:ok`
   #     - `{:error, {:unexpected_updated_rows, [expected: pos_integer(), actual: pos_integer()]}}`
@@ -220,18 +255,39 @@ defmodule ColouredFlow.Runner.Storage.Default do
         fn workitem, acc -> {workitem.id, acc + 1} end
       )
 
+    now = DateTime.utc_now()
+
     Ecto.Multi.new()
     |> Ecto.Multi.update_all(
-      :update,
-      where(Schemas.Workitem, [wi], wi.id in ^ids and wi.state == ^from_state),
-      set: [state: state, updated_at: DateTime.utc_now()]
+      :workitems,
+      Schemas.Workitem
+      |> where([wi], wi.id in ^ids and wi.state == ^from_state)
+      |> select([wi], wi),
+      set: [state: state, updated_at: now]
     )
-    |> Ecto.Multi.run(:result, fn _repo, %{update: update} ->
-      case update do
-        {^expected_length, nil} ->
+    |> Ecto.Multi.insert_all(
+      :workitem_logs,
+      Schemas.WorkitemLog,
+      fn %{workitems: {_length, workitems}} ->
+        Enum.map(workitems, fn %Schemas.Workitem{} = workitem ->
+          %{
+            workitem_id: workitem.id,
+            enactment_id: workitem.enactment_id,
+            from_state: {:placeholder, :from_state},
+            to_state: {:placeholder, :to_state},
+            action: action,
+            inserted_at: {:placeholder, :now}
+          }
+        end)
+      end,
+      placeholders: %{now: now, from_state: from_state, to_state: state}
+    )
+    |> Ecto.Multi.run(:result, fn _repo, %{workitems: workitems} ->
+      case workitems do
+        {^expected_length, _workitems} ->
           {:ok, :ok}
 
-        {actual, nil} ->
+        {actual, _workitems} ->
           {:error, {:unexpected_updated_rows, expected: expected_length, actual: actual}}
       end
     end)
