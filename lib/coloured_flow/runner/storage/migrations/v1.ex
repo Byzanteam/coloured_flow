@@ -33,9 +33,6 @@ defmodule ColouredFlow.Runner.Migrations.V1 do
       timestamps([{:updated_at, false} | @timestamps_opts])
     end
 
-    # Index for querying logs by workitem_id, ordered by insertion time
-    create index("workitem_logs", [:workitem_id, :inserted_at], index_options)
-
     # Index for querying logs by enactment_id, ordered by insertion time
     create index("workitem_logs", [:enactment_id, :inserted_at], index_options)
 
