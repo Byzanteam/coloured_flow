@@ -101,6 +101,32 @@ defmodule ColouredFlow.Runner.Storage.Default do
     end
   end
 
+  @impl ColouredFlow.Runner.Storage
+  def insert_enactment(params) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.put(:params, params)
+    |> Ecto.Multi.insert(:enactment, fn %{params: params} ->
+      Schemas.Enactment.build(params)
+    end)
+    |> Ecto.Multi.insert(:enactment_log, fn %{enactment: enactment} ->
+      Schemas.EnactmentLog.build_running(enactment)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{enactment: enactment}} ->
+        {:ok, enactment}
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to insert the enactment.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
+  end
+
   termination_types = ColouredFlow.Runner.Termination.__types__()
   @impl ColouredFlow.Runner.Storage
   def terminate_enactment(enactment_id, type, final_markings, options)

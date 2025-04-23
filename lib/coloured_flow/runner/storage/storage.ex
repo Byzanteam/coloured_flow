@@ -18,6 +18,7 @@ defmodule ColouredFlow.Runner.Storage do
 
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage.Schemas
 
   @type enactment_id() :: Ecto.UUID.t()
   @type flow_id() :: Ecto.UUID.t()
@@ -50,6 +51,12 @@ defmodule ColouredFlow.Runner.Storage do
               reason :: ColouredFlow.Runner.Exception.reason(),
               exception :: Exception.t()
             ) :: :ok
+
+  @doc """
+  Insert an enactment.
+  """
+  @doc group: :enactment
+  @callback insert_enactment(params :: map()) :: {:ok, Schemas.Enactment.t()}
 
   @doc """
   The enactment is terminated, and the corresponding enactment will be stopped.
@@ -142,6 +149,12 @@ defmodule ColouredFlow.Runner.Storage do
           :ok
   def exception_occurs(enactment_id, reason, exception) do
     __storage__().exception_occurs(enactment_id, reason, exception)
+  end
+
+  @doc false
+  @spec insert_enactment(params :: map()) :: {:ok, Schemas.Enactment.t()}
+  def insert_enactment(params) do
+    __storage__().insert_enactment(params)
   end
 
   @doc false
