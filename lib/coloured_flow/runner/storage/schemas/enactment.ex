@@ -45,6 +45,14 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
   @spec __states__() :: [state()]
   def __states__, do: unquote(states)
 
+  @spec build(schema :: %__MODULE__{}, params :: map()) :: Ecto.Changeset.t(t())
+  def build(schema \\ %__MODULE__{}, params) do
+    schema
+    |> Ecto.Changeset.cast(params, [:flow_id, :label, :initial_markings])
+    |> Ecto.Changeset.assoc_constraint(:flow)
+    |> Ecto.Changeset.validate_required(:initial_markings)
+  end
+
   @spec to_initial_markings(t()) :: [Marking.t()]
   def to_initial_markings(%__MODULE__{} = enactment) do
     enactment.initial_markings

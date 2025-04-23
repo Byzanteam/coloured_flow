@@ -165,6 +165,18 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
   end
 
   @impl Storage
+  def insert_enactment(params) do
+    enactment =
+      enactment(
+        id: Ecto.UUID.generate(),
+        flow_id: params.flow_id,
+        initial_markings: params.initial_markings
+      )
+
+    {:ok, insert_new(:enactment, enactment)}
+  end
+
+  @impl Storage
   def terminate_enactment(enactment_id, type, final_markings, options) do
     Logger.debug("""
     The enactment with the ID #{inspect(enactment_id)} is terminated with the type #{inspect(type)}.

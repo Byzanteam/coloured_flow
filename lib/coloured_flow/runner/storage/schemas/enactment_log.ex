@@ -48,6 +48,11 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
     timestamps(updated_at: false)
   end
 
+  @spec build_running(Enactment.t()) :: Ecto.Changeset.t(t())
+  def build_running(enactment) do
+    Ecto.Changeset.change(%__MODULE__{enactment_id: enactment.id}, state: :running)
+  end
+
   @spec build_termination(
           Enactment.t(),
           ColouredFlow.Runner.Termination.type(),
