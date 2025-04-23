@@ -45,7 +45,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Enactment do
   @spec __states__() :: [state()]
   def __states__, do: unquote(states)
 
-  @spec build(schema :: t(), params :: map()) :: Ecto.Changeset.t(t())
+  @spec build(schema :: %__MODULE__{}, params :: map()) :: Ecto.Changeset.t(t())
   def build(schema \\ %__MODULE__{}, params) do
     schema
     |> Ecto.Changeset.cast(params, [:flow_id, :label, :initial_markings])
