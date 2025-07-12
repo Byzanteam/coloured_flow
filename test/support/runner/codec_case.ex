@@ -10,7 +10,7 @@ defmodule ColouredFlow.Runner.CodecCase do
   This test case can be configured with the following options:
 
   - `codec`: the codec module to test, for example `ColourSet`, `Expression`, etc.
-  This test case will expand its name to full qualified module name.
+    This test case will expand its name to full qualified module name.
   """
 
   use ExUnit.CaseTemplate

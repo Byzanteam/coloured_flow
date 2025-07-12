@@ -3,10 +3,11 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
   This validator is used to validate arcs of the transition.
 
   A valid arc must satisfy the following properties:
+
   1. vars at incoming arcs must be either variables or constants.
-  2. vars at outgoing arcs must be either variables or constants.
-  If they are variables, they must be among those bound at the
-  incoming arcs or be the outputs of the transition action.
+  2. vars at outgoing arcs must be either variables or constants. If they are
+     variables, they must be among those bound at the incoming arcs or be the
+     outputs of the transition action.
   """
 
   alias ColouredFlow.Definition.Arc

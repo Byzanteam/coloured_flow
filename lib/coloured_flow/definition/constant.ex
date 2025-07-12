@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Definition.Constant do
   @moduledoc """
-  A constant is a named value that can never be changed,
-  can be used in expressions.
+  A constant is a named value that can never be changed, can be used in
+  expressions.
 
   ## Examples
 

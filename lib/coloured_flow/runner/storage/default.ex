@@ -1,6 +1,7 @@
 defmodule ColouredFlow.Runner.Storage.Default do
   @moduledoc """
-  The default storage for the coloured_flow runner. It uses Ecto to interact with the database.
+  The default storage for the coloured_flow runner. It uses Ecto to interact with
+  the database.
   """
 
   @behaviour ColouredFlow.Runner.Storage
@@ -228,8 +229,8 @@ defmodule ColouredFlow.Runner.Storage.Default do
   @typep transition_option() :: ColouredFlow.Runner.Storage.transition_option()
 
   @doc """
-  Transition a workitem from one state to another.
-  This is a shortcut for `ColouredFlow.Runner.Default.transition_workitems/2`.
+  Transition a workitem from one state to another. This is a shortcut for
+  `ColouredFlow.Runner.Default.transition_workitems/2`.
   """
   @spec transition_workitem(Workitem.t(), [transition_option()]) :: :ok
   def transition_workitem(workitem, options) do
@@ -239,7 +240,8 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   @doc """
-  Transition the workitems from one state to another in accordance with the state machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
+  Transition the workitems from one state to another in accordance with the state
+  machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
   """
   @spec transition_workitems([Workitem.t()], [transition_option()]) :: :ok
   def transition_workitems([], _options), do: :ok

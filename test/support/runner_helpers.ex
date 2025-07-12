@@ -29,11 +29,11 @@ defmodule ColouredFlow.RunnerHelpers do
 
   ## Parameters
 
-    * `cpnet` - the name of the CPNet or a CPNet struct to setup.
+  - `cpnet` - the name of the CPNet or a CPNet struct to setup.
 
   ## Returns
 
-      * `cpnet` - the CPNet struct.
+  - `cpnet` - the CPNet struct.
 
   ## Examples
 
@@ -58,11 +58,11 @@ defmodule ColouredFlow.RunnerHelpers do
 
   ## Parameters
 
-    * `cpnet` - the name of the CPNet or a CPNet struct to setup.
+  - `cpnet` - the name of the CPNet or a CPNet struct to setup.
 
   ## Returns
 
-      * `flow` - the flow struct.
+  - `flow` - the flow struct.
 
   ## Examples
 
@@ -85,12 +85,12 @@ defmodule ColouredFlow.RunnerHelpers do
 
   ## Parameters
 
-    * `flow` - the flow struct to setup.
-    * `initial_markings` - the initial markings to setup.
+  - `flow` - the flow struct to setup.
+  - `initial_markings` - the initial markings to setup.
 
   ## Returns
 
-      * `enactment` - the enactment struct.
+  - `enactment` - the enactment struct.
 
   ## Examples
 
@@ -120,11 +120,11 @@ defmodule ColouredFlow.RunnerHelpers do
 
   ## Parameters
 
-    * `enactment` - the enactment struct to start.
+  - `enactment` - the enactment struct to start.
 
   ## Returns
 
-      * `enactment_server` - the PID of the enactment server.
+  - `enactment_server` - the PID of the enactment server.
 
   ## Examples
 

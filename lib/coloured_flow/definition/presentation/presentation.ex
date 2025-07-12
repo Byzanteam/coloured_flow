@@ -13,7 +13,8 @@ defmodule ColouredFlow.Definition.Presentation do
   @indent "  "
 
   @doc """
-  Generate a [mermaid](https://mermaid.js.org/) representation of the coloured petri net.
+  Generate a [mermaid](https://mermaid.js.org/) representation of the coloured
+  petri net.
   """
   @spec to_mermaid(ColouredPetriNet.t()) :: String.t()
   def to_mermaid(%ColouredPetriNet{} = cpnet) do

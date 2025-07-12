@@ -8,22 +8,24 @@ defmodule ColouredFlow.Expression do
   alias ColouredFlow.Expression.Scope
 
   @doc """
-  Converts a string to a quoted expression and returns its ast and the unbound variables.
+  Converts a string to a quoted expression and returns its ast and the unbound
+  variables.
 
   ## Examples
 
       iex> {:ok, _quoted, unbound_vars} = compile("a + b")
       iex> %{a: [[line: 1, column: 1]], b: [[line: 1, column: 5]]} = unbound_vars
 
-      iex> {:ok, _quoted, unbound_vars} = compile(\"""
+      iex> {:ok, _quoted, unbound_vars} = compile("""
       ...> fun = fn a -> a + b end
       ...> fun.(a)
-      ...> \""")
+      ...> """)
       iex> %{a: [[line: 2, column: 6]], b: [[line: 1, column: 19]]} =  unbound_vars
   """
 
   @typedoc """
-  The error that is returned when the string can't be converted to a quoted expression.
+  The error that is returned when the string can't be converted to a quoted
+  expression.
 
   ## Examples
 

@@ -1,8 +1,10 @@
 defmodule ColouredFlow.Runner.Storage do
   @moduledoc """
-  The Storage is responsible for storing the data that is being produced by the Runner.
+  The Storage is responsible for storing the data that is being produced by the
+  Runner.
 
-  To use `ColouredFlow.Runner.Storage.Default`, you need to configure the storage module in your config.exs:
+  To use `ColouredFlow.Runner.Storage.Default`, you need to configure the storage
+  module in your config.exs:
 
   ```elixir
   config :coloured_flow, ColouredFlow.Runner.Storage,
@@ -35,15 +37,16 @@ defmodule ColouredFlow.Runner.Storage do
   @callback get_initial_markings(enactment_id()) :: [Marking.t()]
 
   @doc """
-  Returns a stream of occurrences for the given enactment,
-  that occurred after the given `from`(exclusive) position.
+  Returns a stream of occurrences for the given enactment, that occurred after the
+  given `from`(exclusive) position.
   """
   @doc group: :enactment
   @callback occurrences_stream(enactment_id(), from :: non_neg_integer()) ::
               Enumerable.t(Occurrence.t())
 
   @doc """
-  An exception occurred during the enactment, and the corresponding enactment will be stopped.
+  An exception occurred during the enactment, and the corresponding enactment will
+  be stopped.
   """
   @doc group: :enactment
   @callback exception_occurs(
@@ -62,11 +65,11 @@ defmodule ColouredFlow.Runner.Storage do
   The enactment is terminated, and the corresponding enactment will be stopped.
   There are three types of termination:
 
-  | Type | Description |
-  |------|-------------|
+  | Type        | Description                                                        |
+  | ----------- | ------------------------------------------------------------------ |
   | `:implicit` | If there are no more enabled workitems currently or in the future. |
-  | `:explicit` | When the user-defined termination criteria are met. |
-  | `:force` | The enactment is terminated forcibly by the user. |
+  | `:explicit` | When the user-defined termination criteria are met.                |
+  | `:force`    | The enactment is terminated forcibly by the user.                  |
   """
   @doc group: :enactment
   @callback terminate_enactment(

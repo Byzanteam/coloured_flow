@@ -1,6 +1,7 @@
 defmodule ColouredFlow.Validators.Exceptions.InvalidMarkingError do
   @moduledoc """
   This exception is raised when a marking is invalid:
+
   1. The place of a marking is not found in the cpnet.
   2. The tokens of a marking are invalid, e.g., color set mismatch.
   """

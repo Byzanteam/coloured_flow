@@ -1,6 +1,7 @@
 defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
   @moduledoc """
-  Workitem transition functions, which are dispatched to the corresponding enactment gen_server.
+  Workitem transition functions, which are dispatched to the corresponding
+  enactment gen_server.
   """
 
   alias ColouredFlow.Enactment.Occurrence

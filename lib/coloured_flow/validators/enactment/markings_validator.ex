@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Validators.Enactment.MarkingsValidator do
   @moduledoc """
-  The markings validator ensures that the place of markings is valid,
-  and that the tokens for the corresponding place are valid.
+  The markings validator ensures that the place of markings is valid, and that the
+  tokens for the corresponding place are valid.
   """
 
   import ColouredFlow.MultiSet, only: [is_empty: 1]

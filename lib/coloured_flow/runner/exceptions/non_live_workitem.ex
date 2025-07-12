@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Runner.Exceptions.NonLiveWorkitem do
   @moduledoc """
-  The exception raised when the workitem is not live,
-  such as the workitem is completed or withdrawn, or not even enabled at all.
+  The exception raised when the workitem is not live, such as the workitem is
+  completed or withdrawn, or not even enabled at all.
   """
 
   use TypedStructor

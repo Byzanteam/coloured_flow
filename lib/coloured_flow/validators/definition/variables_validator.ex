@@ -1,6 +1,7 @@
 defmodule ColouredFlow.Validators.Definition.VariablesValidator do
   @moduledoc """
-  The variables validator ensures that the variables in a ColouredFlow definition are valid.
+  The variables validator ensures that the variables in a ColouredFlow definition
+  are valid.
 
   A variable is valid if its colour_set is valid.
   """

@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Validators.Exceptions.InvalidActionError do
   @moduledoc """
-  This exception is raised when an action is invalid.
-  See the definition of a valid arc in `ColouredFlow.Validators.Definition.ActionValidator`.
+  This exception is raised when an action is invalid. See the definition of a
+  valid arc in `ColouredFlow.Validators.Definition.ActionValidator`.
   """
 
   use TypedStructor

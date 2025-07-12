@@ -17,7 +17,8 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   import ColouredFlow.EnabledBindingElements.Utils
 
   @doc """
-  Compute the list of enabled binding elements for a given transition and CPNet markings.
+  Compute the list of enabled binding elements for a given transition and CPNet
+  markings.
   """
   @spec list(
           transition :: Transition.t(),

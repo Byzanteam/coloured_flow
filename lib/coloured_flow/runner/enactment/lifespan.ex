@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Runner.Enactment.Lifespan do
   @moduledoc """
-  The lifespan of a `ColouredFlow.Runner.Enactment` GenServer can be configured through the config.
-  The default timeout is `:infinity`.
+  The lifespan of a `ColouredFlow.Runner.Enactment` GenServer can be configured
+  through the config. The default timeout is `:infinity`.
 
   Example:
 

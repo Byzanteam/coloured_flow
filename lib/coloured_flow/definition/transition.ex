@@ -1,8 +1,7 @@
 defmodule ColouredFlow.Definition.Transition do
   @moduledoc """
-  Transition t is enabled at a binding if there are tokens
-  matching the values of the in-coming arc inscriptions and
-  the guard of t evaluates to true.
+  Transition t is enabled at a binding if there are tokens matching the values of
+  the in-coming arc inscriptions and the guard of t evaluates to true.
   """
 
   use TypedStructor

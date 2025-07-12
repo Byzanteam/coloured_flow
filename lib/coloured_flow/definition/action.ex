@@ -1,8 +1,8 @@
 defmodule ColouredFlow.Definition.Action do
   @moduledoc """
   An action is an executable program that is executed when a transition is fired.
-  It's the workitem handler's responsibility to interpret the payload
-  and update the variables in the outputs.
+  It's the workitem handler's responsibility to interpret the payload and update
+  the variables in the outputs.
 
   ref: <https://cpntools.org/2018/01/09/code-segments/>
   """

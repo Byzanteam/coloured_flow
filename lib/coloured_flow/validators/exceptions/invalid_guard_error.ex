@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Validators.Exceptions.InvalidGuardError do
   @moduledoc """
-  This exception is raised when a guard is invalid.
-  See the definition of a guard in `ColouredFlow.Validators.Definition.GuardValidator`.
+  This exception is raised when a guard is invalid. See the definition of a guard
+  in `ColouredFlow.Validators.Definition.GuardValidator`.
   """
 
   use TypedStructor

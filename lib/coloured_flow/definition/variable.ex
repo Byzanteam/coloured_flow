@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Definition.Variable do
   @moduledoc """
-  A typed variable is a variable that is not bound to any value.
-  It can be used in arc annotations, guard expressions, etc.
+  A typed variable is a variable that is not bound to any value. It can be used in
+  arc annotations, guard expressions, etc.
 
   ## Examples
 

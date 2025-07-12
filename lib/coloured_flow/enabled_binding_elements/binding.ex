@@ -83,7 +83,9 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
   end
 
   @doc """
-  Get the bindings from a place tokens(`t:ColouredFlow.MultiSet.t/0`) that match the arc expression expression (see detail at`t:ColouredFlow.Expression.Arc.bind_expr/0`).
+  Get the bindings from a place tokens(`t:ColouredFlow.MultiSet.t/0`) that match
+  the arc expression expression (see detail at
+  `t:ColouredFlow.Expression.Arc.bind_expr/0`).
   """
   @spec match_bag(
           place_tokens_bag :: MultiSet.t(),
@@ -97,7 +99,8 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
   end
 
   @doc """
-  Get the bindings from a token (`t:ColouredFlow.MultiSet.pair/0`) that match the arc_bind expression (see detail at`t:ColouredFlow.Expression.Arc.bind_expr/0`).
+  Get the bindings from a token (`t:ColouredFlow.MultiSet.pair/0`) that match the
+  arc_bind expression (see detail at `t:ColouredFlow.Expression.Arc.bind_expr/0`).
   """
   @spec match(
           place_tokens :: MultiSet.pair(),

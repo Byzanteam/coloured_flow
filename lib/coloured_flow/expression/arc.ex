@@ -16,8 +16,8 @@ defmodule ColouredFlow.Expression.Arc do
   @type bind_expr() :: Macro.t()
 
   @doc """
-  A macro that returns the value as is,
-  this macro is used to mark the binding value.
+  A macro that returns the value as is, this macro is used to mark the binding
+  value.
 
   ```elixir
   bind {1, x}

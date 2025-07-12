@@ -8,8 +8,8 @@ defmodule ColouredFlow.Validators.Definition.UniqueNameValidator do
   - Places
   - Transitions
 
-  If a duplicate name is found within any of these categories, an error is returned immediately.
-  Otherwise, the validation is passed.
+  If a duplicate name is found within any of these categories, an error is
+  returned immediately. Otherwise, the validation is passed.
   """
 
   alias ColouredFlow.Definition.ColourSet

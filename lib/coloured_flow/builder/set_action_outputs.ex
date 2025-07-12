@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Builder.SetActionOutputs do
   @moduledoc """
-  This phase is responsible for setting the outputs of the actions
-  according to the expressions from arcs and the transition guard.
+  This phase is responsible for setting the outputs of the actions according to
+  the expressions from arcs and the transition guard.
   """
 
   alias ColouredFlow.Definition.Action

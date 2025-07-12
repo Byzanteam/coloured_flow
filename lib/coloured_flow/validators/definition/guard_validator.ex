@@ -3,6 +3,7 @@ defmodule ColouredFlow.Validators.Definition.GuardValidator do
   This validator is used to validate guards of the transition.
 
   A valid guard must satisfy the following properties:
+
   1. vars must from variables bound to incoming-arcs, or constants
   """
 

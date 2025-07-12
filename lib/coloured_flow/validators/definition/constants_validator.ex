@@ -1,8 +1,10 @@
 defmodule ColouredFlow.Validators.Definition.ConstantsValidator do
   @moduledoc """
-  This validator ensures that constants within a ColouredFlow definition are valid.
+  This validator ensures that constants within a ColouredFlow definition are
+  valid.
 
   It validates these aspects of a constant:
+
   1. The colour_set should be defined in the ColouredPetriNet.
   2. The value should be of a type that matches the colour_set.
   """

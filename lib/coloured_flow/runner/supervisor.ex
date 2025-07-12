@@ -3,6 +3,7 @@ defmodule ColouredFlow.Runner.Supervisor do
   The supervisor of the coloured_flow runner.
 
   ## Runner Supervision Tree
+
   ```mermaid
   flowchart TB
       S["Supervisor"]

@@ -1,6 +1,7 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.Types do
   @moduledoc """
-  This module defines the types used in the ColouredFlow.Runner.Storage.Schemas module.
+  This module defines the types used in the ColouredFlow.Runner.Storage.Schemas
+  module.
   """
 
   @typedoc """
@@ -19,8 +20,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Types do
   @type association(t) :: Ecto.Association.NotLoaded.t() | t
 
   @typedoc """
-  Represents an optional Ecto association, which can either be
-  not loaded, of type `t`, or `nil`.
+  Represents an optional Ecto association, which can either be not loaded, of type
+  `t`, or `nil`.
   """
   @type maybe_association(t) :: Ecto.Association.NotLoaded.t() | ColouredFlow.Types.maybe(t)
 end

@@ -17,7 +17,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
   @typep workitems() :: workitems(Workitem.state())
 
   @doc """
-  Pop the workitems from the given list of workitems by the given list of workitem_ids and the expected state.
+  Pop the workitems from the given list of workitems by the given list of
+  workitem_ids and the expected state.
   """
   @spec pop_workitems(workitems(), [Workitem.id()], expected_state :: state) ::
           {:ok, workitems(state), workitems()}

@@ -1,6 +1,7 @@
 defmodule ColouredFlow.Validators.Exceptions.UniqueNameViolationError do
   @moduledoc """
-  This exception is raised when a duplicate name violation is detected by the `ColouredFlow.Validators.Definition.UniqueNameValidator`.
+  This exception is raised when a duplicate name violation is detected by the
+  `ColouredFlow.Validators.Definition.UniqueNameValidator`.
   """
 
   use TypedStructor

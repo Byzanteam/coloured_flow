@@ -14,7 +14,8 @@ defmodule ColouredFlow.Definition.ColourSet do
   @typedoc """
   The value should be a literal quoted expression.
 
-  `Macro.quoted_literal?/1` can be used to check if a quoted expression is a literal.
+  `Macro.quoted_literal?/1` can be used to check if a quoted expression is a
+  literal.
 
   ## Valid examples:
 

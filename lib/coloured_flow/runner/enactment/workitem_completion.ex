@@ -17,8 +17,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletion do
   Complete the workitems with the given free bindings, and return the occurrences.
 
   ## Parameters
-    * `workitem_and_outputs` - The workitems and their free binding (outputs)
-    * `cpnet` - The coloured petri net
+
+  - `workitem_and_outputs` - The workitems and their free binding (outputs)
+  - `cpnet` - The coloured petri net
   """
   @spec complete(
           workitem_and_outputs :: Enumerable.t({Workitem.t(:started), Occurrence.free_binding()}),

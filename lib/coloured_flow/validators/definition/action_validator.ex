@@ -3,6 +3,7 @@ defmodule ColouredFlow.Validators.Definition.ActionValidator do
   This validator is used to validate the action of the transition.
 
   A valid action must satisfy the following properties:
+
   1. output vars must be variables that cannot be constants.
   1. output vars must be variables that are not bound at the incoming arcs.
   """

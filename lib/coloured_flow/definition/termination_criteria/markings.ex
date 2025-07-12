@@ -1,7 +1,8 @@
 defmodule ColouredFlow.Definition.TerminationCriteria.Markings do
   @moduledoc """
-  The termination criteria applied to place markings. If the criteria are satisfied,
-  the corresponding enactment will be terminated, and the reason will be `explicit`.
+  The termination criteria applied to place markings. If the criteria are
+  satisfied, the corresponding enactment will be terminated, and the reason will
+  be `explicit`.
   """
 
   use TypedStructor

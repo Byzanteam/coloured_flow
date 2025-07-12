@@ -68,10 +68,13 @@ defmodule ColouredFlow.Builder.DefinitionHelper do
   ### Examples
 
   #### Define a place and a transition
+
   ```elixir
   arc turn_green_ew <~ red_ew :: "bind {1, u}"
   ```
+
   is equal to the following code:
+
   ```elixir
   build_arc!(
     place: "red_ew",
@@ -82,10 +85,13 @@ defmodule ColouredFlow.Builder.DefinitionHelper do
   ```
 
   #### Define a transition to a place
+
   ```elixir
   arc turn_green_ew ~> green_ew :: "{1, u}"
   ```
+
   is equal to the following code:
+
   ```elixir
   build_arc!(
     place: "green_ew",

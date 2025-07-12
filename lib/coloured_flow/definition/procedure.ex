@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Definition.Procedure do
   @moduledoc """
-  A procedure(aka function, renamed to avoid conflict with Elixir's function)
-  is a named function, that can be used in expressions.
+  A procedure(aka function, renamed to avoid conflict with Elixir's function) is a
+  named function, that can be used in expressions.
   """
 
   use TypedStructor

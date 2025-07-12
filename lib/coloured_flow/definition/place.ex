@@ -1,7 +1,6 @@
 defmodule ColouredFlow.Definition.Place do
   @moduledoc """
-  A place is a location in the petri net where tokens can be
-  stored.
+  A place is a location in the petri net where tokens can be stored.
   """
 
   use TypedStructor

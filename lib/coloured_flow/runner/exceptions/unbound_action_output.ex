@@ -1,7 +1,8 @@
 defmodule ColouredFlow.Runner.Exceptions.UnboundActionOutput do
   @moduledoc """
-  This exception is raised when the output is not found in outputs of the transition action,
-  which usually occurs on the workitem completion when the outputs of the transition action are not bound.
+  This exception is raised when the output is not found in outputs of the
+  transition action, which usually occurs on the workitem completion when the
+  outputs of the transition action are not bound.
   """
 
   use TypedStructor

@@ -1,9 +1,10 @@
 defmodule ColouredFlow.Enactment.BindingElement do
   @moduledoc """
-  A binding element comprises a transition, a set of bound assignments,
-  and a set of markings to be consumed while firing the transition.
+  A binding element comprises a transition, a set of bound assignments, and a set
+  of markings to be consumed while firing the transition.
 
   A binding element is considered enabled if:
+
   1. The guard of the transition is satisfied.
   2. There are sufficient tokens on the input places of the transition.
   """
@@ -35,9 +36,8 @@ defmodule ColouredFlow.Enactment.BindingElement do
   end
 
   @doc """
-  Build a new order-consistent binding element,
-  where the binding is ordered by the variable name,
-  and the to_consume markings are ordered by the place name.
+  Build a new order-consistent binding element, where the binding is ordered by
+  the variable name, and the to_consume markings are ordered by the place name.
   """
   @spec new(
           transition :: Transition.name(),

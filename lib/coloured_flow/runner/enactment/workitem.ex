@@ -142,7 +142,8 @@ defmodule ColouredFlow.Runner.Enactment.Workitem do
   def __states__, do: __live_states__() ++ __completed_states__()
 
   @doc """
-  The valid transitions of the workitem, represented as a list of a `{from, action, to}` tuple.
+  The valid transitions of the workitem, represented as a list of a
+  `{from, action, to}` tuple.
 
   For example, `{:enabled, :start, :started}` means the workitem can be
   transitioned to `started` when it is `enabled` by the `start` action.

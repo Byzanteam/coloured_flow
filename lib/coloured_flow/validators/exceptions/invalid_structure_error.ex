@@ -1,9 +1,10 @@
 defmodule ColouredFlow.Validators.Exceptions.InvalidStructureError do
   @moduledoc """
-  This exception is raised when the structure of the Coloured Petri Net is invalid.
+  This exception is raised when the structure of the Coloured Petri Net is
+  invalid.
 
-  See `ColouredFlow.Validators.Definition.StructureValidator` for the
-  definition of a well-structured Coloured Petri Net.
+  See `ColouredFlow.Validators.Definition.StructureValidator` for the definition
+  of a well-structured Coloured Petri Net.
   """
 
   use TypedStructor

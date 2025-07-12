@@ -1,8 +1,10 @@
 defmodule ColouredFlow.Validators.Definition.ColourSetValidator do
   @moduledoc """
-  This validator ensures that colour sets within a ColouredFlow definition are valid.
+  This validator ensures that colour sets within a ColouredFlow definition are
+  valid.
 
   It validates these aspects of a colour set:
+
   - name can be a built-in type
   - types should be valid
   - compound type supported

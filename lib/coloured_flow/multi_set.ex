@@ -1,6 +1,7 @@
 defmodule ColouredFlow.MultiSet do
   @moduledoc """
-  A [`multi_set`](https://en.wikipedia.org/wiki/Multiset)(aka `bag`) is a set that allows multiple occurrences of its elements.
+  A [`multi_set`](https://en.wikipedia.org/wiki/Multiset)(aka `bag`) is a set that
+  allows multiple occurrences of its elements.
 
   A `multi_set` can be constructed using `new/0` or `new/1` functions:
 
@@ -46,9 +47,9 @@ defmodule ColouredFlow.MultiSet do
   defguard is_empty(value) when is_struct(value, __MODULE__) and map_size(value.map) === 0
 
   @doc """
-  Get the coefficient of `value` in the `multi_set`.
-  If the `value` is not in the `multi_set`, a `KeyError` is raised.
-  This can be used in guards, similar to `ColouredFlow.MultiSet.coefficient/2`.
+  Get the coefficient of `value` in the `multi_set`. If the `value` is not in the
+  `multi_set`, a `KeyError` is raised. This can be used in guards, similar to
+  `ColouredFlow.MultiSet.coefficient/2`.
   """
   defmacro multi_set_coefficient(multi_set, value) do
     quote do
@@ -185,8 +186,8 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
-  Inserts `value` into the `multi_set`. If `value` is already in the `multi_set`, its
-  `coefficient` is incremented by 1.
+  Inserts `value` into the `multi_set`. If `value` is already in the `multi_set`,
+  its `coefficient` is incremented by 1.
 
   ## Examples
 
@@ -203,8 +204,8 @@ defmodule ColouredFlow.MultiSet do
   end
 
   @doc """
-  Deletes `value` from the `multi_set`. If the `coefficient` of `value` is greater than 1,
-  it is decremented by 1.
+  Deletes `value` from the `multi_set`. If the `coefficient` of `value` is greater
+  than 1, it is decremented by 1.
 
   ## Examples
 
@@ -231,7 +232,8 @@ defmodule ColouredFlow.MultiSet do
   @doc """
   Pop `count` occurrences of `value` from the `multi_set`.
 
-  Returns a tuple with the number of occurrences popped and the resulting `multi_set`.
+  Returns a tuple with the number of occurrences popped and the resulting
+  `multi_set`.
 
   ## Examples
 
@@ -319,11 +321,11 @@ defmodule ColouredFlow.MultiSet do
   @doc """
   Returns the difference of two `multi_set`s.
 
-  The difference is calculated by subtracting the coefficients of elements
-  in `multi_set2` from the coefficients of elements in `multi_set1`. If an
-  element in `multi_set2` is not present in `multi_set1`, it is ignored.
-  If the resulting coefficient is zero or negative, the element is removed
-  from the resulting `multi_set`.
+  The difference is calculated by subtracting the coefficients of elements in
+  `multi_set2` from the coefficients of elements in `multi_set1`. If an element in
+  `multi_set2` is not present in `multi_set1`, it is ignored. If the resulting
+  coefficient is zero or negative, the element is removed from the resulting
+  `multi_set`.
 
   ## Examples
 
@@ -366,10 +368,10 @@ defmodule ColouredFlow.MultiSet do
   @doc """
   Returns the difference of two `multi_set`s.
 
-  Behaves like `difference/2`, but returns `:error` if the `coefficient` of any `value`
-  in `multi_set2` is greater than the `coefficient` of the same `value` in `multi_set1`,
-  and if `multi_set2` contains a `value` that is not in `multi_set1`.
-  That is to say, `multi_set2` must be included in `multi_set1`.
+  Behaves like `difference/2`, but returns `:error` if the `coefficient` of any
+  `value` in `multi_set2` is greater than the `coefficient` of the same `value` in
+  `multi_set1`, and if `multi_set2` contains a `value` that is not in
+  `multi_set1`. That is to say, `multi_set2` must be included in `multi_set1`.
 
   ## Examples
 
@@ -475,12 +477,11 @@ defmodule ColouredFlow.MultiSet do
   @doc """
   Handles the sigil `~MS`(that is `multi_set`).
 
-  It returns a `multi_set` split by whitespace.
-  Character interpolation happens for each pairs.
+  It returns a `multi_set` split by whitespace. Character interpolation happens
+  for each pairs.
 
-  This sigil accepts pairs of the form `coefficient**value`,
-  a literal `value`(the coefficient is 1),
-  or a variable `value`(the coefficient is 1).
+  This sigil accepts pairs of the form `coefficient**value`, a literal `value`(the
+  coefficient is 1), or a variable `value`(the coefficient is 1).
 
   ## Examples
 

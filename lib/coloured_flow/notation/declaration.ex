@@ -12,11 +12,11 @@ defmodule ColouredFlow.Notation.Declaration do
 
   ## Example:
 
-      iex> ColouredFlow.Notation.Declaration.compile(~S\"""
+      iex> ColouredFlow.Notation.Declaration.compile(~S"""
       ...>   colset name :: binary()
       ...>   var name :: name()
       ...>   val name :: name() = "Alice"
-      ...> \""")
+      ...> """)
       {:ok, [
         %ColouredFlow.Definition.ColourSet{name: :name, type: {:binary, []}},
         %ColouredFlow.Definition.Variable{name: :name, colour_set: :name},

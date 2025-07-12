@@ -1,8 +1,8 @@
 defmodule ColouredFlow.Runner.Enactment do
   @moduledoc """
-  Each process instance represents one individual enactment of the process, using its
-  own process instance data, and which is (normally) capable of independent control
-  and audit as it progresses towards completion or termination.
+  Each process instance represents one individual enactment of the process, using
+  its own process instance data, and which is (normally) capable of independent
+  control and audit as it progresses towards completion or termination.
 
   ## State
 
@@ -24,10 +24,12 @@ defmodule ColouredFlow.Runner.Enactment do
   ```
 
   The enactment can be transitioned through several states:
-  - `:running` - The enactment is running.
-  - `:exception` - An exception occurred during the enactment, and the corresponding enactment will be stopped.
-  - `:terminated` - The enactment is terminated via `:implicit`, `:explicit`, or `:force`.
 
+  - `:running` - The enactment is running.
+  - `:exception` - An exception occurred during the enactment, and the
+    corresponding enactment will be stopped.
+  - `:terminated` - The enactment is terminated via `:implicit`, `:explicit`, or
+    `:force`.
   """
 
   use GenServer, restart: :transient

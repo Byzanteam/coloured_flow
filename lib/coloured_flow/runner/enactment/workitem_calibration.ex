@@ -1,8 +1,10 @@
 defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   @moduledoc """
   Workitem calibration functions, which are responsible for:
+
   1. withdraw the non-enabled workitem caused by a `start` transition
-  2. produce new workitems for the new enabled binding elements after the `complete` transition
+  2. produce new workitems for the new enabled binding elements after the
+     `complete` transition
   """
 
   use TypedStructor
@@ -74,23 +76,28 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   Calibrate the workitem after a transition.
 
   ## Parameters
-    * `state` : The enactment struct.
-    * `transition` : The transition that caused the calibration. See at `ColouredFlow.Runner.Enactment.Workitem.__transitions__/0`
-    * `options` : The transition specefied options. See below options.
+
+  - `state` : The enactment struct.
+  - `transition` : The transition that caused the calibration. See at
+    `ColouredFlow.Runner.Enactment.Workitem.__transitions__/0`
+  - `options` : The transition specefied options. See below options.
 
   ## `start` transition options
 
-    * `workitems`: The workitems (after the transition, in `started` state) that are affected by the `start` transition.
+  - `workitems`: The workitems (after the transition, in `started` state) that are
+    affected by the `start` transition.
 
   ## `complete` transition options
 
-    * `cpnet`: The coloured petri net.
-    * `workitem_occurrences`: The workitem and occurrence pairs that are appened after the `complete` transition.
+  - `cpnet`: The coloured petri net.
+  - `workitem_occurrences`: The workitem and occurrence pairs that are appened
+    after the `complete` transition.
 
   ## `complete_e` transition options
 
-    * `cpnet`: The coloured petri net.
-    * `workitem_occurrences`: The workitem and occurrence pairs that are appened after the `complete_e` transition.
+  - `cpnet`: The coloured petri net.
+  - `workitem_occurrences`: The workitem and occurrence pairs that are appened
+    after the `complete_e` transition.
   """
   @spec calibrate(enactment_state(), :start, workitems: [Workitem.t(:started)]) :: t()
   @spec calibrate(enactment_state(), :complete,

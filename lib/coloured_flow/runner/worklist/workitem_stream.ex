@@ -23,8 +23,8 @@ defmodule ColouredFlow.Runner.Worklist.WorkitemStream do
 
   ## Options
 
-  * `:after_cursor` - The cursor to start listing workitems from.
-  * `:limit` - The maximum number of workitems to list.
+  - `:after_cursor` - The cursor to start listing workitems from.
+  - `:limit` - The maximum number of workitems to list.
   """
   @spec live_query(list_options()) :: Ecto.Query.t()
   def live_query(options \\ []) when is_list(options) do

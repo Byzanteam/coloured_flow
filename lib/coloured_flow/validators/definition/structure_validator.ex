@@ -1,11 +1,15 @@
 defmodule ColouredFlow.Validators.Definition.StructureValidator do
   @moduledoc """
-  The validator is used to validate weather the Coloured Petri Net structure is correct.
+  The validator is used to validate weather the Coloured Petri Net structure is
+  correct.
 
-  A well-structured Coloured Petri Net is a Graph that has the following properties:
+  A well-structured Coloured Petri Net is a Graph that has the following
+  properties:
+
   1. The Graph has at least one place or one transition.
   2. Transitions and places cannot link to the same type of nodes.
-  3. There is at most one directed arc in both directions between a place and a transition.
+  3. There is at most one directed arc in both directions between a place and a
+     transition.
   4. There can’t be any dangling nodes that aren’t connected to any other nodes.
   """
 

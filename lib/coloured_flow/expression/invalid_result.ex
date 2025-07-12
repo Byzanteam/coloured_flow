@@ -1,7 +1,7 @@
 defmodule ColouredFlow.Expression.InvalidResult do
   @moduledoc """
-  An error occurs when the result of the expression is invalid,
-  i.e., it does not return a boolean value for the termination criteria.
+  An error occurs when the result of the expression is invalid, i.e., it does not
+  return a boolean value for the termination criteria.
   """
 
   use TypedStructor

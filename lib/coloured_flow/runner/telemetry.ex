@@ -4,6 +4,7 @@ defmodule ColouredFlow.Runner.Telemetry do
   Telemetry integration for event metrics, logging and error reporting.
 
   ## Enactment events
+
   `ColouredFlow.Runner` emits telemetry events for the enactment transitions:
 
   - `[:coloured_flow, :runner, :enactment, :start]`
@@ -11,7 +12,8 @@ defmodule ColouredFlow.Runner.Telemetry do
   - `[:coloured_flow, :runner, :enactment, :terminate]`
   - `[:coloured_flow, :runner, :enactment, :exception]`
 
-  All enactment events share the same measurements and metadata, but their metadata are different.
+  All enactment events share the same measurements and metadata, but their
+  metadata are different.
 
   | event        | measurements                      | metadata                                                                        |
   | ------------ | --------------------------------- | ------------------------------------------------------------------------------- |
@@ -20,17 +22,20 @@ defmodule ColouredFlow.Runner.Telemetry do
   | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
   | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception`          |
 
-  Note that `:start` and `:stop` events will be emitted when the enactment server starts and stops respectively.
-  So a `:stop` event will be emitted right after `:terminate` and `:exception` events are emitted.
+  Note that `:start` and `:stop` events will be emitted when the enactment server
+  starts and stops respectively. So a `:stop` event will be emitted right after
+  `:terminate` and `:exception` events are emitted.
 
   #### Metadata
 
   - `:enactment_id` — The ID of the running enactment.
   - `:enactment_state` — The current state of the enactment
-  (`t:ColouredFlow.Runner.Enactment.state/0`).
-  - `:termination_type` — The type of termination (`:explicit`, `:implicit` or `:force`).
+    (`t:ColouredFlow.Runner.Enactment.state/0`).
+  - `:termination_type` — The type of termination (`:explicit`, `:implicit` or
+    `:force`).
   - `:termination_message` — The termination message.
-  - `:exception_reason` — The reason for the exception. (`t:ColouredFlow.Runner.Exception.reason/0`).
+  - `:exception_reason` — The reason for the exception.
+    (`t:ColouredFlow.Runner.Exception.reason/0`).
   - `:exception` — The exception that was raised.
 
   ## Enactment workitem events
@@ -57,7 +62,7 @@ defmodule ColouredFlow.Runner.Telemetry do
 
   - `:enactment_id` — The ID of the running enactment.
   - `:enactment_state` — The current state of the enactment
-  (`t:ColouredFlow.Runner.Enactment.state/0`).
+    (`t:ColouredFlow.Runner.Enactment.state/0`).
   - `:workitems` — The workitems that were transitioned.
 
   #### Additional metadata
@@ -85,11 +90,12 @@ defmodule ColouredFlow.Runner.Telemetry do
           | (-> {:error, exception})
 
   @doc """
-  Start a telemetry span event and execute the given function. The function must return either
-  `{:ok, result, metadata}`, `{:ok, result, measurements, metadata}` or `{:error, exception}`.
-  If the function raises an exception, it will be caught and reported as an exception event.
-  The returned result is different to the result of `:telemetry.span/3` as it only returns the
-  `{:ok, result}` or `{:error, exception}` tuple.
+  Start a telemetry span event and execute the given function. The function must
+  return either `{:ok, result, metadata}`, `{:ok, result, measurements, metadata}`
+  or `{:error, exception}`. If the function raises an exception, it will be caught
+  and reported as an exception event. The returned result is different to the
+  result of `:telemetry.span/3` as it only returns the `{:ok, result}` or
+  `{:error, exception}` tuple.
   """
   @spec span(event_prefix(), event_metadata(), (-> {:ok, result, event_metadata()})) ::
           {:ok, result}
@@ -245,30 +251,36 @@ defmodule ColouredFlow.Runner.Telemetry do
   @doc """
   Attaches a default `Logger` handler for logging structured JSON output.
 
-  The default logger will log structured JSON output with `source`, `event` fields,
-  along with some specific fields for each event type:
+  The default logger will log structured JSON output with `source`, `event`
+  fields, along with some specific fields for each event type:
 
   ## Events
 
   #### Enactment events
 
-  * `event` — `produce_workitems:start`, `produce_workitems:stop`, `produce_workitems:exception`, etc. depending on reporting telemetry event
-  * `enactment_id` - the enactment ID
-  * `enactment_version` - the current enactment version
-  * `enactment_markings` - the current enactment markings
-  * `enactment_workitems` - the live enactment workitems
-  * `system_time` — the system time when the event occurred, in ISO-8601 format, it only appears in `:start` events
-  * `error` — the error message if the event is an `:exception` 
-  * `duration` — the operation duration, in nanoseconds, it only appears in `:stop` and `:exception` events
-  * `workitem_ids` — The workitem IDs, appears in all events except `produce_workitems:start`
-  * `workitems` — The workitems, appears in `:stop` events
-  * `binding_elements` — The binding elements, which only appear in `produce_workitems:start` events
-  * `workitem_id_and_outputs` — The workitem ID and outputs map, appears only in `complete_workitems:start` events
+  - `event` — `produce_workitems:start`, `produce_workitems:stop`,
+    `produce_workitems:exception`, etc. depending on reporting telemetry event
+  - `enactment_id` - the enactment ID
+  - `enactment_version` - the current enactment version
+  - `enactment_markings` - the current enactment markings
+  - `enactment_workitems` - the live enactment workitems
+  - `system_time` — the system time when the event occurred, in ISO-8601 format,
+    it only appears in `:start` events
+  - `error` — the error message if the event is an `:exception`
+  - `duration` — the operation duration, in nanoseconds, it only appears in
+    `:stop` and `:exception` events
+  - `workitem_ids` — The workitem IDs, appears in all events except
+    `produce_workitems:start`
+  - `workitems` — The workitems, appears in `:stop` events
+  - `binding_elements` — The binding elements, which only appear in
+    `produce_workitems:start` events
+  - `workitem_id_and_outputs` — The workitem ID and outputs map, appears only in
+    `complete_workitems:start` events
 
   ## Options
 
-  * `:level` — The log level to use for logging output, defaults to `:info`
-  * `:encode` — Whether to encode log output as JSON, defaults to `false`
+  - `:level` — The log level to use for logging output, defaults to `:info`
+  - `:encode` — Whether to encode log output as JSON, defaults to `false`
 
   ## Examples
 
@@ -298,7 +310,8 @@ defmodule ColouredFlow.Runner.Telemetry do
   end
 
   @doc """
-  Undoes `ColouredFlow.Runner.Telemetry.attach_default_logger/1` by detaching the attached logger.
+  Undoes `ColouredFlow.Runner.Telemetry.attach_default_logger/1` by detaching the
+  attached logger.
 
   ## Examples
 
@@ -319,8 +332,9 @@ defmodule ColouredFlow.Runner.Telemetry do
   @doc """
   Attaches a telemetry handler to the given event names.
 
-  This is a convenience function for `:telemetry.attach_many/4` to attach a handler to multiple
-  event names, which are the same as the default logger handler, at once.
+  This is a convenience function for `:telemetry.attach_many/4` to attach a
+  handler to multiple event names, which are the same as the default logger
+  handler, at once.
   """
   @spec attach(handler_id(), handler_function()) :: :ok | {:error, :already_exists}
   @spec attach(handler_id(), handler_function(), handler_config()) ::

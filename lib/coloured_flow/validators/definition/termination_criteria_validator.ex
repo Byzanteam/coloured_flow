@@ -1,9 +1,12 @@
 defmodule ColouredFlow.Validators.Definition.TerminationCriteriaValidator do
   @moduledoc """
-  The validator is used to validate weather the Coloured Petri Net termination criteria are correct.
+  The validator is used to validate weather the Coloured Petri Net termination
+  criteria are correct.
 
   The valid criteria should follow these rules:
-  1. The variables in the markings criteria expression should only contain the `:markings` variable and constants.
+
+  1. The variables in the markings criteria expression should only contain the
+     `:markings` variable and constants.
   """
 
   alias ColouredFlow.Definition.ColouredPetriNet

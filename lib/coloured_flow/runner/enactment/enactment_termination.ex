@@ -8,8 +8,8 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTermination do
   alias ColouredFlow.Runner.Enactment.Workitem
 
   @doc """
-  Check if the enactment should be terminated.
-  It should be terminated when the termination criteria are met.
+  Check if the enactment should be terminated. It should be terminated when the
+  termination criteria are met.
   """
   @spec check_explicit_termination(
           termination_criteria :: TerminationCriteria.t() | nil,
@@ -40,8 +40,8 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTermination do
   end
 
   @doc """
-  Check if the enactment should be terminated implicitly.
-  It should be terminated when there are no more enabled workitems.
+  Check if the enactment should be terminated implicitly. It should be terminated
+  when there are no more enabled workitems.
   """
   @spec check_implicit_termination([Workitem.t()]) :: {:stop, :implicit} | :cont
   def check_implicit_termination(workitems)

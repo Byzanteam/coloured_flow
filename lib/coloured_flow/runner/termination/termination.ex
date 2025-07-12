@@ -12,9 +12,9 @@ defmodule ColouredFlow.Runner.Termination do
 
   @doc """
   Evaluates the termination criteria for the enactment with the given markings.
-  Exceptions will be returned if the expression is invalid or the evaluation fails,
-  otherwise, the boolean result will indicate whether the enactment should terminate
-  based on the criteria.
+  Exceptions will be returned if the expression is invalid or the evaluation
+  fails, otherwise, the boolean result will indicate whether the enactment should
+  terminate based on the criteria.
   """
   @spec should_terminate(markings_criteria :: Markings.t(), markings :: markings_binding()) ::
           {:error, [Exception.t()]} | {:ok, boolean()}

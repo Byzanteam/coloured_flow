@@ -1,8 +1,7 @@
 defmodule ColouredFlow.EnabledBindingElements.Occurrence do
   @moduledoc """
-  When a enabled binding element occurs,
-  it consumes a set of markings from input places,
-  and produces a set of markings to output places.
+  When a enabled binding element occurs, it consumes a set of markings from input
+  places, and produces a set of markings to output places.
   """
 
   alias ColouredFlow.Definition.Arc

@@ -24,7 +24,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
   end
 
   @doc """
-  Encode the `c:ColouredFlow.Definition.ColourSet.value/0` to a JSON representation.
+  Encode the `c:ColouredFlow.Definition.ColourSet.value/0` to a JSON
+  representation.
   """
   @spec encode_value(ColourSet.value()) :: map()
   def encode_value(value) when is_integer(value) do
@@ -103,7 +104,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
   @primitive_types ~w[integer float boolean binary]a
 
   @doc """
-  Converts the JSON representation to a `t:ColouredFlow.Definition.ColourSet.value/0`.
+  Converts the JSON representation to a
+  `t:ColouredFlow.Definition.ColourSet.value/0`.
   """
   @spec decode_value(map()) :: ColourSet.value()
   def decode_value(map)

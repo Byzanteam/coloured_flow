@@ -1,7 +1,8 @@
 defmodule ColouredFlow.Validators.Exceptions.InvalidTerminationCriteriaError do
   @moduledoc """
-  The exception is raised when the termination criteria are invalid.
-  See the definition of valid criteria in `ColouredFlow.Validators.Definition.TerminationCriteriaValidator`.
+  The exception is raised when the termination criteria are invalid. See the
+  definition of valid criteria in
+  `ColouredFlow.Validators.Definition.TerminationCriteriaValidator`.
   """
 
   use TypedStructor

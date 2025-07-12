@@ -6,7 +6,8 @@ defmodule ColouredFlow.Runner.Exception do
 
   ### `termination_criteria_evaluation`
 
-  The termination criteria evaluation failed due to an invalid expression or evaluation result.
+  The termination criteria evaluation failed due to an invalid expression or
+  evaluation result.
   """
 
   reason = ~w[termination_criteria_evaluation]a
