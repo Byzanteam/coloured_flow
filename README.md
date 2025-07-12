@@ -1,19 +1,25 @@
 # ColouredFlow
 
-ColouredFlow is a workflow engine based on [Coloured Petri Nets (CPN)](https://github.com/lmkr/cpnbook).
-It provides a flexible and powerful way to model business processes and archive automation.
+ColouredFlow is a workflow engine based on
+[Coloured Petri Nets (CPN)](https://github.com/lmkr/cpnbook). It provides a
+flexible and powerful way to model business processes and archive automation.
 
 ## Key Features
 
-- **💻 100% Elixir-based Implementation**: Includes [CPN ML Language](https://github.com/lmkr/cpnbook)
-- **🕸️ Distributed by Design**: Enactments (Workflow instances) are isolated, supporting true concurrency and fault tolerance
-- **🔧 Complete Workflow Control**: Full implementation of 40+ [workflow control patterns](http://www.workflowpatterns.com/patterns/control/)
-- **📊 Event-sourced Enactments**: Enactments(Workflow instances) and Occurrences for detailed analysis and statistics
-- **💾 Abstracted Storage**: In-memory storage for testing; Postgres for production
+- **💻 100% Elixir-based Implementation**: Includes
+  [CPN ML Language](https://github.com/lmkr/cpnbook)
+- **🕸️ Distributed by Design**: Enactments (Workflow instances) are isolated,
+  supporting true concurrency and fault tolerance
+- **🔧 Complete Workflow Control**: Full implementation of 40+
+  [workflow control patterns](http://www.workflowpatterns.com/patterns/control/)
+- **📊 Event-sourced Enactments**: Enactments(Workflow instances) and
+  Occurrences for detailed analysis and statistics
+- **💾 Abstracted Storage**: In-memory storage for testing; Postgres for
+  production
 - **📝 DSL**: A simple DSL for defining workflows effectively
 - **📡 Built-in Telemetry**: Comprehensive observability and debugging
 
-> [!WARNING]  
+> [!WARNING]\
 > The document is WIP. Check examples at [examples folder](./examples).
 
 ## Installation
@@ -31,7 +37,8 @@ end
 
 ## Usage
 
-Here is an example of how to use the `coloured_flow` package to model and execute a traffic light system using a Coloured Petri Net.
+Here is an example of how to use the `coloured_flow` package to model and
+execute a traffic light system using a Coloured Petri Net.
 
 ### Example: Traffic Light
 
@@ -60,8 +67,9 @@ Mix.install(
 
 #### Preparation
 
-We assume you have a PostgreSQL database running, and the `coloured_flow` database exists.
-If not, please create the `coloured_flow` database before proceeding.
+We assume you have a PostgreSQL database running, and the `coloured_flow`
+database exists. If not, please create the `coloured_flow` database before
+proceeding.
 
 The default database URL is `ecto://postgres:postgres@localhost/coloured_flow`,
 you can change it in the above setup block if your database URL is different.
