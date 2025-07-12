@@ -15,6 +15,9 @@ defmodule ColouredFlow.MixProject do
       aliases: aliases(),
       dialyzer: dialyzer(),
       test_coverage: test_coverage(),
+      dprint_markdown_formatter: [
+        format_module_attributes: true
+      ],
       # Docs
       name: "ColouredFlow",
       source_url: @repo_url,
@@ -34,6 +37,7 @@ defmodule ColouredFlow.MixProject do
     [
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
+      {:dprint_markdown_formatter, "~> 0.3.0", only: [:dev, :test], runtime: false},
       {:ecto, "~> 3.0"},
       {:ecto_sql, "~> 3.12"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
