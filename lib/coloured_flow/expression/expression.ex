@@ -7,7 +7,7 @@ defmodule ColouredFlow.Expression do
   alias ColouredFlow.Expression.EvalDiagnostic
   alias ColouredFlow.Expression.Scope
 
-  @doc """
+  @doc ~S'''
   Converts a string to a quoted expression and returns its ast and the unbound
   variables.
 
@@ -21,7 +21,7 @@ defmodule ColouredFlow.Expression do
       ...> fun.(a)
       ...> """)
       iex> %{a: [[line: 2, column: 6]], b: [[line: 1, column: 19]]} =  unbound_vars
-  """
+  '''
 
   @typedoc """
   The error that is returned when the string can't be converted to a quoted

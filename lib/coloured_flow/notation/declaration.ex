@@ -7,12 +7,12 @@ defmodule ColouredFlow.Notation.Declaration do
   alias ColouredFlow.Definition.Constant
   alias ColouredFlow.Definition.Variable
 
-  @doc """
+  @doc ~S'''
   Compile a block string of ColouredFlow declarations into a list of definitions.
 
   ## Example:
 
-      iex> ColouredFlow.Notation.Declaration.compile(~S"""
+      iex> ColouredFlow.Notation.Declaration.compile("""
       ...>   colset name :: binary()
       ...>   var name :: name()
       ...>   val name :: name() = "Alice"
@@ -22,7 +22,7 @@ defmodule ColouredFlow.Notation.Declaration do
         %ColouredFlow.Definition.Variable{name: :name, colour_set: :name},
         %ColouredFlow.Definition.Constant{name: :name, colour_set: :name, value: "Alice"}
       ]}
-  """
+  '''
   @spec compile(inscription :: binary()) ::
           {:ok, [ColourSet.t() | Constant.t() | Variable.t()]}
           | {:error, [Exception.t()]}

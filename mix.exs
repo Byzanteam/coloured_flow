@@ -37,7 +37,7 @@ defmodule ColouredFlow.MixProject do
     [
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
-      {:dprint_markdown_formatter, "~> 0.3.0", only: [:dev, :test], runtime: false},
+      {:dprint_markdown_formatter, "~> 0.5.1", only: [:dev, :test], runtime: false},
       {:ecto, "~> 3.0"},
       {:ecto_sql, "~> 3.12"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
