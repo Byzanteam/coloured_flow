@@ -18,7 +18,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.Transition do
             payload: :string,
             outputs: {:list, :atom}
           ]
-        }
+        },
+        subst: :string,
+        socket_assignments: {:list, {:codec, Codec.SocketAssignment}}
       ]
     }
 end
