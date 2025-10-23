@@ -77,6 +77,179 @@ Socket assignments map places in the parent net (sockets) to port places in the 
 }
 ```
 
+## Converting Existing Flows to Modules
+
+The `FlowConverter` module provides utilities to transform existing `ColouredPetriNet` flows into reusable modules. This is particularly useful when you want to:
+
+- Convert standalone flows into composable components
+- Create module libraries from existing workflows
+- Enable flow reuse without manual restructuring
+
+### Method 1: Manual Port Specification
+
+Explicitly specify which places should become port places and their types:
+
+```elixir
+alias ColouredFlow.Builder.FlowConverter
+
+# You have an existing authentication flow
+auth_flow = %ColouredPetriNet{
+  places: [
+    %Place{name: "credentials", colour_set: :credentials},
+    %Place{name: "verify_step", colour_set: :credentials},
+    %Place{name: "success", colour_set: :unit},
+    %Place{name: "failure", colour_set: :string}
+  ],
+  transitions: [...],
+  arcs: [...]
+}
+
+# Convert it to a module
+auth_module = FlowConverter.flow_to_module(
+  auth_flow,
+  name: "authentication",
+  port_specs: [
+    {"credentials", :input},    # Input port
+    {"success", :output},       # Output port
+    {"failure", :output}        # Output port
+    # "verify_step" becomes an internal place automatically
+  ]
+)
+
+# Now use it in other flows
+main_flow = %ColouredPetriNet{
+  modules: [auth_module],
+  places: [
+    %Place{name: "user_creds", colour_set: :credentials},
+    %Place{name: "auth_ok", colour_set: :unit},
+    %Place{name: "auth_failed", colour_set: :string}
+  ],
+  transitions: [
+    build_substitution_transition!(
+      name: "do_auth",
+      subst: "authentication",
+      socket_assignments: [
+        socket("user_creds", "credentials"),
+        socket("auth_ok", "success"),
+        socket("auth_failed", "failure")
+      ]
+    )
+  ]
+}
+```
+
+### Method 2: Automatic Port Detection
+
+Let the system automatically detect ports based on arc patterns:
+
+```elixir
+# Places with no incoming arcs -> input ports
+# Places with no outgoing arcs -> output ports
+# Places with both -> internal places
+
+auth_module = FlowConverter.flow_to_module_auto(auth_flow, "authentication")
+```
+
+### Validation Before Conversion
+
+Check if a flow can be safely converted:
+
+```elixir
+case FlowConverter.validate_conversion(flow,
+  name: "my_module",
+  port_specs: [{"input", :input}, {"output", :output}]
+) do
+  {:ok, []} ->
+    # Safe to convert, no warnings
+    module = FlowConverter.flow_to_module(flow, ...)
+
+  {:ok, warnings} ->
+    # Can convert, but with warnings
+    IO.puts("Warnings: #{inspect(warnings)}")
+    module = FlowConverter.flow_to_module(flow, ...)
+
+  {:error, errors} ->
+    # Cannot convert
+    IO.puts("Errors: #{inspect(errors)}")
+end
+```
+
+### Common Patterns
+
+#### Pattern 1: Service Flows
+
+Convert service-like flows that have clear inputs and outputs:
+
+```elixir
+# Email service flow
+email_module = FlowConverter.flow_to_module(email_flow,
+  name: "email_sender",
+  port_specs: [
+    {"email_data", :input},
+    {"sent_successfully", :output},
+    {"send_failed", :output}
+  ]
+)
+
+# Notification service flow
+notif_module = FlowConverter.flow_to_module(notification_flow,
+  name: "notifier",
+  port_specs: [
+    {"notification_request", :input},
+    {"notification_sent", :output}
+  ]
+)
+```
+
+#### Pattern 2: Pipeline Stages
+
+Convert pipeline stages into modules:
+
+```elixir
+# Data validation stage
+validate_module = FlowConverter.flow_to_module(validation_flow,
+  name: "validator",
+  port_specs: [
+    {"raw_data", :input},
+    {"valid_data", :output},
+    {"invalid_data", :output}
+  ]
+)
+
+# Data transformation stage
+transform_module = FlowConverter.flow_to_module(transform_flow,
+  name: "transformer",
+  port_specs: [
+    {"valid_data", :input},
+    {"transformed_data", :output}
+  ]
+)
+
+# Compose them in a pipeline
+pipeline = %ColouredPetriNet{
+  modules: [validate_module, transform_module],
+  transitions: [
+    build_substitution_transition!(
+      name: "validate",
+      subst: "validator",
+      socket_assignments: [
+        socket("input", "raw_data"),
+        socket("validated", "valid_data"),
+        socket("errors", "invalid_data")
+      ]
+    ),
+    build_substitution_transition!(
+      name: "transform",
+      subst: "transformer",
+      socket_assignments: [
+        socket("validated", "valid_data"),
+        socket("output", "transformed_data")
+      ]
+    )
+  ]
+}
+```
+
 ## Usage Example
 
 ### Defining a Module
