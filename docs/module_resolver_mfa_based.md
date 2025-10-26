@@ -6,13 +6,13 @@
 ┌──────────────────────────────────────────┐
 │  Application Initialization              │
 │  - Create resolver context               │
-│  - Form MFA: {Mod, :resolve, [context]} │
+│  - Form resolver: {Mod, [context]}       │
 └──────────────┬───────────────────────────┘
                │
                ▼
 ┌──────────────────────────────────────────┐
 │  Enactment Initialization                │
-│  - Receives resolver_mfa                 │
+│  - Receives resolver config              │
 │  - Stores in enactment state             │
 └──────────────┬───────────────────────────┘
                │
@@ -100,44 +100,44 @@ defmodule ColouredFlow.Runtime.ModuleResolver do
   # ... behaviour definition ...
 
   @typedoc """
-  Module resolver in MFA form.
+  Module resolver configuration.
 
   The tuple contains:
   - module: Module implementing ModuleResolver behaviour
-  - function: Always :resolve
   - args: List containing [context] (pre-initialized)
 
-  When calling: apply(module, :resolve, [module_ref, context, runtime_info])
+  Since the behaviour defines resolve/3, the function name is implicit.
+  When calling: apply(module, :resolve, [module_ref] ++ args ++ [runtime_info])
   """
-  @type mfa() :: {module(), :resolve, [context()]}
+  @type resolver() :: {module(), [context()]}
 
   @doc """
-  Helper to create MFA from resolver module and context.
+  Helper to create resolver configuration from module and context.
 
   ## Examples
 
       context = MyResolver.init(repo: MyApp.Repo)
-      mfa = ModuleResolver.to_mfa(MyResolver, context)
-      # Returns: {MyResolver, :resolve, [context]}
+      resolver = ModuleResolver.new(MyResolver, context)
+      # Returns: {MyResolver, [context]}
   """
-  @spec to_mfa(module(), context()) :: mfa()
-  def to_mfa(resolver_module, context) when is_atom(resolver_module) do
-    {resolver_module, :resolve, [context]}
+  @spec new(module(), context()) :: resolver()
+  def new(resolver_module, context) when is_atom(resolver_module) do
+    {resolver_module, [context]}
   end
 
   @doc """
-  Helper to call MFA with module reference and runtime info.
+  Call resolver with module reference and runtime info.
 
   ## Examples
 
-      mfa = {MyResolver, :resolve, [context]}
+      resolver = {MyResolver, [context]}
       runtime_info = %{enactment_id: 123}
-      {:ok, module} = ModuleResolver.call_mfa(mfa, module_ref, runtime_info)
+      {:ok, module} = ModuleResolver.resolve(resolver, module_ref, runtime_info)
   """
-  @spec call_mfa(mfa(), module_ref(), runtime_info()) ::
+  @spec resolve(resolver(), module_ref(), runtime_info()) ::
     {:ok, Module.t()} | {:error, term()}
-  def call_mfa({module, :resolve, [context]}, module_ref, runtime_info) do
-    apply(module, :resolve, [module_ref, context, runtime_info])
+  def resolve({resolver_module, [context]}, module_ref, runtime_info) do
+    apply(resolver_module, :resolve, [module_ref, context, runtime_info])
   end
 end
 ```
@@ -305,12 +305,12 @@ end
 
 # 1. Application level: Initialize resolver
 resolver_context = ModuleResolver.Default.init(repo: MyApp.Repo)
-resolver_mfa = ModuleResolver.to_mfa(ModuleResolver.Default, resolver_context)
+resolver = ModuleResolver.new(ModuleResolver.Default, resolver_context)
 
 # 2. Pass to enactment
 {:ok, enactment_pid} = Enactment.start_link(
   cpnet: cpnet,
-  resolver: resolver_mfa,
+  resolver: resolver,
   # ... other options
 )
 
@@ -319,7 +319,7 @@ defmodule ColouredFlow.Runner.Enactment do
   def init(opts) do
     state = %{
       cpnet: opts[:cpnet],
-      resolver_mfa: opts[:resolver],
+      resolver: opts[:resolver],
       enactment_id: generate_id(),
       # ...
     }
@@ -334,7 +334,7 @@ defmodule ColouredFlow.Runner.Enactment do
         parent_transition: transition.name
       }
 
-      case ModuleResolver.call_mfa(state.resolver_mfa, transition.subst, runtime_info) do
+      case ModuleResolver.resolve(state.resolver, transition.subst, runtime_info) do
         {:ok, module} ->
           # Use the resolved module
           execute_module(module, ...)
@@ -359,10 +359,10 @@ defmodule MyApp.Application do
   def start(_type, _args) do
     # Initialize resolver
     resolver_context = ModuleResolver.Default.init(repo: MyApp.Repo)
-    resolver_mfa = ModuleResolver.to_mfa(ModuleResolver.Default, resolver_context)
+    resolver = ModuleResolver.new(ModuleResolver.Default, resolver_context)
 
     # Store in application env or pass to supervisor
-    Application.put_env(:my_app, :module_resolver, resolver_mfa)
+    Application.put_env(:my_app, :module_resolver, resolver)
 
     # Start supervisors...
   end
@@ -388,15 +388,21 @@ cpnet = %ColouredPetriNet{
 }
 
 # 3. Start enactment with resolver
-resolver_mfa = Application.get_env(:my_app, :module_resolver)
+resolver = Application.get_env(:my_app, :module_resolver)
 
 {:ok, enactment_pid} = Enactment.start_link(
   cpnet: cpnet,
-  resolver: resolver_mfa,
+  resolver: resolver,
   initial_marking: [...]
 )
 
 # 4. When transition fires, enactment calls:
+# ModuleResolver.resolve(
+#   {ModuleResolver.Default, [resolver_context]},
+#   {:module_ref, flow_id: 123, port_specs: [...]},
+#   %{enactment_id: "abc123", parent_transition: "authenticate"}
+# )
+# Which internally does:
 # apply(ModuleResolver.Default, :resolve, [
 #   {:module_ref, flow_id: 123, port_specs: [...]},
 #   resolver_context,
@@ -412,10 +418,11 @@ resolver_mfa = Application.get_env(:my_app, :module_resolver)
 4. **Testable**: Easy to mock MFA in tests
 5. **Flexible**: Can use different resolvers for different enactments
 
-## Key Changes from Previous Design
+## Key Design Points
 
-1. **Behaviour signature**: `resolve/3` instead of `resolve/2`
+1. **Behaviour signature**: `resolve/3` with module_ref, context, runtime_info
 2. **Third parameter**: `runtime_info` with enactment context
-3. **MFA format**: `{Module, :resolve, [context]}` for easy passing
-4. **Helper functions**: `to_mfa/2` and `call_mfa/3` for convenience
+3. **Resolver format**: `{Module, [context]}` - function name implicit from behaviour
+4. **Helper functions**: `new/2` and `resolve/3` for convenience
 5. **Lazy loading**: Resolution happens at runtime, not upfront
+6. **No redundancy**: Function name omitted since behaviour defines it
