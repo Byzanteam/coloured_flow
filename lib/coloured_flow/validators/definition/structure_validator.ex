@@ -43,7 +43,7 @@ defmodule ColouredFlow.Validators.Definition.StructureValidator do
       nodes = get_nodes(cpnet)
 
       cond do
-        (diff = MapSet.difference(connected_nodes, nodes)) !== MapSet.new() ->
+        not Enum.empty?(diff = MapSet.difference(connected_nodes, nodes)) ->
           {
             :error,
             InvalidStructureError.exception(
@@ -55,7 +55,7 @@ defmodule ColouredFlow.Validators.Definition.StructureValidator do
             )
           }
 
-        (diff = MapSet.difference(nodes, connected_nodes)) !== MapSet.new() ->
+        not Enum.empty?(diff = MapSet.difference(nodes, connected_nodes)) ->
           {
             :error,
             InvalidStructureError.exception(

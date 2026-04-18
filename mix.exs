@@ -72,7 +72,7 @@ defmodule ColouredFlow.MixProject do
     [
       plt_local_path: "priv/plts/coloured_flow.plt",
       plt_core_path: "priv/plts/core.plt",
-      ignore_warnings: ".dialyzer_ignore"
+      ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 
