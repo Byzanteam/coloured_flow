@@ -134,7 +134,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
     workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
 
     to_consume_markings =
-      Enum.flat_map(workitem_occurrences, fn {workitem, _} ->
+      Enum.flat_map(workitem_occurrences, fn {workitem, _occurrence} ->
         workitem.binding_element.to_consume
       end)
 
@@ -170,7 +170,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
           ColouredPetriNet.t()
         ) :: {enactment_state(), MultiSet.t(BindingElement.t())}
   defp produce_workitems(%Enactment{} = state, workitem_occurrences, %ColouredPetriNet{} = cpnet) do
-    completed_workitem_ids = Enum.map(workitem_occurrences, fn {workitem, _} -> workitem.id end)
+    completed_workitem_ids =
+      Enum.map(workitem_occurrences, fn {workitem, _occurrence} -> workitem.id end)
+
     occurrences = Enum.map(workitem_occurrences, &elem(&1, 1))
 
     {steps, markings} =

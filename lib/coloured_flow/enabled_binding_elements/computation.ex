@@ -51,35 +51,41 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
     binding_combinations = Binding.combine(arc_bindings)
 
     Enum.flat_map(binding_combinations, fn binding ->
-      inputs
-      |> Enum.reduce_while([], fn {arc, place}, acc ->
-        arc_binding = merge_constants(binding, arc, constants)
-
-        with(
-          {:ok, {coefficient, value}} <- eval_arc(arc, arc_binding),
-          colour_set = fetch_colour_set!(place.colour_set, cpnet),
-          of_type_context = build_of_type_context(cpnet),
-          {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type, of_type_context),
-          guard_binding = merge_constants(binding, transition, constants),
-          {:ok, true} <- eval_transition_guard(transition, guard_binding),
-          marking = get_marking(place, markings),
-          tokens = MultiSet.duplicate(value, coefficient),
-          true <- MultiSet.include?(marking.tokens, tokens)
-        ) do
-          {:cont, [%Marking{place: place.name, tokens: tokens} | acc]}
-        else
-          _other -> {:halt, :error}
-        end
-      end)
-      |> case do
-        :error ->
-          []
-
-        to_consume ->
-          # binding here should not contain constants
-          [BindingElement.new(transition.name, binding, to_consume)]
-      end
+      build_binding_element(inputs, binding, transition, constants, markings, cpnet)
     end)
+  end
+
+  defp build_binding_element(inputs, binding, transition, constants, markings, cpnet) do
+    case collect_consumption(inputs, binding, transition, constants, markings, cpnet) do
+      :error -> []
+      to_consume -> [BindingElement.new(transition.name, binding, to_consume)]
+    end
+  end
+
+  defp collect_consumption(inputs, binding, transition, constants, markings, cpnet) do
+    Enum.reduce_while(inputs, [], fn {arc, place}, acc ->
+      try_consume(arc, place, binding, transition, constants, markings, cpnet, acc)
+    end)
+  end
+
+  defp try_consume(arc, place, binding, transition, constants, markings, cpnet, acc) do
+    arc_binding = merge_constants(binding, arc, constants)
+
+    with(
+      {:ok, {coefficient, value}} <- eval_arc(arc, arc_binding),
+      colour_set = fetch_colour_set!(place.colour_set, cpnet),
+      of_type_context = build_of_type_context(cpnet),
+      {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type, of_type_context),
+      guard_binding = merge_constants(binding, transition, constants),
+      {:ok, true} <- eval_transition_guard(transition, guard_binding),
+      marking = get_marking(place, markings),
+      tokens = MultiSet.duplicate(value, coefficient),
+      true <- MultiSet.include?(marking.tokens, tokens)
+    ) do
+      {:cont, [%Marking{place: place.name, tokens: tokens} | acc]}
+    else
+      _other -> {:halt, :error}
+    end
   end
 
   @spec reject_invalid_bandings([[[BindingElement.binding()]]], ColouredPetriNet.t()) ::

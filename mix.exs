@@ -40,6 +40,7 @@ defmodule ColouredFlow.MixProject do
       {:dprint_markdown_formatter, "~> 0.5.1", only: [:dev, :test], runtime: false},
       {:ecto, "~> 3.0"},
       {:ecto_sql, "~> 3.12"},
+      {:ecto_typed_schema, "~> 0.2.0"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:ex_machina, "~> 2.8.0", only: :test},
       {:jason, "~> 1.0"},
@@ -47,7 +48,7 @@ defmodule ColouredFlow.MixProject do
       {:kino, "~> 0.14.1", only: [:dev, :test]},
       {:postgrex, ">= 0.0.0"},
       {:telemetry, "~> 1.0"},
-      {:typed_structor, "~> 0.4"}
+      {:typed_structor, "~> 0.6", override: true}
     ]
   end
 
@@ -70,7 +71,8 @@ defmodule ColouredFlow.MixProject do
   defp dialyzer do
     [
       plt_local_path: "priv/plts/coloured_flow.plt",
-      plt_core_path: "priv/plts/core.plt"
+      plt_core_path: "priv/plts/core.plt",
+      ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 

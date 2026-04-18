@@ -11,28 +11,15 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Occurrence do
 
   @type step_number() :: pos_integer()
 
-  typed_structor define_struct: false, enforce: true do
-    field :enactment_id, Types.id()
-    field :enactment, Types.association(Enactment.t())
-    field :step_number, step_number()
-
-    field :workitem_id, Types.id()
-    field :workitem, Types.association(Workitem.t())
-
-    field :occurrence, Occurrence.t()
-
-    field :inserted_at, DateTime.t()
-  end
-
   @primary_key false
 
-  schema "occurrences" do
+  typed_schema "occurrences", null: false do
     belongs_to :enactment, Enactment, primary_key: true
-    field :step_number, :integer, primary_key: true
+    field :step_number, :integer, primary_key: true, typed: [type: step_number()]
 
     belongs_to :workitem, Workitem
 
-    field :occurrence, Object, codec: Codec.Occurrence
+    field :occurrence, Object, codec: Codec.Occurrence, typed: [type: Occurrence.t()]
 
     timestamps(updated_at: false)
   end

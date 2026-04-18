@@ -7,17 +7,9 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Flow do
 
   alias ColouredFlow.Definition.ColouredPetriNet
 
-  typed_structor define_struct: false, enforce: true do
-    field :id, Types.id()
-    field :name, String.t()
-    field :definition, ColouredPetriNet.t()
-
-    field :inserted_at, DateTime.t()
-  end
-
-  schema "flows" do
+  typed_schema "flows", null: false do
     field :name, :string
-    field :definition, Object, codec: Codec.ColouredPetriNet
+    field :definition, Object, codec: Codec.ColouredPetriNet, typed: [type: ColouredPetriNet.t()]
 
     timestamps(updated_at: false)
   end

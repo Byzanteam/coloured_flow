@@ -12,23 +12,12 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Workitem do
   states = ~w[enabled started completed withdrawn]a
 
   @type state() :: unquote(ColouredFlow.Types.make_sum_type(states))
-  typed_structor define_struct: false, enforce: true do
-    field :id, Types.id()
-    field :enactment_id, Types.id()
-    field :enactment, Types.association(Enactment.t())
 
-    field :state, state()
-    field :binding_element, BindingElement.t()
-
-    field :inserted_at, DateTime.t()
-    field :updated_at, DateTime.t()
-  end
-
-  schema "workitems" do
+  typed_schema "workitems", null: false do
     belongs_to :enactment, Enactment
 
-    field :state, Ecto.Enum, values: states
-    field :binding_element, Object, codec: Codec.BindingElement
+    field :state, Ecto.Enum, values: states, typed: [type: state()]
+    field :binding_element, Object, codec: Codec.BindingElement, typed: [type: BindingElement.t()]
 
     timestamps()
   end

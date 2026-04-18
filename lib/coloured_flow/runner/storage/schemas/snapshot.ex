@@ -9,24 +9,13 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Snapshot do
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Storage.Schemas.Enactment
 
-  typed_structor define_struct: false, enforce: true do
-    field :enactment_id, Types.id()
-    field :enactment, Types.association(Enactment.t())
-
-    field :version, pos_integer()
-    field :markings, [Marking.t()]
-
-    field :inserted_at, DateTime.t()
-    field :updated_at, DateTime.t()
-  end
-
   @primary_key false
 
-  schema "snapshots" do
+  typed_schema "snapshots", null: false do
     belongs_to :enactment, Enactment, primary_key: true
 
-    field :version, :integer
-    field :markings, {:array, Object}, codec: Codec.Marking
+    field :version, :integer, typed: [type: pos_integer()]
+    field :markings, {:array, Object}, codec: Codec.Marking, typed: [type: [Marking.t()]]
 
     timestamps()
   end

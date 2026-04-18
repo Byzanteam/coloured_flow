@@ -35,7 +35,7 @@ defmodule TypedStructor.Plugins.DocFields do
       end)
 
     parameters_docs =
-      if length(parameters) > 0 do
+      if parameters != [] do
         """
         ## Parameters
 
@@ -64,7 +64,7 @@ defmodule TypedStructor.Plugins.DocFields do
       end)
 
     fields_docs =
-      if length(fields) > 0 do
+      if fields != [] do
         """
         ## Fields
 

@@ -7,39 +7,34 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
 
   alias ColouredFlow.Runner.Storage.Schemas.Enactment
 
-  typed_structor define_struct: false, enforce: true do
-    field :id, Types.id()
-    field :enactment_id, Types.id()
-    field :enactment, Types.association(Enactment.t())
-
-    field :state, Enactment.state()
-
-    field :termination,
-          %{type: ColouredFlow.Runner.Termination.type(), message: String.t() | nil},
-          enforce: false
-
-    field :exception, %{type: String.t(), message: String.t(), original: String.t()},
-      enforce: false
-
-    field :inserted_at, DateTime.t()
-  end
-
-  schema "enactment_logs" do
+  typed_schema "enactment_logs", null: false do
     belongs_to :enactment, Enactment
 
-    field :state, Ecto.Enum, values: Enactment.__states__()
+    field :state, Ecto.Enum, values: Enactment.__states__(), typed: [type: Enactment.state()]
 
-    embeds_one :termination, Termination, primary_key: false, on_replace: :delete do
+    embeds_one :termination, Termination,
+      primary_key: false,
+      on_replace: :delete,
+      typed: [null: true] do
       @moduledoc false
 
-      field :type, Ecto.Enum, values: ColouredFlow.Runner.Termination.__types__()
-      field :message, :string
+      field :type, Ecto.Enum,
+        values: ColouredFlow.Runner.Termination.__types__(),
+        typed: [type: ColouredFlow.Runner.Termination.type()]
+
+      field :message, :string, typed: [null: true]
     end
 
-    embeds_one :exception, Exception, primary_key: false, on_replace: :delete do
+    embeds_one :exception, Exception,
+      primary_key: false,
+      on_replace: :delete,
+      typed: [null: true] do
       @moduledoc false
 
-      field :reason, Ecto.Enum, values: ColouredFlow.Runner.Exception.__reasons__()
+      field :reason, Ecto.Enum,
+        values: ColouredFlow.Runner.Exception.__reasons__(),
+        typed: [type: ColouredFlow.Runner.Exception.reason()]
+
       field :type, :string
       field :message, :string
       field :original, :string
