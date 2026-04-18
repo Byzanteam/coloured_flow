@@ -56,7 +56,14 @@ defmodule ColouredFlow.MixProject do
 
   defp aliases do
     [
-      check: ["format", "deps.unlock --check-unused", "credo --strict", "dialyzer"]
+      precommit: [
+        "deps.unlock --check-unused",
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict",
+        "dialyzer",
+        "test"
+      ]
     ]
   end
 
