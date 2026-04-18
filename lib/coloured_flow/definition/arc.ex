@@ -92,6 +92,10 @@ defmodule ColouredFlow.Definition.Arc do
     end
   end
 
+  def build_expression(:t_to_p, code) do
+    Expression.build(code)
+  end
+
   defp validate_p_to_t_bindings(expression, code) do
     case validate_bind_exprs(expression.expr) do
       [] -> {:error, {[], "missing `bind` in expression", code}}
@@ -104,10 +108,6 @@ defmodule ColouredFlow.Definition.Arc do
       nil -> {:ok, expression}
       {:error, reason} -> {:error, reason}
     end
-  end
-
-  def build_expression(:t_to_p, code) do
-    Expression.build(code)
   end
 
   @spec build_expression!(orientation(), code :: binary() | nil) :: Expression.t()
