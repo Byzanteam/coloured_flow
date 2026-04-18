@@ -5,10 +5,8 @@ defmodule ColouredFlow.Runner.Storage.Schemas.Schema do
     quote generated: true do
       alias ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec
       alias ColouredFlow.Runner.Storage.Schemas.JsonInstance.Object
-      alias ColouredFlow.Runner.Storage.Schemas.Types
 
-      use Ecto.Schema
-      use TypedStructor
+      use EctoTypedSchema
 
       @primary_key {:id, :binary_id, autogenerate: true}
       @foreign_key_type :binary_id

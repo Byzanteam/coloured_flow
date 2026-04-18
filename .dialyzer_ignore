@@ -1,0 +1,10 @@
+# Elixir 1.18+ marks MapSet as an opaque type. Ecto.Multi's internal :names
+# field is a MapSet, so passing a Multi anywhere surfaces :call_without_opaque
+# false positives. MapSet equality checks in our own code surface as
+# :opaque_compare. Both are upstream-level issues.
+#
+# Substrings below are matched against the formatted warning text. Remove
+# once Ecto.Multi stops exposing MapSet-typed internals or Elixir loosens
+# MapSet's opaque handling.
+lib/coloured_flow/runner/storage/default.ex
+lib/coloured_flow/validators/definition/structure_validator.ex
