@@ -88,16 +88,21 @@ defmodule ColouredFlow.Definition.Arc do
 
   def build_expression(:p_to_t, code) do
     with {:ok, expression} <- Expression.build(code) do
-      case validate_bind_exprs(expression.expr) do
-        [] ->
-          {:error, {[], "missing `bind` in expression", code}}
+      validate_p_to_t_bindings(expression, code)
+    end
+  end
 
-        validations ->
-          case Enum.find(validations, &match?({:error, _reason}, &1)) do
-            nil -> {:ok, expression}
-            {:error, reason} -> {:error, reason}
-          end
-      end
+  defp validate_p_to_t_bindings(expression, code) do
+    case validate_bind_exprs(expression.expr) do
+      [] -> {:error, {[], "missing `bind` in expression", code}}
+      validations -> first_binding_error(expression, validations)
+    end
+  end
+
+  defp first_binding_error(expression, validations) do
+    case Enum.find(validations, &match?({:error, _reason}, &1)) do
+      nil -> {:ok, expression}
+      {:error, reason} -> {:error, reason}
     end
   end
 

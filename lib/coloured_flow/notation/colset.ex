@@ -173,7 +173,7 @@ defmodule ColouredFlow.Notation.Colset do
   defp decompose_union([], acc) do
     duplicate_tags = find_duplicate_tags(acc)
 
-    if length(duplicate_tags) > 0 do
+    if duplicate_tags != [] do
       raise """
       Invalid union tags, duplicate tags found: `#{type_to_string(duplicate_tags)}`
       """

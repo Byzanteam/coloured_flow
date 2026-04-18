@@ -71,15 +71,20 @@ defmodule ColouredFlow.EnabledBindingElements.Binding do
   """
   @spec combine(bindings_list :: [[[binding()]]]) :: [[binding()]]
   def combine(bindings_list) do
-    Enum.reduce(bindings_list, [[]], fn bindings, prevs ->
-      for prev <- prevs, binding <- bindings, reduce: [] do
-        acc ->
-          case get_conflicts(prev, binding) do
-            [] -> [Keyword.merge(prev, binding) | acc]
-            _other -> acc
-          end
-      end
-    end)
+    Enum.reduce(bindings_list, [[]], &combine_step/2)
+  end
+
+  defp combine_step(bindings, prevs) do
+    for prev <- prevs, binding <- bindings, reduce: [] do
+      acc -> merge_if_compatible(acc, prev, binding)
+    end
+  end
+
+  defp merge_if_compatible(acc, prev, binding) do
+    case get_conflicts(prev, binding) do
+      [] -> [Keyword.merge(prev, binding) | acc]
+      _other -> acc
+    end
   end
 
   @doc """

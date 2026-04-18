@@ -151,7 +151,7 @@ defmodule ColouredFlow.Runner.Storage.Schemas.JsonInstance.Codec.ColourSet do
   Converts the `descr` to a JSON representation.
   """
   @spec encode_descr(ColourSet.descr()) :: map()
-  def encode_descr({primitive, _}) when primitive in @primitive_types do
+  def encode_descr({primitive, _args}) when primitive in @primitive_types do
     %{
       "type" => Atom.to_string(primitive),
       "args" => []
