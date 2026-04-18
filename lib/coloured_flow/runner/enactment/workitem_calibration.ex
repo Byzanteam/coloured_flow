@@ -172,6 +172,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   defp produce_workitems(%Enactment{} = state, workitem_occurrences, %ColouredPetriNet{} = cpnet) do
     completed_workitem_ids =
       Enum.map(workitem_occurrences, fn {workitem, _occurrence} -> workitem.id end)
+
     occurrences = Enum.map(workitem_occurrences, &elem(&1, 1))
 
     {steps, markings} =
