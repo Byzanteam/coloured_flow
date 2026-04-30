@@ -119,6 +119,72 @@ defmodule ColouredFlow.Validators.Definition.ArcValidatorTest do
              ArcValidator.validate(cpnet)
   end
 
+  test "outgoing_unbound_vars error when var is bound on a different transition" do
+    # Two transitions T1 and T2, each with their own input/output places.
+    # T1 has an incoming arc binding `x`.
+    # T2 has an outgoing arc referencing `x`, but T2's incoming arc only binds `y`.
+    # In CPN semantics, variables bind only within a single transition's firing,
+    # so T2's outgoing arc must NOT see `x` from T1.
+    cpnet = %ColouredPetriNet{
+      colour_sets: [
+        colset(int() :: integer())
+      ],
+      places: [
+        %Place{name: "p1_in", colour_set: :int},
+        %Place{name: "p1_out", colour_set: :int},
+        %Place{name: "p2_in", colour_set: :int},
+        %Place{name: "p2_out", colour_set: :int}
+      ],
+      transitions: [
+        build_transition!(name: "t1", guard: "true"),
+        build_transition!(name: "t2", guard: "true")
+      ],
+      arcs: [
+        # T1 binds `x` on its incoming arc.
+        build_arc!(
+          label: "t1-in",
+          place: "p1_in",
+          transition: "t1",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        build_arc!(
+          label: "t1-out",
+          place: "p1_out",
+          transition: "t1",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        ),
+        # T2 binds only `y` — no `x` is in scope here.
+        build_arc!(
+          label: "t2-in",
+          place: "p2_in",
+          transition: "t2",
+          orientation: :p_to_t,
+          expression: "bind {1, y}"
+        ),
+        # This outgoing arc references `x`, which was bound on a *different*
+        # transition. Pre-fix, the validator pooled bound vars across all
+        # transitions and silently accepted this; post-fix, it must reject.
+        build_arc!(
+          label: "t2-out",
+          place: "p2_out",
+          transition: "t2",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        )
+      ],
+      variables: [
+        %Variable{name: :x, colour_set: :int},
+        %Variable{name: :y, colour_set: :int}
+      ],
+      constants: []
+    }
+
+    assert {:error, %InvalidArcError{reason: :outgoing_unbound_vars}} =
+             ArcValidator.validate(cpnet)
+  end
+
   defp update_action(%ColouredPetriNet{} = cpnet, %Action{} = action) do
     put_in(
       cpnet,
