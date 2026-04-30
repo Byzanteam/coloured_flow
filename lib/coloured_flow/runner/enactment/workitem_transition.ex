@@ -80,46 +80,74 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransition do
         try do
           GenServer.call(pid, message, timeout)
         catch
-          :exit, {:noproc, _info} ->
-            {:error,
-             Exceptions.EnactmentNotRunning.exception(
-               enactment_id: enactment_id,
-               reason: :not_started
-             )}
-
-          :exit, {:timeout, _info} ->
-            {:error,
-             Exceptions.EnactmentTimeout.exception(
-               enactment_id: enactment_id,
-               timeout: timeout
-             )}
-
-          :exit, {:shutdown, _info} ->
-            {:error,
-             Exceptions.EnactmentNotRunning.exception(
-               enactment_id: enactment_id,
-               reason: :shutting_down
-             )}
-
-          :exit, {:normal, _info} ->
-            {:error,
-             Exceptions.EnactmentNotRunning.exception(
-               enactment_id: enactment_id,
-               reason: :stopped_during_call
-             )}
-
-          :exit, {:calling_self, _info} = reason ->
-            # Programming error — surface it.
-            exit(reason)
-
           :exit, reason ->
-            # Catch-all: :killed, {:nodedown, _}, or any other crash mid-call.
-            {:error,
-             Exceptions.EnactmentCallFailed.exception(
-               enactment_id: enactment_id,
-               reason: reason
-             )}
+            classify_exit(unwrap_call_reason(reason), enactment_id, timeout)
         end
     end
+  end
+
+  # `GenServer.call/3` wraps the callee's exit reason as
+  # `{reason, {GenServer, :call, [pid, message, timeout]}}` before re-exiting in
+  # the caller. Unwrap so we can classify by the underlying reason alone.
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @spec unwrap_call_reason(term()) :: term()
+  defp unwrap_call_reason({reason, {GenServer, :call, _info}}), do: reason
+  defp unwrap_call_reason(reason), do: reason
+
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @spec classify_exit(term(), enactment_id(), timeout()) ::
+          {:error, Exception.t()} | no_return()
+  defp classify_exit(:noproc, enactment_id, _timeout) do
+    {:error,
+     Exceptions.EnactmentNotRunning.exception(
+       enactment_id: enactment_id,
+       reason: :not_started
+     )}
+  end
+
+  defp classify_exit(:timeout, enactment_id, timeout) do
+    {:error,
+     Exceptions.EnactmentTimeout.exception(
+       enactment_id: enactment_id,
+       timeout: timeout
+     )}
+  end
+
+  defp classify_exit(:normal, enactment_id, _timeout) do
+    {:error,
+     Exceptions.EnactmentNotRunning.exception(
+       enactment_id: enactment_id,
+       reason: :stopped_during_call
+     )}
+  end
+
+  defp classify_exit(:shutdown, enactment_id, _timeout) do
+    {:error,
+     Exceptions.EnactmentNotRunning.exception(
+       enactment_id: enactment_id,
+       reason: :shutting_down
+     )}
+  end
+
+  defp classify_exit({:shutdown, _shutdown_reason}, enactment_id, _timeout) do
+    {:error,
+     Exceptions.EnactmentNotRunning.exception(
+       enactment_id: enactment_id,
+       reason: :shutting_down
+     )}
+  end
+
+  defp classify_exit(:calling_self, _enactment_id, _timeout) do
+    # Programming error — surface it instead of swallowing.
+    exit(:calling_self)
+  end
+
+  defp classify_exit(reason, enactment_id, _timeout) do
+    # Catch-all: `:killed`, `{:nodedown, node}`, or any other crash reason.
+    {:error,
+     Exceptions.EnactmentCallFailed.exception(
+       enactment_id: enactment_id,
+       reason: reason
+     )}
   end
 end
