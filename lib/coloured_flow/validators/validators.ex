@@ -19,17 +19,17 @@ defmodule ColouredFlow.Validators do
   def run(%ColouredPetriNet{} = cpnet) do
     # credo:disable-for-next-line Credo.Check.Refactor.RedundantWithClauseResult
     with(
-      {:ok, cpnet} <- StructureValidator.validate(cpnet),
-      {:ok, cpnet} <- UniqueNameValidator.validate(cpnet),
-      {:ok, cpnet} <- ColourSetValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- StructureValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- UniqueNameValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- ColourSetValidator.validate(cpnet),
       {:ok, constants} <- ConstantsValidator.validate(cpnet.constants, cpnet),
-      cpnet = %ColouredPetriNet{cpnet | constants: constants},
+      cpnet = %{cpnet | constants: constants},
       {:ok, variables} <- VariablesValidator.validate(cpnet.variables, cpnet),
-      cpnet = %ColouredPetriNet{cpnet | variables: variables},
-      {:ok, cpnet} <- ArcValidator.validate(cpnet),
-      {:ok, cpnet} <- GuardValidator.validate(cpnet),
-      {:ok, cpnet} <- ActionValidator.validate(cpnet),
-      {:ok, cpnet} <- TerminationCriteriaValidator.validate(cpnet)
+      cpnet = %{cpnet | variables: variables},
+      {:ok, %ColouredPetriNet{} = cpnet} <- ArcValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- GuardValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- ActionValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- TerminationCriteriaValidator.validate(cpnet)
     ) do
       {:ok, cpnet}
     end

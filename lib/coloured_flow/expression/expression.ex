@@ -54,14 +54,12 @@ defmodule ColouredFlow.Expression do
   defp analyse_node(quoted, scope)
 
   # {form, meta, args} when is_atom(form)
-  defp analyse_node({name, meta, context}, scope) when is_atom(name) and is_atom(context) do
+  defp analyse_node({name, meta, context}, %Scope{} = scope)
+       when is_atom(name) and is_atom(context) do
     if Scope.has_var?(scope.bound_vars, name) do
       scope
     else
-      %Scope{
-        scope
-        | free_vars: Scope.put_var(scope.free_vars, name, meta)
-      }
+      %{scope | free_vars: Scope.put_var(scope.free_vars, name, meta)}
     end
   end
 
@@ -69,7 +67,7 @@ defmodule ColouredFlow.Expression do
     analyse_node(left, scope)
   end
 
-  defp analyse_node({:^, _meta, args}, scope) do
+  defp analyse_node({:^, _meta, args}, %Scope{} = scope) do
     pin_scope = analyse_node(args, Scope.new(scope))
 
     pinned_vars =
@@ -77,14 +75,14 @@ defmodule ColouredFlow.Expression do
       |> Scope.merge_vars(pin_scope.pinned_vars)
       |> Scope.drop_vars(scope.bound_vars)
 
-    %Scope{scope | pinned_vars: pinned_vars}
+    %{scope | pinned_vars: pinned_vars}
   end
 
-  defp analyse_node({op, _meta, [left, right]}, scope) when op in [:=, :<-] do
+  defp analyse_node({op, _meta, [left, right]}, %Scope{} = scope) when op in [:=, :<-] do
     left_analysis = analyse_node(left, Scope.new(scope, bound_vars: scope.bound_vars))
     right_analysis = analyse_node(right, scope)
 
-    %Scope{
+    %{
       scope
       | bound_vars: Scope.merge_vars(scope.bound_vars, left_analysis.free_vars),
         free_vars: Scope.merge_vars(scope.free_vars, right_analysis.free_vars),
@@ -92,7 +90,7 @@ defmodule ColouredFlow.Expression do
     }
   end
 
-  defp analyse_node({:->, _meta, [[{:when, _when_meta, when_args}], body]}, scope) do
+  defp analyse_node({:->, _meta, [[{:when, _when_meta, when_args}], body]}, %Scope{} = scope) do
     {args, when_args} = split_last(when_args)
 
     args_analysis = analyse_node(args, Scope.new(scope, bound_vars: scope.bound_vars))
@@ -102,19 +100,19 @@ defmodule ColouredFlow.Expression do
     when_args_analysis = analyse_node(when_args, new_scope)
     final_analysis = analyse_node(body, when_args_analysis)
 
-    %Scope{
+    %{
       scope
       | free_vars: Scope.merge_vars(scope.free_vars, final_analysis.free_vars),
         pinned_vars: Scope.merge_vars(args_analysis.pinned_vars, final_analysis.pinned_vars)
     }
   end
 
-  defp analyse_node({:->, _meta, [args, body]}, scope) do
+  defp analyse_node({:->, _meta, [args, body]}, %Scope{} = scope) do
     args_analysis = analyse_node(args, Scope.new(scope, bound_vars: scope.bound_vars))
     bound_vars = Scope.merge_vars(scope.bound_vars, args_analysis.free_vars)
     body_analysis = analyse_node(body, Scope.new(scope, bound_vars: bound_vars))
 
-    %Scope{
+    %{
       scope
       | free_vars: Scope.merge_vars(scope.free_vars, body_analysis.free_vars),
         pinned_vars: Scope.merge_vars(args_analysis.pinned_vars, body_analysis.pinned_vars)
@@ -125,18 +123,18 @@ defmodule ColouredFlow.Expression do
     Enum.reduce(blocks, scope, &analyse_node/2)
   end
 
-  defp analyse_node({op, _meta, args}, scope) when op in [:fn, :try] do
+  defp analyse_node({op, _meta, args}, %Scope{} = scope) when op in [:fn, :try] do
     new_scope = Scope.new(scope, bound_vars: scope.bound_vars)
     new_scope = analyse_node(args, new_scope)
 
-    %Scope{
+    %{
       scope
       | free_vars: Scope.merge_vars(scope.free_vars, new_scope.free_vars),
         pinned_vars: Scope.merge_vars(scope.pinned_vars, new_scope.pinned_vars)
     }
   end
 
-  defp analyse_node({op, _meta, args}, scope) when op in [:for, :with] do
+  defp analyse_node({op, _meta, args}, %Scope{} = scope) when op in [:for, :with] do
     {clauses, blocks} = split_last(args)
     {do_block, blocks} = Keyword.split(blocks, [:do])
 
@@ -152,7 +150,7 @@ defmodule ColouredFlow.Expression do
         |> Scope.merge(acc)
       end)
 
-    %Scope{
+    %{
       scope
       | free_vars:
           scope.free_vars
@@ -183,11 +181,11 @@ defmodule ColouredFlow.Expression do
 
   # {left, right}
   @new_scope_ops [:do, :else, :after, :catch, :rescue]
-  defp analyse_node({op, value}, scope) when op in @new_scope_ops do
+  defp analyse_node({op, value}, %Scope{} = scope) when op in @new_scope_ops do
     new_scope = Scope.new(scope, bound_vars: scope.bound_vars)
     new_scope = analyse_node(value, new_scope)
 
-    %Scope{
+    %{
       scope
       | free_vars: Scope.merge_vars(scope.free_vars, new_scope.free_vars),
         pinned_vars: Scope.merge_vars(scope.pinned_vars, new_scope.pinned_vars)
