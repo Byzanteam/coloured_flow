@@ -11,7 +11,7 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
         metadata,
         opts
       )
-      when transition in [:start, :stop, :terminate, :exception] do
+      when transition in [:start, :stop, :terminate, :exception, :take_snapshot] do
     log(:enactment, opts, fn ->
       basic =
         case transition do
@@ -42,6 +42,12 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLogger do
               system_time: convert_system_time(measurements.system_time),
               exception_reason: metadata.exception_reason,
               error: Exception.format_banner(:error, metadata.exception)
+            }
+
+          :take_snapshot ->
+            %{
+              event: "enactment:take_snapshot",
+              system_time: convert_system_time(measurements.system_time)
             }
         end
 
