@@ -6,7 +6,7 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
   use DynamicSupervisor
 
   alias ColouredFlow.Runner.Enactment
-  alias ColouredFlow.Runner.Enactment.Registry
+  alias ColouredFlow.Runner.Enactment.WorkitemTransition
   alias ColouredFlow.Runner.Storage
 
   @typep enactment_id() :: Storage.enactment_id()
@@ -35,11 +35,16 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
 
   @doc """
   Terminate an enactment forcibly.
-  """
-  @spec terminate_enactment(enactment_id(), options :: [message: String.t()]) :: :ok
-  def terminate_enactment(enactment_id, options \\ []) do
-    enactment = Registry.via_name({:enactment, enactment_id})
 
-    GenServer.call(enactment, {:terminate, options})
+  Returns `:ok` on success, or `{:error, exception}` when the target enactment is
+  not running, the call times out, or the call exits abnormally.
+  """
+  @spec terminate_enactment(enactment_id(), options :: [message: String.t()]) ::
+          :ok | {:error, Exception.t()}
+  def terminate_enactment(enactment_id, options \\ []) do
+    case WorkitemTransition.call_enactment(enactment_id, {:terminate, options}) do
+      :ok -> :ok
+      {:error, _exception} = error -> error
+    end
   end
 end

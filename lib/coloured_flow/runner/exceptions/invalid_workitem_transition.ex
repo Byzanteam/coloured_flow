@@ -25,6 +25,7 @@ defmodule ColouredFlow.Runner.Exceptions.InvalidWorkitemTransition do
     field :enactment_id, Storage.enactment_id()
     field :state, Workitem.state()
     field :transition, transition()
+    field :error_code, atom(), default: :invalid_workitem_transition
   end
 
   @impl Exception

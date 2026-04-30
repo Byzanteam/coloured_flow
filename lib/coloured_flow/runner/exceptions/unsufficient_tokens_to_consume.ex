@@ -15,6 +15,7 @@ defmodule ColouredFlow.Runner.Exceptions.UnsufficientTokensToConsume do
     field :enactment_id, Storage.enactment_id()
     field :place, Place.name()
     field :tokens, Marking.tokens()
+    field :error_code, atom(), default: :unsufficient_tokens
   end
 
   @impl Exception

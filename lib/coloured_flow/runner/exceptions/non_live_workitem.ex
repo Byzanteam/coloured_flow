@@ -12,6 +12,7 @@ defmodule ColouredFlow.Runner.Exceptions.NonLiveWorkitem do
   typed_structor definer: :defexception, enforce: true do
     field :id, Workitem.id()
     field :enactment_id, Storage.enactment_id()
+    field :error_code, atom(), default: :non_live_workitem
   end
 
   @impl Exception
