@@ -96,6 +96,10 @@ defmodule ColouredFlow.Runner.Enactment do
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(options) do
     enactment_id = Keyword.fetch!(options, :enactment_id)
+    # Forward `$callers` from the calling process so collaborating processes
+    # (e.g., Ecto.Adapters.SQL.Sandbox-aware tests) can be tracked. See
+    # `ExUnit.Callbacks.start_supervised/2` for the recommended pattern.
+    options = Keyword.put_new(options, :"$callers", Process.get(:"$callers", []))
 
     GenServer.start_link(
       __MODULE__,
@@ -107,10 +111,13 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @impl GenServer
   def init(options) do
-    state =
-      __MODULE__
-      |> struct(options)
-      |> Map.put(:hibernate_after, Lifespan.hibernate_after_from_options(options))
+    {callers, options} = Keyword.pop(options, :"$callers", [])
+    Process.put(:"$callers", callers)
+
+    options =
+      Keyword.put(options, :hibernate_after, Lifespan.hibernate_after_from_options(options))
+
+    state = struct(__MODULE__, options)
 
     {:ok, state, {:continue, :populate_state}}
   end

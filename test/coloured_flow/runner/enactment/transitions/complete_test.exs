@@ -1,5 +1,5 @@
 defmodule ColouredFlow.Runner.Enactment.Transitions.CompleteTest do
-  use ColouredFlow.RepoCase
+  use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 
   alias ColouredFlow.Enactment.BindingElement

@@ -1,5 +1,5 @@
 defmodule ColouredFlow.Runner.Enactment.Transitions.StartTest do
-  use ColouredFlow.RepoCase
+  use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 
   alias ColouredFlow.Runner.Exceptions

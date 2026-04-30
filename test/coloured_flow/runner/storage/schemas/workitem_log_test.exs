@@ -1,5 +1,5 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.WorkitemLogTest do
-  use ColouredFlow.RepoCase
+  use ColouredFlow.RepoCase, async: true
 
   import Ecto.Query
 

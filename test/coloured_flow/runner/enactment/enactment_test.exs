@@ -1,5 +1,5 @@
 defmodule ColouredFlow.Runner.EnactmentTest do
-  use ColouredFlow.RepoCase
+  use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 
   alias ColouredFlow.Enactment.BindingElement
@@ -304,6 +304,7 @@ defmodule ColouredFlow.Runner.EnactmentTest do
 
     test "coalesces a burst of :take_snapshot messages into fewer storage writes",
          %{enactment: enactment} do
+      enactment_id = enactment.id
       [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
 
       # Wait until the boot-time snapshot from `handle_continue` has been emitted
@@ -317,8 +318,12 @@ defmodule ColouredFlow.Runner.EnactmentTest do
         :telemetry.attach(
           handler_id,
           [:coloured_flow, :runner, :enactment, :take_snapshot],
-          fn _event, _measurements, _metadata, _config ->
-            send(self_pid, :snapshot_taken)
+          fn _event, _measurements, metadata, _config ->
+            # Filter by enactment_id so concurrent async tests don't pollute
+            # this test's measurement.
+            if metadata.enactment_id == enactment_id do
+              send(self_pid, :snapshot_taken)
+            end
           end,
           nil
         )
