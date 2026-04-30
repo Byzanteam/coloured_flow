@@ -149,19 +149,32 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   defp withdraw_workitems(%Enactment{} = state, to_consume_markings) do
     place_tokens = Map.new(state.markings, fn {place, marking} -> {place, marking.tokens} end)
     place_tokens = consume_markings(to_consume_markings, place_tokens)
+    consumed_places = MapSet.new(to_consume_markings, & &1.place)
 
     {workitems, to_withdraw} =
       Map.split_with(state.workitems, fn
-        # TODO: only workitems that their input places share with the to_consume_markings should be re-check enabled
-        # only enabled workitems should be re-check enabled
+        # only enabled workitems should be re-checked for enablement, and only
+        # those whose input places overlap with the consumed places — others
+        # cannot have changed enablement since their tokens are untouched.
         {_workitem_id, %Workitem{state: :enabled} = workitem} ->
-          binding_element_enabled?(workitem.binding_element, place_tokens)
+          if disjoint_input_places?(workitem.binding_element, consumed_places) do
+            true
+          else
+            binding_element_enabled?(workitem.binding_element, place_tokens)
+          end
 
         _other ->
           true
       end)
 
     {%Enactment{state | workitems: workitems}, Map.values(to_withdraw)}
+  end
+
+  @spec disjoint_input_places?(BindingElement.t(), MapSet.t(Place.name())) :: boolean()
+  defp disjoint_input_places?(%BindingElement{} = binding_element, consumed_places) do
+    Enum.all?(binding_element.to_consume, fn %Marking{place: place} ->
+      not MapSet.member?(consumed_places, place)
+    end)
   end
 
   @spec produce_workitems(
