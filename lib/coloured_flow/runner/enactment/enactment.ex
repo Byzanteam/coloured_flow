@@ -77,11 +77,18 @@ defmodule ColouredFlow.Runner.Enactment do
     field :timeout, timeout(),
       enforce: false,
       doc: "The enactment timeout; see `ColouredFlow.Runner.Enactment.Lifespan` for details."
+
+    field :hibernate_after, timeout(),
+      enforce: false,
+      doc:
+        "The idle duration after which the GenServer hibernates; " <>
+          "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
   end
 
   @type option() ::
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
+          | {:hibernate_after, timeout()}
 
   @type options() :: [option()]
 
@@ -92,13 +99,17 @@ defmodule ColouredFlow.Runner.Enactment do
     GenServer.start_link(
       __MODULE__,
       options,
-      name: Registry.via_name({:enactment, enactment_id})
+      name: Registry.via_name({:enactment, enactment_id}),
+      hibernate_after: Lifespan.hibernate_after_from_options(options)
     )
   end
 
   @impl GenServer
   def init(options) do
-    state = struct(__MODULE__, options)
+    state =
+      __MODULE__
+      |> struct(options)
+      |> Map.put(:hibernate_after, Lifespan.hibernate_after_from_options(options))
 
     {:ok, state, {:continue, :populate_state}}
   end
