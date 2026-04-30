@@ -171,12 +171,12 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
-  defp catchup_snapshot(enactment_id, snapshot) do
+  defp catchup_snapshot(enactment_id, %Snapshot{} = snapshot) do
     occurrences = Storage.occurrences_stream(enactment_id, snapshot.version)
 
     {steps, markings} = CatchingUp.apply(snapshot.markings, occurrences)
 
-    %Snapshot{snapshot | version: snapshot.version + steps, markings: markings}
+    %{snapshot | version: snapshot.version + steps, markings: markings}
   end
 
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
@@ -189,7 +189,9 @@ defmodule ColouredFlow.Runner.Enactment do
       fn ->
         # the workitems from calibration.to_withdraw are not in `withdrawn` state
         grouped_wokitems =
-          Enum.group_by(calibration.to_withdraw, & &1.state, &%Workitem{&1 | state: :withdrawn})
+          Enum.group_by(calibration.to_withdraw, & &1.state, fn %Workitem{} = workitem ->
+            %{workitem | state: :withdrawn}
+          end)
 
         workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
 
@@ -442,7 +444,10 @@ defmodule ColouredFlow.Runner.Enactment do
       # after each `start_workitems` step by `calibrate_workitems`.
       {:ok, _markings} <- WorkitemConsumption.consume_tokens(state.markings, binding_elements)
     ) do
-      started_workitems = Enum.map(enabled_workitems, &%Workitem{&1 | state: :started})
+      started_workitems =
+        Enum.map(enabled_workitems, fn %Workitem{} = workitem ->
+          %{workitem | state: :started}
+        end)
 
       new_state = %__MODULE__{
         state
