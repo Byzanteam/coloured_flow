@@ -426,6 +426,72 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
       assert expected_state === calibration.state
       assert [aj_workitem_2] === calibration.to_withdraw
     end
+
+    # ```mermaid
+    # flowchart LR
+    #   %% colset int() :: integer()
+    #   %% place_1 ~MS[1], place_2 ~MS[1]
+    #   p1((place_1))
+    #   p2((place_2))
+    #   o1((output_1))
+    #   o2((output_2))
+    #   pt1[pass_through_1]
+    #   pt2[pass_through_2]
+    #   p1 --{1,x}--> pt1 --> o1
+    #   p2 --{1,x}--> pt2 --> o2
+    # ```
+    test "keeps enabled workitems whose input places are disjoint from the started workitem's input places" do
+      enactment_id = Ecto.UUID.generate()
+
+      pt1_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :enabled,
+        binding_element: %BindingElement{
+          transition: "pass_through_1",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "place_1", tokens: ~MS[1]}]
+        }
+      }
+
+      pt2_workitem = %Enactment.Workitem{
+        id: Ecto.UUID.generate(),
+        state: :enabled,
+        binding_element: %BindingElement{
+          transition: "pass_through_2",
+          binding: [x: 1],
+          to_consume: [%Marking{place: "place_2", tokens: ~MS[1]}]
+        }
+      }
+
+      state = %Enactment{
+        enactment_id: enactment_id,
+        version: 0,
+        markings:
+          to_map([
+            %Marking{place: "place_1", tokens: ~MS[1]},
+            %Marking{place: "place_2", tokens: ~MS[1]}
+          ]),
+        workitems:
+          to_map([
+            %Enactment.Workitem{pt1_workitem | state: :started},
+            pt2_workitem
+          ])
+      }
+
+      expected_state = %Enactment{
+        state
+        | workitems:
+            to_map([
+              %Enactment.Workitem{pt1_workitem | state: :started},
+              pt2_workitem
+            ])
+      }
+
+      calibration = WorkitemCalibration.calibrate(state, :start, workitems: [pt1_workitem])
+
+      assert expected_state === calibration.state
+      assert [] === calibration.to_withdraw
+    end
   end
 
   describe "calibrate after completed" do
