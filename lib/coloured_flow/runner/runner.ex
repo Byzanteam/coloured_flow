@@ -5,19 +5,18 @@ defmodule ColouredFlow.Runner do
   ## API contract
 
   All public functions in this module return either an `:ok` shape or an
-  `{:error, exception}` tuple where `exception` is a typed runner
-  exception (see `ColouredFlow.Runner.Errors` for classification).
-  Callers never have to handle raw process-exit signals — the runtime
-  translates `GenServer.call/3` exits (`:noproc`, `:timeout`,
-  `:shutdown`, `:nodedown`, …) into `EnactmentNotRunning`,
+  `{:error, exception}` tuple where `exception` is a typed runner exception (see
+  `ColouredFlow.Runner.Errors` for classification). Callers never have to handle
+  raw process-exit signals — the runtime translates `GenServer.call/3` exits
+  (`:noproc`, `:timeout`, `:shutdown`, `:nodedown`, …) into `EnactmentNotRunning`,
   `EnactmentTimeout`, or `EnactmentCallFailed`.
 
   ### Breaking change history
 
-  - `terminate_enactment/2` previously returned `:ok` and raised on a
-    storage failure. It now returns `:ok | {:error, Exception.t()}`,
-    matching the rest of the API. Callers that previously pattern-matched
-    on a bare `:ok` should switch to `case`/`with`.
+  - `terminate_enactment/2` previously returned `:ok` and raised on a storage
+    failure. It now returns `:ok | {:error, Exception.t()}`, matching the rest of
+    the API. Callers that previously pattern-matched on a bare `:ok` should switch
+    to `case`/`with`.
   """
 
   alias ColouredFlow.Runner.Enactment.Supervisor, as: EnactmentSupervisor
@@ -29,9 +28,9 @@ defmodule ColouredFlow.Runner do
   @doc """
   Forcibly terminate the enactment with the given id.
 
-  Returns `:ok` on success. Returns `{:error, exception}` if the
-  enactment is not running, the call times out, or the persistence
-  layer fails to record the termination.
+  Returns `:ok` on success. Returns `{:error, exception}` if the enactment is not
+  running, the call times out, or the persistence layer fails to record the
+  termination.
   """
   @spec terminate_enactment(
           ColouredFlow.Runner.Storage.enactment_id(),
