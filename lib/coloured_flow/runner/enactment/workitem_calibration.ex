@@ -157,11 +157,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
         # those whose input places overlap with the consumed places — others
         # cannot have changed enablement since their tokens are untouched.
         {_workitem_id, %Workitem{state: :enabled} = workitem} ->
-          if disjoint_input_places?(workitem.binding_element, consumed_places) do
-            true
-          else
+          disjoint_input_places?(workitem.binding_element, consumed_places) or
             binding_element_enabled?(workitem.binding_element, place_tokens)
-          end
 
         _other ->
           true
