@@ -52,6 +52,7 @@ defmodule ColouredFlow.MixProject do
          runtime: false
        ]},
       {:kino, "~> 0.14.1", only: [:dev, :test]},
+      {:mimic, "~> 1.7", only: :test},
       {:postgrex, ">= 0.0.0"},
       {:telemetry, "~> 1.0"},
       {:typed_structor, "~> 0.6", override: true}
