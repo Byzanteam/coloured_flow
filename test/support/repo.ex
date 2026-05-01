@@ -9,7 +9,8 @@ defmodule ColouredFlow.TestRepo do
       __MODULE__,
       [
         {0, ColouredFlow.Runner.Migrations.V0},
-        {1, ColouredFlow.Runner.Migrations.V1}
+        {1, ColouredFlow.Runner.Migrations.V1},
+        {2, ColouredFlow.Runner.Migrations.V2}
       ],
       :up,
       all: true
