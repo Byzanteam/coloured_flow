@@ -11,6 +11,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
 
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Enactment.WorkitemCompletion
+  alias ColouredFlow.Runner.RuntimeCpnet
 
   import ColouredFlow.MultiSet
 
@@ -22,7 +23,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
     test "empty workitem_and_outputs", %{cpnet: cpnet} do
       workitem_and_outputs = []
 
-      assert {:ok, []} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+      assert {:ok, []} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "completes a single workitem", %{cpnet: cpnet} do
@@ -45,7 +50,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                     to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 }
-              ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+              ]} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "completes multiple workitems", %{cpnet: cpnet} do
@@ -83,7 +92,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                     to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 }
-              ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+              ]} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "returns occur's errors", %{cpnet: cpnet} do
@@ -99,7 +112,10 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
       workitem_and_outputs = [{workitem, []}]
 
       assert {:error, %ArithmeticError{message: "bad argument in arithmetic expression"}} ===
-               WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
   end
 
@@ -133,7 +149,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
     test "empty workitem_and_outputs", %{cpnet: cpnet} do
       workitem_and_outputs = []
 
-      assert {:ok, []} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+      assert {:ok, []} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "completes a single workitem", %{cpnet: cpnet} do
@@ -156,7 +176,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                     to_produce: [%Marking{place: "output", tokens: ~MS[1]}]
                   }
                 }
-              ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+              ]} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "completes multiple workitems", %{cpnet: cpnet} do
@@ -194,7 +218,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                     to_produce: [%Marking{place: "output", tokens: ~MS[3]}]
                   }
                 }
-              ]} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+              ]} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "returns unbound_action_output", %{cpnet: cpnet} do
@@ -211,7 +239,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
               %ColouredFlow.Runner.Exceptions.UnboundActionOutput{
                 transition: "pass_through",
                 output: :y
-              }} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+              }} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "returns colour_set_mismatch", %{cpnet: cpnet} do
@@ -228,7 +260,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
               %ColourSet.ColourSetMismatch{
                 colour_set: %ColourSet{name: :int, type: {:integer, []}},
                 value: "a"
-              }} === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+              }} ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
 
     test "returns occur's errors", %{cpnet: cpnet} do
@@ -249,7 +285,11 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCompletionTest do
                  colour_set: %ColourSet{name: :int, type: {:integer, []}},
                  value: "a"
                }
-             } === WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+             } ===
+               WorkitemCompletion.complete(
+                 workitem_and_outputs,
+                 RuntimeCpnet.from_definition(cpnet)
+               )
     end
   end
 

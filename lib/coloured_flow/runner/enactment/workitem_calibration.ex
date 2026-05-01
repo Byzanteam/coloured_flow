@@ -11,7 +11,6 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   alias ColouredFlow.MultiSet
 
-  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
@@ -24,6 +23,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.Workitem
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
+  alias ColouredFlow.Runner.RuntimeCpnet
 
   @typep enactment_state() :: Enactment.state()
 
@@ -36,12 +36,12 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   @doc """
   Initial calibration on the enactment started just now.
   """
-  @spec initial_calibrate(enactment_state(), ColouredPetriNet.t()) :: t()
-  def initial_calibrate(%Enactment{} = state, %ColouredPetriNet{} = cpnet) do
+  @spec initial_calibrate(enactment_state(), RuntimeCpnet.t()) :: t()
+  def initial_calibrate(%Enactment{} = state, %RuntimeCpnet{} = runtime_cpnet) do
     binding_elements =
-      cpnet.transitions
+      runtime_cpnet.definition.transitions
       |> Enum.flat_map(fn transition ->
-        Computation.list(transition, cpnet, state.markings)
+        Computation.list(transition, runtime_cpnet, state.markings)
       end)
       |> MultiSet.new()
 
@@ -89,23 +89,23 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   ## `complete` transition options
 
-  - `cpnet`: The coloured petri net.
+  - `runtime_cpnet`: The runtime view over the coloured petri net.
   - `workitem_occurrences`: The workitem and occurrence pairs that are appened
     after the `complete` transition.
 
   ## `complete_e` transition options
 
-  - `cpnet`: The coloured petri net.
+  - `runtime_cpnet`: The runtime view over the coloured petri net.
   - `workitem_occurrences`: The workitem and occurrence pairs that are appened
     after the `complete_e` transition.
   """
   @spec calibrate(enactment_state(), :start, workitems: [Workitem.t(:started)]) :: t()
   @spec calibrate(enactment_state(), :complete,
-          cpnet: ColouredPetriNet.t(),
+          runtime_cpnet: RuntimeCpnet.t(),
           workitem_occurrences: [{Workitem.t(:completed), Occurrence.t()}]
         ) :: t()
   @spec calibrate(enactment_state(), :complete_e,
-          cpnet: ColouredPetriNet.t(),
+          runtime_cpnet: RuntimeCpnet.t(),
           workitem_occurrences: [{Workitem.t(:completed), Occurrence.t()}]
         ) :: t()
   def calibrate(state, transition, options)
@@ -121,16 +121,16 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
 
   def calibrate(%Enactment{} = state, :complete, options)
       when is_list(options) do
-    cpnet = Keyword.fetch!(options, :cpnet)
+    runtime_cpnet = Keyword.fetch!(options, :runtime_cpnet)
     workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
 
-    {state, to_produce} = produce_workitems(state, workitem_occurrences, cpnet)
+    {state, to_produce} = produce_workitems(state, workitem_occurrences, runtime_cpnet)
     struct!(__MODULE__, state: state, to_produce: to_produce)
   end
 
   def calibrate(%Enactment{} = state, :complete_e, options)
       when is_list(options) do
-    cpnet = Keyword.fetch!(options, :cpnet)
+    runtime_cpnet = Keyword.fetch!(options, :runtime_cpnet)
     workitem_occurrences = Keyword.fetch!(options, :workitem_occurrences)
 
     to_consume_markings =
@@ -139,7 +139,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
       end)
 
     {state, to_withdraw} = withdraw_workitems(state, to_consume_markings)
-    {state, to_produce} = produce_workitems(state, workitem_occurrences, cpnet)
+    {state, to_produce} = produce_workitems(state, workitem_occurrences, runtime_cpnet)
 
     struct!(__MODULE__, state: state, to_withdraw: to_withdraw, to_produce: to_produce)
   end
@@ -177,9 +177,13 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
   @spec produce_workitems(
           enactment_state(),
           workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
-          ColouredPetriNet.t()
+          RuntimeCpnet.t()
         ) :: {enactment_state(), MultiSet.t(BindingElement.t())}
-  defp produce_workitems(%Enactment{} = state, workitem_occurrences, %ColouredPetriNet{} = cpnet) do
+  defp produce_workitems(
+         %Enactment{} = state,
+         workitem_occurrences,
+         %RuntimeCpnet{} = runtime_cpnet
+       ) do
     completed_workitem_ids =
       Enum.map(workitem_occurrences, fn {workitem, _occurrence} -> workitem.id end)
 
@@ -208,9 +212,9 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibration do
         end
         |> Stream.concat(Stream.map(occurrence.to_produce, & &1.place))
       end)
-      |> Utils.list_transitions(cpnet)
+      |> Utils.list_transitions(runtime_cpnet)
       |> Enum.flat_map(fn transition ->
-        Computation.list(transition, cpnet, available_markings)
+        Computation.list(transition, runtime_cpnet, available_markings)
       end)
       |> MultiSet.new()
 

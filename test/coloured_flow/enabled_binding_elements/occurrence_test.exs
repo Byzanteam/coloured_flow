@@ -5,6 +5,7 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
   alias ColouredFlow.EnabledBindingElements.Occurrence
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
+  alias ColouredFlow.Runner.RuntimeCpnet
 
   import ColouredFlow.MultiSet
   import ColouredFlow.Notation.Colset
@@ -58,7 +59,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:ok, occurrence} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [] === occurrence.free_binding
       assert [%Marking{place: "even", tokens: ~MS[1**2]}] === occurrence.to_produce
@@ -121,7 +123,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:ok, occurrence} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [] === occurrence.free_binding
       assert [%Marking{place: "unit", tokens: ~MS[1**{}]}] === occurrence.to_produce
@@ -185,7 +188,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:ok, occurrence} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [] === occurrence.free_binding
 
@@ -278,7 +282,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = [quotient: 2, modulo: 1]
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:ok, occurrence} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [modulo: 1, quotient: 2] === sort_binding(occurrence.free_binding)
 
@@ -338,7 +343,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = []
 
-      {:error, exceptions} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:error, exceptions} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [%ArithmeticError{}] = exceptions
     end
@@ -390,7 +396,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = []
 
-      {:error, exceptions} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:error, exceptions} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [
                %ColouredFlow.Definition.ColourSet.ColourSetMismatch{
@@ -452,7 +459,8 @@ defmodule ColouredFlow.EnabledBindingElements.OccurrenceTest do
 
       free_binding = []
 
-      {:ok, occurrence} = Occurrence.occur(binding_element, free_binding, cpnet)
+      {:ok, occurrence} =
+        Occurrence.occur(binding_element, free_binding, RuntimeCpnet.from_definition(cpnet))
 
       assert [] === occurrence.free_binding
       assert [%Marking{place: "even", tokens: ~MS[5**2]}] === occurrence.to_produce

@@ -50,6 +50,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.WorkitemCompletion
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
   alias ColouredFlow.Runner.Exceptions
+  alias ColouredFlow.Runner.RuntimeCpnet
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Telemetry
 
@@ -150,12 +151,12 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def handle_continue(:calibrate_workitems, %__MODULE__{} = state) do
-    cpnet = Storage.get_flow_by_enactment(state.enactment_id)
-    calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+    runtime_cpnet = build_runtime_cpnet(state.enactment_id)
+    calibration = WorkitemCalibration.initial_calibrate(state, runtime_cpnet)
     state = apply_calibration(calibration)
 
     # try to terminate at the start
-    case check_termination(state, cpnet) do
+    case check_termination(state, runtime_cpnet.definition) do
       {:stop, reason} -> {:stop, {:shutdown, reason}, state}
       :cont -> {:noreply, state, Lifespan.timeout(state)}
     end
@@ -170,8 +171,11 @@ defmodule ColouredFlow.Runner.Enactment do
     state = apply_calibration(calibration)
 
     if transition in [:complete, :complete_e] do
-      cpnet = Storage.get_flow_by_enactment(state.enactment_id)
-      # try to terminate when the transition is `:complete` or `:complete_e`
+      # try to terminate when the transition is `:complete` or `:complete_e`.
+      # `complete_workitems/3` always threads the runtime cpnet through the
+      # calibration options, so we reuse it here instead of re-fetching.
+      %RuntimeCpnet{definition: cpnet} = Keyword.fetch!(options, :runtime_cpnet)
+
       case check_termination(state, cpnet) do
         {:stop, reason} -> {:stop, {:shutdown, reason}, state}
         :cont -> {:noreply, state, Lifespan.timeout(state)}
@@ -497,10 +501,14 @@ defmodule ColouredFlow.Runner.Enactment do
         Enum.map(workitem_id_and_outputs, fn {workitem_id, free_binding} ->
           {Map.fetch!(started_workitems, workitem_id), free_binding}
         end),
-      cpnet = Storage.get_flow_by_enactment(state.enactment_id),
-      {:ok, workitem_occurrences} <- WorkitemCompletion.complete(workitem_and_outputs, cpnet)
+      runtime_cpnet = build_runtime_cpnet(state.enactment_id),
+      {:ok, workitem_occurrences} <-
+        WorkitemCompletion.complete(workitem_and_outputs, runtime_cpnet)
     ) do
-      calibration_options = [cpnet: cpnet, workitem_occurrences: workitem_occurrences]
+      calibration_options = [
+        runtime_cpnet: runtime_cpnet,
+        workitem_occurrences: workitem_occurrences
+      ]
 
       {
         :ok,
@@ -514,6 +522,13 @@ defmodule ColouredFlow.Runner.Enactment do
       {:error, exception} when is_exception(exception) ->
         {:error, exception}
     end
+  end
+
+  @spec build_runtime_cpnet(enactment_id()) :: RuntimeCpnet.t()
+  defp build_runtime_cpnet(enactment_id) do
+    enactment_id
+    |> Storage.get_flow_by_enactment()
+    |> RuntimeCpnet.from_definition()
   end
 
   @impl GenServer

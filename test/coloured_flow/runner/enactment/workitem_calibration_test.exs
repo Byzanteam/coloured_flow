@@ -7,6 +7,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
   alias ColouredFlow.Runner.Enactment
 
   alias ColouredFlow.Runner.Enactment.WorkitemCalibration
+  alias ColouredFlow.Runner.RuntimeCpnet
 
   alias ColouredFlow.MultiSet
   import ColouredFlow.MultiSet
@@ -19,7 +20,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         enactment_id: Ecto.UUID.generate()
       }
 
-      calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+      calibration =
+        WorkitemCalibration.initial_calibrate(state, RuntimeCpnet.from_definition(cpnet))
 
       assert state === calibration.state
       assert [] === calibration.to_withdraw
@@ -34,7 +36,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         markings: to_map([%Marking{place: "input", tokens: ~MS[2**1]}])
       }
 
-      calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+      calibration =
+        WorkitemCalibration.initial_calibrate(state, RuntimeCpnet.from_definition(cpnet))
 
       assert state === calibration.state
       assert [] === calibration.to_withdraw
@@ -68,7 +71,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
           ])
       }
 
-      calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+      calibration =
+        WorkitemCalibration.initial_calibrate(state, RuntimeCpnet.from_definition(cpnet))
 
       assert state === calibration.state
       assert [] === calibration.to_withdraw
@@ -101,7 +105,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         workitems: to_map([workitem])
       }
 
-      calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+      calibration =
+        WorkitemCalibration.initial_calibrate(state, RuntimeCpnet.from_definition(cpnet))
 
       assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
@@ -128,7 +133,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         workitems: to_map([workitem])
       }
 
-      calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+      calibration =
+        WorkitemCalibration.initial_calibrate(state, RuntimeCpnet.from_definition(cpnet))
 
       assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
@@ -169,7 +175,8 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
         workitems: to_map([workitem])
       }
 
-      calibration = WorkitemCalibration.initial_calibrate(state, cpnet)
+      calibration =
+        WorkitemCalibration.initial_calibrate(state, RuntimeCpnet.from_definition(cpnet))
 
       assert %{state | workitems: %{}} === calibration.state
       assert [workitem] === calibration.to_withdraw
@@ -533,7 +540,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{b2_workitem, occurrence}]
         )
 
@@ -595,7 +602,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{pt_workitem, occurrence}]
         )
 
@@ -658,7 +665,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{b1_workitem, occurrence}]
         )
 
@@ -716,7 +723,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [
             {b1_workitem_1, b1_occurrence_1},
             {b1_workitem_2, b1_occurrence_2}
@@ -772,7 +779,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{b1_workitem, b1_occurrence}]
         )
 
@@ -821,7 +828,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{pt_workitem, pt_occurrence}]
         )
 
@@ -882,7 +889,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{ps_workitem, ps_occurrence}]
         )
 
@@ -939,7 +946,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: [{pt_workitem, occurrence}]
         )
 
@@ -1080,7 +1087,7 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemCalibrationTest do
 
       calibration =
         WorkitemCalibration.calibrate(state, :complete_e,
-          cpnet: cpnet,
+          runtime_cpnet: RuntimeCpnet.from_definition(cpnet),
           workitem_occurrences: workitem_occurrences
         )
 

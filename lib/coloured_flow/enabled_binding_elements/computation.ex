@@ -5,7 +5,6 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
 
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColourSet
-  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Expression
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Transition
@@ -13,6 +12,7 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
+  alias ColouredFlow.Runner.RuntimeCpnet
 
   import ColouredFlow.EnabledBindingElements.Utils
 
@@ -22,12 +22,12 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
   """
   @spec list(
           transition :: Transition.t(),
-          cpnet :: ColouredPetriNet.t(),
+          runtime_cpnet :: RuntimeCpnet.t(),
           markings :: %{Place.name() => Marking.t()}
         ) :: [BindingElement.t()]
-  def list(transition, cpnet, markings) do
-    inputs = get_arcs_with_place(transition, :p_to_t, cpnet)
-    constants = build_constants(cpnet)
+  def list(transition, %RuntimeCpnet{} = runtime_cpnet, markings) do
+    inputs = get_arcs_with_place(transition, :p_to_t, runtime_cpnet)
+    constants = runtime_cpnet.constants
 
     arc_bindings =
       inputs
@@ -46,35 +46,35 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
           Binding.match_bag(marking.tokens, arc_bind_expr)
         end)
       end)
-      |> reject_invalid_bandings(cpnet)
+      |> reject_invalid_bandings(runtime_cpnet)
 
     binding_combinations = Binding.combine(arc_bindings)
 
     Enum.flat_map(binding_combinations, fn binding ->
-      build_binding_element(inputs, binding, transition, constants, markings, cpnet)
+      build_binding_element(inputs, binding, transition, constants, markings, runtime_cpnet)
     end)
   end
 
-  defp build_binding_element(inputs, binding, transition, constants, markings, cpnet) do
-    case collect_consumption(inputs, binding, transition, constants, markings, cpnet) do
+  defp build_binding_element(inputs, binding, transition, constants, markings, runtime_cpnet) do
+    case collect_consumption(inputs, binding, transition, constants, markings, runtime_cpnet) do
       :error -> []
       to_consume -> [BindingElement.new(transition.name, binding, to_consume)]
     end
   end
 
-  defp collect_consumption(inputs, binding, transition, constants, markings, cpnet) do
+  defp collect_consumption(inputs, binding, transition, constants, markings, runtime_cpnet) do
     Enum.reduce_while(inputs, [], fn {arc, place}, acc ->
-      try_consume(arc, place, binding, transition, constants, markings, cpnet, acc)
+      try_consume(arc, place, binding, transition, constants, markings, runtime_cpnet, acc)
     end)
   end
 
-  defp try_consume(arc, place, binding, transition, constants, markings, cpnet, acc) do
+  defp try_consume(arc, place, binding, transition, constants, markings, runtime_cpnet, acc) do
     arc_binding = merge_constants(binding, arc, constants)
 
     with(
       {:ok, {coefficient, value}} <- eval_arc(arc, arc_binding),
-      colour_set = fetch_colour_set!(place.colour_set, cpnet),
-      of_type_context = build_of_type_context(cpnet),
+      colour_set = fetch_colour_set!(place.colour_set, runtime_cpnet),
+      of_type_context = runtime_cpnet.of_type_context,
       {:ok, ^value} <- ColourSet.Of.of_type(value, colour_set.type, of_type_context),
       guard_binding = merge_constants(binding, transition, constants),
       {:ok, true} <- eval_transition_guard(transition, guard_binding),
@@ -88,14 +88,14 @@ defmodule ColouredFlow.EnabledBindingElements.Computation do
     end
   end
 
-  @spec reject_invalid_bandings([[[BindingElement.binding()]]], ColouredPetriNet.t()) ::
+  @spec reject_invalid_bandings([[[BindingElement.binding()]]], RuntimeCpnet.t()) ::
           [[[BindingElement.binding()]]]
-  defp reject_invalid_bandings(bindings_list, cpnet) do
-    of_type_context = build_of_type_context(cpnet)
+  defp reject_invalid_bandings(bindings_list, %RuntimeCpnet{} = runtime_cpnet) do
+    of_type_context = runtime_cpnet.of_type_context
 
     valid_binding? = fn binding ->
       Enum.all?(binding, fn {name, value} ->
-        variable = fetch_variable!(name, cpnet)
+        variable = fetch_variable!(name, runtime_cpnet)
 
         match?(
           {:ok, _value},

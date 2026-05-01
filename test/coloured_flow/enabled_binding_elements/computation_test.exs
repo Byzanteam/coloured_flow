@@ -7,6 +7,7 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   alias ColouredFlow.MultiSet
 
   alias ColouredFlow.EnabledBindingElements.Computation
+  alias ColouredFlow.Runner.RuntimeCpnet
 
   import ColouredFlow.Notation.Colset
   import ColouredFlow.MultiSet
@@ -1014,10 +1015,11 @@ defmodule ColouredFlow.EnabledBindingElements.ComputationTest do
   end
 
   defp list_bindings(transition, cpnet, markings) do
+    runtime_cpnet = RuntimeCpnet.from_definition(cpnet)
     markings = Map.new(markings, &{&1.place, &1})
 
     transition
-    |> Computation.list(cpnet, markings)
+    |> Computation.list(runtime_cpnet, markings)
     |> Enum.map(fn binding_element ->
       binding = List.keysort(binding_element.binding, 0)
       to_consume = Enum.sort_by(binding_element.to_consume, & &1.place)
