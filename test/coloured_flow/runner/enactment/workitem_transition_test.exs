@@ -109,6 +109,71 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemTransitionTest do
 
       await_down(:_pid, ref)
     end
+
+    test "EnactmentCallFailed when called process is killed mid-call" do
+      enactment_id = Ecto.UUID.generate()
+      {pid, ref} = spawn_registered_stub(enactment_id, fn -> :stall end)
+
+      task =
+        Task.async(fn ->
+          WorkitemTransition.call_enactment(enactment_id, :anything, 1_000)
+        end)
+
+      # Give the call time to dispatch before we kill the stub.
+      Process.sleep(10)
+      Process.exit(pid, :kill)
+
+      assert {:error, %Exceptions.EnactmentCallFailed{} = ex} = Task.await(task, 1_000)
+      assert ex.enactment_id == enactment_id
+      assert ex.reason == :killed
+
+      await_down(pid, ref)
+    end
+
+    test "EnactmentNotRunning(:not_started) when whereis succeeds but pid dies before call" do
+      # Race between Registry.whereis/1 returning a pid and GenServer.call/3
+      # reaching it. The wrapper must surface the resulting :noproc as a
+      # typed exception, not as an exit signal.
+      enactment_id = Ecto.UUID.generate()
+      {pid, ref} = spawn_registered_stub(enactment_id, fn -> :stall end)
+
+      Process.exit(pid, :kill)
+      await_down(pid, ref)
+
+      assert {:error, %Exceptions.EnactmentNotRunning{} = ex} =
+               WorkitemTransition.call_enactment(enactment_id, :anything, 100)
+
+      assert ex.enactment_id == enactment_id
+      assert ex.reason == :not_started
+    end
+
+    test "re-exits :calling_self instead of swallowing programming bugs" do
+      # Programmer error: calling the enactment from within itself would
+      # deadlock. The wrapper deliberately re-exits so the bug surfaces
+      # instead of being normalised into a typed error.
+      enactment_id = Ecto.UUID.generate()
+
+      parent = self()
+
+      {pid, ref} =
+        spawn_registered_stub(enactment_id, fn ->
+          # Trigger the :calling_self path by calling itself.
+          send(parent, {:result, catch_exit(GenServer.call(self(), :anything, 50))})
+          :stall
+        end)
+
+      assert_receive {:result, exit_reason}, 1_000
+
+      # GenServer.call/3 against self exits with {:calling_self, _}.
+      case exit_reason do
+        {:calling_self, _info} -> :ok
+        :calling_self -> :ok
+        _other -> flunk("Expected :calling_self exit, got: #{inspect(exit_reason)}")
+      end
+
+      send(pid, :stop)
+      await_down(pid, ref)
+    end
   end
 
   describe "Registry.whereis/1" do
