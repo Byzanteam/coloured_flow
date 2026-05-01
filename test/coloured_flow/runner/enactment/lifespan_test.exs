@@ -63,26 +63,28 @@ defmodule ColouredFlow.Runner.Enactment.LifespanTest do
   end
 
   describe "hibernate_after resolution" do
+    use Mimic
+
     test "hibernate_after_from_options prefers explicit option" do
-      put_app_env(:hibernate_after, 7_000)
+      expect_enactment_env(hibernate_after: 7_000)
 
       assert Lifespan.hibernate_after_from_options(hibernate_after: 42) === 42
     end
 
     test "hibernate_after_from_options falls back to application env" do
-      put_app_env(:hibernate_after, 7_000)
+      expect_enactment_env(hibernate_after: 7_000)
 
       assert Lifespan.hibernate_after_from_options([]) === 7_000
     end
 
     test "hibernate_after_from_options falls back to the built-in default" do
-      delete_app_env_key(:hibernate_after)
+      expect_enactment_env([])
 
       assert Lifespan.hibernate_after_from_options([]) === 15_000
     end
 
     test "hibernate_after/1 prefers per-state value" do
-      put_app_env(:hibernate_after, 7_000)
+      expect_enactment_env(hibernate_after: 7_000)
 
       state = %Enactment{enactment_id: "irrelevant", hibernate_after: 42}
 
@@ -90,7 +92,7 @@ defmodule ColouredFlow.Runner.Enactment.LifespanTest do
     end
 
     test "hibernate_after/1 falls back to application env when state value is nil" do
-      put_app_env(:hibernate_after, 7_000)
+      expect_enactment_env(hibernate_after: 7_000)
 
       state = %Enactment{enactment_id: "irrelevant"}
 
@@ -134,48 +136,13 @@ defmodule ColouredFlow.Runner.Enactment.LifespanTest do
     end
   end
 
-  defp put_app_env(key, value) do
-    snapshot_app_env()
-
-    previous = Application.get_env(:coloured_flow, ColouredFlow.Runner.Enactment, [])
-
-    Application.put_env(
-      :coloured_flow,
-      ColouredFlow.Runner.Enactment,
-      Keyword.put(previous, key, value)
-    )
-  end
-
-  defp delete_app_env_key(key) do
-    snapshot_app_env()
-
-    current = Application.get_env(:coloured_flow, ColouredFlow.Runner.Enactment, [])
-
-    Application.put_env(
-      :coloured_flow,
-      ColouredFlow.Runner.Enactment,
-      Keyword.delete(current, key)
-    )
-  end
-
-  # Snapshot the full app-env entry once per test and restore it on exit, so
-  # later tests see the env as the test started.
-  defp snapshot_app_env do
-    if Process.get(:lifespan_test_app_env_snapshotted) do
-      :ok
-    else
-      Process.put(:lifespan_test_app_env_snapshotted, true)
-
-      previous = Application.fetch_env(:coloured_flow, ColouredFlow.Runner.Enactment)
-      on_exit(fn -> restore_app_env(previous) end)
-    end
-  end
-
-  defp restore_app_env({:ok, value}) do
-    Application.put_env(:coloured_flow, ColouredFlow.Runner.Enactment, value)
-  end
-
-  defp restore_app_env(:error) do
-    Application.delete_env(:coloured_flow, ColouredFlow.Runner.Enactment)
+  # Stub `Application.get_env/3` for the runner-enactment keyword list. Used as
+  # `stub` (not `expect`) because not every test under this describe block hits
+  # the env path — tests that pass an explicit per-state value short-circuit
+  # before reaching `Application.get_env/3`.
+  defp expect_enactment_env(env) when is_list(env) do
+    Mimic.stub(Application, :get_env, fn
+      :coloured_flow, ColouredFlow.Runner.Enactment, [] -> env
+    end)
   end
 end
