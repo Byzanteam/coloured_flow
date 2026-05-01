@@ -363,9 +363,11 @@ defmodule ColouredFlow.Runner.Enactment do
           {:ok, :complete_e | :complete, state()} | {:error, Exception.t()}
   defp preflight_completion(%__MODULE__{} = state, workitem_ids)
        when is_list(workitem_ids) do
+    workitem_id_set = MapSet.new(workitem_ids)
+
     state.workitems
     |> Enum.find_value(fn {workitem_id, %Workitem{} = workitem} ->
-      if workitem_id in workitem_ids do
+      if MapSet.member?(workitem_id_set, workitem_id) do
         {workitem.state, workitem_id}
       end
     end)
@@ -529,9 +531,12 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
   @spec to_map(Enumerable.t(item)) :: %{Workitem.id() => item} when item: Workitem.t()
-  def to_map([]), do: %{}
-  def to_map([%Workitem{} = workitem | rest]), do: Map.put(to_map(rest), workitem.id, workitem)
-  def to_map([%Marking{} = marking | rest]), do: Map.put(to_map(rest), marking.place, marking)
+  def to_map(items) do
+    Map.new(items, fn
+      %Workitem{} = workitem -> {workitem.id, workitem}
+      %Marking{} = marking -> {marking.place, marking}
+    end)
+  end
 
   @spec to_list(%{Place.name() => item}) :: [item] when item: Marking.t()
   @spec to_list(%{Workitem.id() => item}) :: [item] when item: Workitem.t()
