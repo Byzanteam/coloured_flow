@@ -1,5 +1,5 @@
 defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
-  use ColouredFlow.RepoCase
+  use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 
   import ColouredFlow.MultiSet, only: :sigils
