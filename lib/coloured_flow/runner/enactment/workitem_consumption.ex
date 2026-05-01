@@ -67,14 +67,14 @@ defmodule ColouredFlow.Runner.Enactment.WorkitemConsumption do
     end)
     |> Enum.reduce_while(place_markings, fn
       {place, to_consume_tokens}, acc when is_map_key(acc, place) ->
-        place_marking = Map.fetch!(acc, place)
+        %Marking{} = place_marking = Map.fetch!(acc, place)
 
         case MultiSet.safe_difference(place_marking.tokens, to_consume_tokens) do
           {:ok, remaining_tokens} when MultiSet.is_empty(remaining_tokens) ->
             {:cont, Map.delete(acc, place)}
 
           {:ok, remaining_tokens} ->
-            {:cont, Map.put(acc, place, %Marking{place_marking | tokens: remaining_tokens})}
+            {:cont, Map.put(acc, place, %{place_marking | tokens: remaining_tokens})}
 
           :error ->
             {:halt, {:error, {:unsufficient_tokens, place_marking}}}

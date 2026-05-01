@@ -613,7 +613,7 @@ defmodule ColouredFlow.MultiSet do
     def inspect(multi_set, opts) do
       pairs = @for.to_pairs(multi_set)
 
-      concat(["#{inspect(@for)}.from_pairs(", Inspect.List.inspect(pairs, opts), ")"])
+      concat(["#{inspect(@for)}.from_pairs(", to_doc(pairs, opts), ")"])
     end
   end
 end
