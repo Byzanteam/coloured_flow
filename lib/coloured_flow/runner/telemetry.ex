@@ -11,16 +11,18 @@ defmodule ColouredFlow.Runner.Telemetry do
   - `[:coloured_flow, :runner, :enactment, :stop]`
   - `[:coloured_flow, :runner, :enactment, :terminate]`
   - `[:coloured_flow, :runner, :enactment, :exception]`
+  - `[:coloured_flow, :runner, :enactment, :take_snapshot]`
 
   All enactment events share the same measurements and metadata, but their
   metadata are different.
 
-  | event        | measurements                      | metadata                                                                        |
-  | ------------ | --------------------------------- | ------------------------------------------------------------------------------- |
-  | `:start`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
-  | `:stop`      | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:reason`                                  |
-  | `:terminate` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
-  | `:exception` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception`          |
+  | event            | measurements                      | metadata                                                                        |
+  | ---------------- | --------------------------------- | ------------------------------------------------------------------------------- |
+  | `:start`         | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
+  | `:stop`          | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:reason`                                  |
+  | `:terminate`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `termination_type`, `:termination_message` |
+  | `:exception`     | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`, `:exception_reason`, `:exception`          |
+  | `:take_snapshot` | `:system_time`, `:monotonic_time` | `:enactment_id`, `:enactment_state`                                             |
 
   Note that `:start` and `:stop` events will be emitted when the enactment server
   starts and stops respectively. So a `:stop` event will be emitted right after
@@ -234,6 +236,7 @@ defmodule ColouredFlow.Runner.Telemetry do
     [:coloured_flow, :runner, :enactment, :stop],
     [:coloured_flow, :runner, :enactment, :terminate],
     [:coloured_flow, :runner, :enactment, :exception],
+    [:coloured_flow, :runner, :enactment, :take_snapshot],
     [:coloured_flow, :runner, :enactment, :produce_workitems, :start],
     [:coloured_flow, :runner, :enactment, :produce_workitems, :stop],
     [:coloured_flow, :runner, :enactment, :produce_workitems, :exception],

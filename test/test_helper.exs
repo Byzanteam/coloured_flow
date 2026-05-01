@@ -12,4 +12,9 @@ end
 
 Ecto.Adapters.SQL.Sandbox.mode(ColouredFlow.TestRepo, :manual)
 
+# Mimic-mockable modules. Tests that want to override behaviour call
+# `Mimic.copy/1` on these in their `setup` block (or `use Mimic` at the
+# top of the file) and `Mimic.expect/3` per test.
+Mimic.copy(Application)
+
 ExUnit.start(capture_log: true)

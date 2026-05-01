@@ -78,11 +78,18 @@ defmodule ColouredFlow.Runner.Enactment do
     field :timeout, timeout(),
       enforce: false,
       doc: "The enactment timeout; see `ColouredFlow.Runner.Enactment.Lifespan` for details."
+
+    field :hibernate_after, timeout(),
+      enforce: false,
+      doc:
+        "The idle duration after which the GenServer hibernates; " <>
+          "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
   end
 
   @type option() ::
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
+          | {:hibernate_after, timeout()}
 
   @type options() :: [option()]
 
@@ -93,13 +100,17 @@ defmodule ColouredFlow.Runner.Enactment do
     GenServer.start_link(
       __MODULE__,
       options,
-      name: Registry.via_name({:enactment, enactment_id})
+      name: Registry.via_name({:enactment, enactment_id}),
+      hibernate_after: Lifespan.hibernate_after_from_options(options)
     )
   end
 
   @impl GenServer
   def init(options) do
-    state = struct(__MODULE__, options)
+    state =
+      __MODULE__
+      |> struct(options)
+      |> Map.put(:hibernate_after, Lifespan.hibernate_after_from_options(options))
 
     {:ok, state, {:continue, :populate_state}}
   end
@@ -343,23 +354,13 @@ defmodule ColouredFlow.Runner.Enactment do
     )
     |> case do
       {:ok, {{completed_workitems, new_state}, continue}} ->
-        :ok = GenServer.cast(self(), :take_snapshot)
+        send(self(), :take_snapshot)
 
         {:reply, {:ok, completed_workitems}, new_state, continue}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state, Lifespan.timeout(state)}
     end
-  end
-
-  @impl GenServer
-  def handle_cast(:take_snapshot, %__MODULE__{} = state) do
-    Storage.take_enactment_snapshot(state.enactment_id, %Snapshot{
-      version: state.version,
-      markings: to_list(state.markings)
-    })
-
-    {:noreply, state, Lifespan.timeout(state)}
   end
 
   # we peek at the first workitem to pre-check the state
@@ -531,8 +532,33 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   @impl GenServer
+  def handle_info(:take_snapshot, %__MODULE__{} = state) do
+    drain_take_snapshot_messages()
+
+    emit_event(:take_snapshot, state)
+
+    Storage.take_enactment_snapshot(state.enactment_id, %Snapshot{
+      version: state.version,
+      markings: to_list(state.markings)
+    })
+
+    {:noreply, state, Lifespan.timeout(state)}
+  end
+
   def handle_info(:timeout, state) do
     {:stop, {:shutdown, "Terminated due to inactivity"}, state}
+  end
+
+  # Selectively drain any queued `:take_snapshot` messages in the mailbox so
+  # bursts of `complete_workitems` collapse into a single storage write of the
+  # latest state.
+  @spec drain_take_snapshot_messages() :: :ok
+  defp drain_take_snapshot_messages do
+    receive do
+      :take_snapshot -> drain_take_snapshot_messages()
+    after
+      0 -> :ok
+    end
   end
 
   @impl GenServer

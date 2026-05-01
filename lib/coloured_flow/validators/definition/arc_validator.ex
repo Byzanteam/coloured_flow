@@ -13,6 +13,7 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
   alias ColouredFlow.Definition.Arc
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Transition
+  alias ColouredFlow.Definition.Variable
   alias ColouredFlow.Validators.Exceptions.InvalidArcError
 
   @spec validate(ColouredPetriNet.t()) ::
@@ -20,10 +21,11 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
   def validate(%ColouredPetriNet{} = cpnet) do
     vars_and_consts = build_vars_and_consts(cpnet)
     outputs = build_outputs(cpnet)
+    bound_vars_by_transition = build_bound_vars_by_transition(cpnet)
 
     cpnet.arcs
     |> Enum.find_value(fn %Arc{} = arc ->
-      case validate_arc(arc, vars_and_consts, outputs, cpnet) do
+      case validate_arc(arc, vars_and_consts, outputs, bound_vars_by_transition) do
         :ok -> nil
         {:error, reason} -> reason
       end
@@ -38,7 +40,7 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
          %Arc{orientation: :p_to_t} = arc,
          {vars, consts},
          _outputs,
-         %ColouredPetriNet{}
+         _bound_vars_by_transition
        ) do
     arc.expression.vars
     |> MapSet.new()
@@ -71,20 +73,14 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
          %Arc{orientation: :t_to_p} = arc,
          {_vars, consts},
          outputs,
-         %ColouredPetriNet{} = cpnet
+         bound_vars_by_transition
        ) do
-    bound_vars =
-      cpnet.arcs
-      |> Enum.flat_map(fn
-        %Arc{orientation: :p_to_t} = arc -> arc.expression.vars
-        %Arc{} -> []
-      end)
-      |> MapSet.new()
+    bound_vars = Map.get(bound_vars_by_transition, arc.transition, MapSet.new())
 
     vars_and_consts =
       bound_vars
       |> MapSet.union(consts)
-      |> MapSet.union(Map.get(outputs, arc.transition, []))
+      |> MapSet.union(Map.get(outputs, arc.transition, MapSet.new()))
 
     arc.expression.vars
     |> MapSet.new()
@@ -122,6 +118,17 @@ defmodule ColouredFlow.Validators.Definition.ArcValidator do
   defp build_outputs(%ColouredPetriNet{} = cpnet) do
     Map.new(cpnet.transitions, fn %Transition{} = transition ->
       {transition.name, MapSet.new(transition.action.outputs)}
+    end)
+  end
+
+  @spec build_bound_vars_by_transition(ColouredPetriNet.t()) ::
+          %{Transition.name() => MapSet.t(Variable.name())}
+  defp build_bound_vars_by_transition(%ColouredPetriNet{arcs: arcs}) do
+    arcs
+    |> Stream.filter(&(&1.orientation == :p_to_t))
+    |> Enum.group_by(& &1.transition, & &1.expression.vars)
+    |> Map.new(fn {transition, vars_lists} ->
+      {transition, vars_lists |> List.flatten() |> MapSet.new()}
     end)
   end
 end

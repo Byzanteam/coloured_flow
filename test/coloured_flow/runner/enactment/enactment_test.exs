@@ -255,4 +255,98 @@ defmodule ColouredFlow.Runner.EnactmentTest do
                Enum.map(current_workitems, & &1.id) -- Enum.map(previous_workitems, & &1.id)
     end
   end
+
+  describe "take_snapshot debounce" do
+    test "drains queued :take_snapshot messages before writing", %{enactment: enactment} do
+      enactment_id = enactment.id
+
+      state = %Enactment{
+        enactment_id: enactment_id,
+        version: 1,
+        markings: %{},
+        workitems: %{}
+      }
+
+      # queue extra :take_snapshot messages before invoking the handler;
+      # the first invocation should drain all of them in one shot.
+      for _i <- 1..4, do: send(self(), :take_snapshot)
+
+      assert {:noreply, ^state, _timeout} =
+               Enactment.handle_info(:take_snapshot, state)
+
+      # mailbox should now be empty of :take_snapshot messages because the
+      # debounce drained them; no further snapshot writes are needed.
+      refute_received :take_snapshot
+
+      # only one snapshot should have been persisted for the burst.
+      assert %Schemas.Snapshot{version: 1} =
+               Schemas.Snapshot |> from() |> where(enactment_id: ^enactment_id) |> Repo.one()
+    end
+
+    test "single :take_snapshot message still writes one snapshot", %{enactment: enactment} do
+      enactment_id = enactment.id
+
+      state = %Enactment{
+        enactment_id: enactment_id,
+        version: 2,
+        markings: %{},
+        workitems: %{}
+      }
+
+      assert {:noreply, ^state, _timeout} =
+               Enactment.handle_info(:take_snapshot, state)
+
+      refute_received :take_snapshot
+
+      assert %Schemas.Snapshot{version: 2} =
+               Schemas.Snapshot |> from() |> where(enactment_id: ^enactment_id) |> Repo.one()
+    end
+
+    test "coalesces a burst of :take_snapshot messages into fewer storage writes",
+         %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+
+      # Wait until the boot-time snapshot from `handle_continue` has been emitted
+      # so it is not counted in the burst measurement.
+      :ok = wait_enactment_requests_handled!(enactment_server)
+
+      self_pid = self()
+      handler_id = "snapshot-debounce-test-#{System.unique_integer([:positive])}"
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:coloured_flow, :runner, :enactment, :take_snapshot],
+          fn _event, _measurements, _metadata, _config ->
+            send(self_pid, :snapshot_taken)
+          end,
+          nil
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      burst_size = 5
+      for _i <- 1..burst_size, do: send(enactment_server, :take_snapshot)
+
+      # Block until the GenServer has processed the queued messages.
+      :ok = wait_enactment_requests_handled!(enactment_server)
+
+      snapshot_stream =
+        Stream.repeatedly(fn ->
+          receive do
+            :snapshot_taken -> :ok
+          after
+            50 -> :end_of_stream
+          end
+        end)
+
+      snapshot_count =
+        snapshot_stream
+        |> Enum.take_while(&(&1 == :ok))
+        |> length()
+
+      assert snapshot_count >= 1
+      assert snapshot_count < burst_size
+    end
+  end
 end
