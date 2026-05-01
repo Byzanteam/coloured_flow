@@ -18,7 +18,7 @@ defmodule ColouredFlow.Runner.Enactment.CatchingUp do
   @spec apply(
           current_markings :: [Marking.t()],
           occurrences :: Enumerable.t(Occurrence.t())
-        ) :: {steps :: pos_integer(), [Marking.t()]}
+        ) :: {steps :: non_neg_integer(), [Marking.t()]}
   def apply(current_markings, occurrences) do
     current_markings = to_map(current_markings)
 

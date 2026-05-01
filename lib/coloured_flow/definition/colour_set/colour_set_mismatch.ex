@@ -8,6 +8,7 @@ defmodule ColouredFlow.Definition.ColourSet.ColourSetMismatch do
   typed_structor definer: :defexception, enforce: true do
     field :colour_set, ColouredFlow.Definition.ColourSet.t()
     field :value, term()
+    field :error_code, atom(), default: :colour_set_mismatch
   end
 
   @impl Exception

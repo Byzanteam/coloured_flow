@@ -47,19 +47,31 @@ defmodule ColouredFlow.Runner.Storage do
   @doc """
   An exception occurred during the enactment, and the corresponding enactment will
   be stopped.
+
+  Returns `:ok` on successful persistence. If the persistence layer itself fails
+  (Repo down, Multi rollback) the callback returns
+  `{:error, {:fatal_persistence_failed, context}}`. The caller is then responsible
+  for the documented degraded fallback path: the enactment cannot be marked
+  `:exception` durably and must crash so the supervisor can retry.
   """
   @doc group: :enactment
   @callback exception_occurs(
               enactment_id(),
               reason :: ColouredFlow.Runner.Exception.reason(),
               exception :: Exception.t()
-            ) :: :ok
+            ) :: :ok | {:error, {:fatal_persistence_failed, map()}}
 
   @doc """
   Insert an enactment.
+
+  Returns `{:ok, schema}` on success. If the persistence layer fails the callback
+  returns `{:error, %StoragePersistenceFailed{}}` so callers of
+  `Runner.insert_enactment/1` see a typed error rather than a raised exception.
   """
   @doc group: :enactment
-  @callback insert_enactment(params :: map()) :: {:ok, Schemas.Enactment.t()}
+  @callback insert_enactment(params :: map()) ::
+              {:ok, Schemas.Enactment.t()}
+              | {:error, ColouredFlow.Runner.Exceptions.StoragePersistenceFailed.t()}
 
   @doc """
   The enactment is terminated, and the corresponding enactment will be stopped.
@@ -77,7 +89,7 @@ defmodule ColouredFlow.Runner.Storage do
               type :: :implicit | :explicit | :force,
               final_markings :: [Marking.t()],
               options :: [message: String.t()]
-            ) :: :ok
+            ) :: :ok | {:error, {:terminate_persistence_failed, map()}}
 
   @doc """
   Returns a list of live workitems for the given enactment.
@@ -94,19 +106,21 @@ defmodule ColouredFlow.Runner.Storage do
   @callback produce_workitems(
               enactment_id(),
               binding_elements :: Enumerable.t(BindingElement.t())
-            ) :: [Workitem.t(:enabled)]
+            ) ::
+              [Workitem.t(:enabled)]
+              | {:error, {:produce_persistence_failed, map()}}
 
   @doc group: :workitem
   @callback start_workitems(
               started_workitems :: [Workitem.t(:started)],
               options :: [transition_option()]
-            ) :: :ok
+            ) :: :ok | {:error, {:state_drift, map()}}
 
   @doc group: :workitem
   @callback withdraw_workitems(
               withdrawn_workitems :: [Workitem.t(:withdrawn)],
               options :: [transition_option()]
-            ) :: :ok
+            ) :: :ok | {:error, {:state_drift, map()}}
 
   @doc group: :workitem
   @callback complete_workitems(
@@ -114,13 +128,19 @@ defmodule ColouredFlow.Runner.Storage do
               current_version :: non_neg_integer(),
               workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
               options :: [transition_option()]
-            ) :: :ok
+            ) :: :ok | {:error, {:state_drift, map()}}
 
   @doc """
   Takes a snapshot of the given enactment.
+
+  Returns `:ok` on success or `{:error, {:snapshot_persistence_failed, _}}` if
+  persistence fails. Snapshot writes are not Tier 2 fatal — both the bootstrap
+  snapshot (after catch-up replay) and the asynchronous snapshot taken after
+  `complete_workitems` are best-effort. Callers should log and continue.
   """
   @doc group: :snapshot
-  @callback take_enactment_snapshot(enactment_id(), snapshot :: Snapshot.t()) :: :ok
+  @callback take_enactment_snapshot(enactment_id(), snapshot :: Snapshot.t()) ::
+              :ok | {:error, {:snapshot_persistence_failed, map()}}
 
   @doc """
   Reads the snapshot of the given enactment.
@@ -149,13 +169,15 @@ defmodule ColouredFlow.Runner.Storage do
 
   @doc false
   @spec exception_occurs(enactment_id(), ColouredFlow.Runner.Exception.reason(), Exception.t()) ::
-          :ok
+          :ok | {:error, {:fatal_persistence_failed, map()}}
   def exception_occurs(enactment_id, reason, exception) do
     __storage__().exception_occurs(enactment_id, reason, exception)
   end
 
   @doc false
-  @spec insert_enactment(params :: map()) :: {:ok, Schemas.Enactment.t()}
+  @spec insert_enactment(params :: map()) ::
+          {:ok, Schemas.Enactment.t()}
+          | {:error, ColouredFlow.Runner.Exceptions.StoragePersistenceFailed.t()}
   def insert_enactment(params) do
     __storage__().insert_enactment(params)
   end
@@ -166,7 +188,7 @@ defmodule ColouredFlow.Runner.Storage do
           type :: ColouredFlow.Runner.Termination.type(),
           final_markings :: [Marking.t()],
           options :: [message: String.t()]
-        ) :: :ok
+        ) :: :ok | {:error, {:terminate_persistence_failed, map()}}
   def terminate_enactment(enactment_id, type, final_markings, options) do
     __storage__().terminate_enactment(enactment_id, type, final_markings, options)
   end
@@ -179,19 +201,21 @@ defmodule ColouredFlow.Runner.Storage do
 
   @doc false
   @spec produce_workitems(enactment_id(), Enumerable.t(BindingElement.t())) ::
-          [Workitem.t(:enabled)]
+          [Workitem.t(:enabled)] | {:error, {:produce_persistence_failed, map()}}
   def produce_workitems(enactment_id, binding_elements) do
     __storage__().produce_workitems(enactment_id, binding_elements)
   end
 
   @doc false
-  @spec start_workitems([Workitem.t(:started)], [transition_option()]) :: :ok
+  @spec start_workitems([Workitem.t(:started)], [transition_option()]) ::
+          :ok | {:error, {:state_drift, map()}}
   def start_workitems(workitems, options) do
     __storage__().start_workitems(workitems, options)
   end
 
   @doc false
-  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: :ok
+  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) ::
+          :ok | {:error, {:state_drift, map()}}
   def withdraw_workitems(workitems, options) do
     __storage__().withdraw_workitems(workitems, options)
   end
@@ -202,13 +226,14 @@ defmodule ColouredFlow.Runner.Storage do
           current_version :: non_neg_integer(),
           workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
           [transition_option()]
-        ) :: :ok
+        ) :: :ok | {:error, {:state_drift, map()}}
   def complete_workitems(enactment_id, current_version, workitem_occurrences, options) do
     __storage__().complete_workitems(enactment_id, current_version, workitem_occurrences, options)
   end
 
   @doc false
-  @spec take_enactment_snapshot(enactment_id(), Snapshot.t()) :: :ok
+  @spec take_enactment_snapshot(enactment_id(), Snapshot.t()) ::
+          :ok | {:error, {:snapshot_persistence_failed, map()}}
   def take_enactment_snapshot(enactment_id, snapshot) do
     __storage__().take_enactment_snapshot(enactment_id, snapshot)
   end

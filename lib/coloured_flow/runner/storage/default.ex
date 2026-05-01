@@ -9,6 +9,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
   alias ColouredFlow.Enactment.Occurrence
 
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage.Repo
   alias ColouredFlow.Runner.Storage.Schemas
 
@@ -77,8 +78,11 @@ defmodule ColouredFlow.Runner.Storage.Default do
   def exception_occurs(enactment_id, reason, exception)
       when reason in unquote(exception_reasons) and is_exception(exception) do
     Ecto.Multi.new()
-    |> Ecto.Multi.one(:enactment, fn _changes ->
-      where(Schemas.Enactment, id: ^enactment_id)
+    |> Ecto.Multi.run(:enactment, fn _repo, _changes ->
+      case Repo.get(Schemas.Enactment, enactment_id) do
+        nil -> {:error, :enactment_not_found}
+        %Schemas.Enactment{} = enactment -> {:ok, enactment}
+      end
     end)
     |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
       Ecto.Changeset.change(enactment, state: :exception)
@@ -91,14 +95,30 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:ok, _changes} ->
         :ok
 
-      {:error, failed_operation, failed_value, changes_so_far} ->
-        raise """
-        Failed to update the enactment to exception state.
+      {:error, :enactment, :enactment_not_found, _changes_so_far} ->
+        # The enactment row itself is missing — this is the
+        # `:enactment_data_missing` Tier 2 case. The funnel cannot persist
+        # an :exception state for a row that no longer exists; surface it
+        # as `:fatal_persistence_failed` so the caller can fall through to
+        # the documented degraded path (telemetry + abnormal exit).
+        {:error,
+         {:fatal_persistence_failed,
+          %{
+            enactment_id: enactment_id,
+            reason: reason,
+            failure: :enactment_not_found
+          }}}
 
-        Failed operation: #{inspect(failed_operation)}
-        Failed value: #{inspect(failed_value)}
-        Changes so far: #{inspect(changes_so_far)}
-        """
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        {:error,
+         {:fatal_persistence_failed,
+          %{
+            enactment_id: enactment_id,
+            reason: reason,
+            failed_operation: failed_operation,
+            failed_value: failed_value,
+            changes_so_far: changes_so_far
+          }}}
     end
   end
 
@@ -118,13 +138,15 @@ defmodule ColouredFlow.Runner.Storage.Default do
         {:ok, enactment}
 
       {:error, failed_operation, failed_value, changes_so_far} ->
-        raise """
-        Failed to insert the enactment.
-
-        Failed operation: #{inspect(failed_operation)}
-        Failed value: #{inspect(failed_value)}
-        Changes so far: #{inspect(changes_so_far)}
-        """
+        {:error,
+         Exceptions.StoragePersistenceFailed.exception(
+           operation: :insert_enactment,
+           context: %{
+             failed_operation: failed_operation,
+             failed_value: failed_value,
+             changes_so_far: changes_so_far
+           }
+         )}
     end
   end
 
@@ -133,8 +155,11 @@ defmodule ColouredFlow.Runner.Storage.Default do
   def terminate_enactment(enactment_id, type, final_markings, options)
       when type in unquote(termination_types) do
     Ecto.Multi.new()
-    |> Ecto.Multi.one(:enactment, fn _changes ->
-      where(Schemas.Enactment, id: ^enactment_id)
+    |> Ecto.Multi.run(:enactment, fn _repo, _changes ->
+      case Repo.get(Schemas.Enactment, enactment_id) do
+        nil -> {:error, :enactment_not_found}
+        %Schemas.Enactment{} = enactment -> {:ok, enactment}
+      end
     end)
     |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
       enactment
@@ -149,14 +174,25 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:ok, _changes} ->
         :ok
 
-      {:error, failed_operation, failed_value, changes_so_far} ->
-        raise """
-        Failed to update the enactment to terminated state.
+      {:error, :enactment, :enactment_not_found, _changes_so_far} ->
+        {:error,
+         {:terminate_persistence_failed,
+          %{
+            enactment_id: enactment_id,
+            type: type,
+            failure: :enactment_not_found
+          }}}
 
-        Failed operation: #{inspect(failed_operation)}
-        Failed value: #{inspect(failed_value)}
-        Changes so far: #{inspect(changes_so_far)}
-        """
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        {:error,
+         {:terminate_persistence_failed,
+          %{
+            enactment_id: enactment_id,
+            type: type,
+            failed_operation: failed_operation,
+            failed_value: failed_value,
+            changes_so_far: changes_so_far
+          }}}
     end
   end
 
@@ -216,13 +252,14 @@ defmodule ColouredFlow.Runner.Storage.Default do
         Enum.map(workitems, &Schemas.Workitem.to_workitem/1)
 
       {:error, failed_operation, failed_value, changes_so_far} ->
-        raise """
-        Failed to produce workitems.
-
-        Failed operation: #{inspect(failed_operation)}
-        Failed value: #{inspect(failed_value)}
-        Changes so far: #{inspect(changes_so_far)}
-        """
+        {:error,
+         {:produce_persistence_failed,
+          %{
+            enactment_id: enactment_id,
+            failed_operation: failed_operation,
+            failed_value: failed_value,
+            changes_so_far: changes_so_far
+          }}}
     end
   end
 
@@ -243,7 +280,8 @@ defmodule ColouredFlow.Runner.Storage.Default do
   Transition the workitems from one state to another in accordance with the state
   machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
   """
-  @spec transition_workitems([Workitem.t()], [transition_option()]) :: :ok
+  @spec transition_workitems([Workitem.t()], [transition_option()]) ::
+          :ok | {:error, {:state_drift, map()}}
   def transition_workitems([], _options), do: :ok
 
   def transition_workitems(workitems, options) when is_list(workitems) do
@@ -262,7 +300,23 @@ defmodule ColouredFlow.Runner.Storage.Default do
         {:unexpected_updated_rows, exception_ctx},
         _changes_so_far
       } ->
-        unexpected_updated_rows!(workitems, action, exception_ctx)
+        unexpected_updated_rows(workitems, action, exception_ctx)
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        # Catch-all for unexpected `Ecto.Multi` rollback paths (e.g. a
+        # constraint violation on `workitem_logs`). Route through the
+        # same `:state_drift` Tier 2 funnel so the enactment marks
+        # itself `:exception` rather than crashing with a
+        # `CaseClauseError`.
+        {:error,
+         {:state_drift,
+          %{
+            operation: action,
+            workitem_ids: Enum.map(workitems, & &1.id),
+            failed_operation: failed_operation,
+            failed_value: failed_value,
+            changes_so_far: changes_so_far
+          }}}
     end
   end
 
@@ -331,19 +385,26 @@ defmodule ColouredFlow.Runner.Storage.Default do
     defp get_from_state(unquote(to), unquote(action)), do: unquote(from)
   end
 
-  defp unexpected_updated_rows!(workitems, transition, options) do
+  @spec unexpected_updated_rows([Workitem.t()], Workitem.transition_action(), keyword()) ::
+          {:error, {:state_drift, map()}}
+  defp unexpected_updated_rows(workitems, transition, options) do
     # When the actual number is not equal to the expected number,
     # it means the workitems in the gen_server are not consistent with the database.
-    # So we just raise an error to crash the process, and let the supervisor
-    # restart the gen_server and retry.
+    # The caller routes this through the Tier 2 fatal funnel (see
+    # `error_handling_design.md`) — the enactment marks itself
+    # `:exception` rather than crashing and consuming supervisor restart
+    # intensity.
     expected = Keyword.fetch!(options, :expected)
     actual = Keyword.fetch!(options, :actual)
 
-    raise """
-    The number of workitems to #{transition} is not equal to the actual number.
-    Expected: #{expected}, Actual: #{actual}
-    Workitems: #{Enum.map_join(workitems, ", ", & &1.id)}
-    """
+    {:error,
+     {:state_drift,
+      %{
+        operation: transition,
+        expected: expected,
+        actual: actual,
+        workitem_ids: Enum.map(workitems, & &1.id)
+      }}}
   end
 
   @impl ColouredFlow.Runner.Storage
@@ -386,7 +447,23 @@ defmodule ColouredFlow.Runner.Storage.Default do
         {:unexpected_updated_rows, exception_ctx},
         _changes_so_far
       } ->
-        unexpected_updated_rows!(completed_workitems, action, exception_ctx)
+        unexpected_updated_rows(completed_workitems, action, exception_ctx)
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        # Catch-all for unexpected `Ecto.Multi` rollback paths (e.g. an
+        # `:occurrences` constraint violation). Route through the same
+        # `:state_drift` Tier 2 funnel so the enactment marks itself
+        # `:exception` rather than crashing with a `CaseClauseError`.
+        {:error,
+         {:state_drift,
+          %{
+            operation: action,
+            enactment_id: enactment_id,
+            workitem_ids: Enum.map(completed_workitems, & &1.id),
+            failed_operation: failed_operation,
+            failed_value: failed_value,
+            changes_so_far: changes_so_far
+          }}}
     end
   end
 
@@ -423,13 +500,24 @@ defmodule ColouredFlow.Runner.Storage.Default do
       version: snapshot.version,
       markings: snapshot.markings
     )
-    |> Repo.insert!(
+    |> Repo.insert(
       conflict_target: [:enactment_id],
       on_conflict: {:replace_all_except, [:inserted_at]},
       returning: true
     )
+    |> case do
+      {:ok, _snapshot} ->
+        :ok
 
-    :ok
+      {:error, changeset} ->
+        {:error,
+         {:snapshot_persistence_failed,
+          %{
+            enactment_id: enactment_id,
+            version: snapshot.version,
+            changeset: changeset
+          }}}
+    end
   end
 
   @impl ColouredFlow.Runner.Storage

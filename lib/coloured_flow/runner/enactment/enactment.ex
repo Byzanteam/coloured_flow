@@ -49,10 +49,13 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.WorkitemCalibration
   alias ColouredFlow.Runner.Enactment.WorkitemCompletion
   alias ColouredFlow.Runner.Enactment.WorkitemConsumption
+  alias ColouredFlow.Runner.Errors
   alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.RuntimeCpnet
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Telemetry
+
+  require Logger
 
   @typep enactment_id() :: Storage.enactment_id()
 
@@ -124,49 +127,77 @@ defmodule ColouredFlow.Runner.Enactment do
 
   @impl GenServer
   def handle_continue(:populate_state, %__MODULE__{} = state) do
-    snapshot =
-      case Storage.read_enactment_snapshot(state.enactment_id) do
-        {:ok, snapshot} ->
-          snapshot
+    with(
+      {:ok, snapshot, had_snapshot?} <- load_initial_snapshot(state),
+      {:ok, snapshot, replayed_steps} <- replay_occurrences(state, snapshot)
+    ) do
+      maybe_persist_bootstrap_snapshot(state, snapshot)
 
-        :error ->
-          %Snapshot{
-            version: 0,
-            markings: Storage.get_initial_markings(state.enactment_id)
-          }
-      end
+      workitems = Storage.list_live_workitems(state.enactment_id)
 
-    snapshot = catchup_snapshot(state.enactment_id, snapshot)
-    Storage.take_enactment_snapshot(state.enactment_id, snapshot)
+      state = %__MODULE__{
+        state
+        | version: snapshot.version,
+          markings: to_map(snapshot.markings),
+          workitems: to_map(workitems)
+      }
 
-    workitems = Storage.list_live_workitems(state.enactment_id)
+      # Always emit `:start` for backward compatibility; the new `resumed`
+      # metadata flag distinguishes a fresh boot from a crash recovery
+      # (snapshot loaded, or occurrences replayed).
+      resumed? = had_snapshot? or replayed_steps > 0
+      emit_event(:start, state, %{resumed: resumed?, replayed_steps: replayed_steps})
 
-    state = %__MODULE__{
-      state
-      | version: snapshot.version,
-        markings: to_map(snapshot.markings),
-        workitems: to_map(workitems)
-    }
-
-    emit_event(:start, state)
-
-    {
-      :noreply,
-      state,
-      {:continue, :calibrate_workitems}
-    }
+      {:noreply, state, {:continue, :calibrate_workitems}}
+    else
+      {:fatal, reason, ctx} -> to_exception(state, reason, ctx)
+    end
   end
 
   def handle_continue(:calibrate_workitems, %__MODULE__{} = state) do
     runtime_cpnet = build_runtime_cpnet(state.enactment_id)
     calibration = WorkitemCalibration.initial_calibrate(state, runtime_cpnet)
-    state = apply_calibration(calibration)
 
-    # try to terminate at the start
-    case check_termination(state, runtime_cpnet.definition) do
-      {:stop, reason} -> {:stop, {:shutdown, reason}, state}
-      :cont -> {:noreply, state, Lifespan.timeout(state)}
+    case apply_calibration(calibration) do
+      {:ok, state} ->
+        # try to terminate at the start
+        case check_termination(state, runtime_cpnet.definition) do
+          :cont -> {:noreply, state, Lifespan.timeout(state)}
+          {:stop, _reason, _state} = stop -> stop
+        end
+
+      {:error, %Exceptions.StateDrift{} = ex} ->
+        to_exception(state, :state_drift, %{
+          phase: :calibrate_workitems,
+          operation: ex.operation,
+          context: ex.context
+        })
     end
+  rescue
+    e in [Ecto.NoResultsError] ->
+      to_exception(state, :enactment_data_missing, %{
+        phase: :calibrate_workitems,
+        missing: :flow,
+        underlying: e
+      })
+
+    e in [
+      ColouredFlow.Definition.ColourSet.ColourSetMismatch,
+      ArgumentError,
+      KeyError,
+      MatchError,
+      RuntimeError
+    ] ->
+      # `RuntimeCpnet.from_definition/1` and the `Utils.fetch_*!` lookup
+      # helpers raise plain `RuntimeError` when the persisted CPN refers
+      # to a missing place / colour set / variable / transition. Catch
+      # those (and codec value-shape errors) so a corrupt stored
+      # definition routes to the Tier 2 funnel instead of escalating to
+      # a Tier 3 supervisor restart.
+      to_exception(state, :cpnet_corrupt, %{
+        phase: :calibrate_workitems,
+        underlying: e
+      })
   end
 
   def handle_continue(
@@ -175,8 +206,45 @@ defmodule ColouredFlow.Runner.Enactment do
       )
       when is_list(options) do
     calibration = WorkitemCalibration.calibrate(state, transition, options)
-    state = apply_calibration(calibration)
 
+    case apply_calibration(calibration) do
+      {:ok, state} ->
+        maybe_check_termination_after(state, transition, options)
+
+      {:error, %Exceptions.StateDrift{} = ex} ->
+        to_exception(state, :state_drift, %{
+          phase: :calibrate_workitems,
+          operation: ex.operation,
+          context: ex.context
+        })
+    end
+  rescue
+    e in [Ecto.NoResultsError] ->
+      to_exception(state, :enactment_data_missing, %{
+        phase: :calibrate_workitems,
+        missing: :flow,
+        underlying: e
+      })
+
+    e in [
+      ColouredFlow.Definition.ColourSet.ColourSetMismatch,
+      ArgumentError,
+      KeyError,
+      MatchError,
+      RuntimeError
+    ] ->
+      # `RuntimeCpnet.from_definition/1` and the `Utils.fetch_*!` lookup
+      # helpers raise plain `RuntimeError` when the persisted CPN refers
+      # to a missing place / colour set / variable / transition. Catch
+      # those here so a corrupt stored definition routes to the Tier 2
+      # funnel instead of escalating to a Tier 3 supervisor restart.
+      to_exception(state, :cpnet_corrupt, %{
+        phase: :calibrate_workitems,
+        underlying: e
+      })
+  end
+
+  defp maybe_check_termination_after(%__MODULE__{} = state, transition, options) do
     if transition in [:complete, :complete_e] do
       # try to terminate when the transition is `:complete` or `:complete_e`.
       # `complete_workitems/3` always threads the runtime cpnet through the
@@ -184,68 +252,171 @@ defmodule ColouredFlow.Runner.Enactment do
       %RuntimeCpnet{definition: cpnet} = Keyword.fetch!(options, :runtime_cpnet)
 
       case check_termination(state, cpnet) do
-        {:stop, reason} -> {:stop, {:shutdown, reason}, state}
         :cont -> {:noreply, state, Lifespan.timeout(state)}
+        {:stop, _reason, _state} = stop -> stop
       end
     else
       {:noreply, state, Lifespan.timeout(state)}
     end
   end
 
-  @spec catchup_snapshot(enactment_id(), Snapshot.t()) :: Snapshot.t()
+  # Load the snapshot row (or build the initial-markings snapshot when the
+  # enactment has never reached its first persisted snapshot).
+  #
+  # Errors raised here are attributed to snapshot decoding or to a missing
+  # `enactments` row, never to occurrence replay.
+  defp load_initial_snapshot(%__MODULE__{} = state) do
+    case Storage.read_enactment_snapshot(state.enactment_id) do
+      {:ok, snapshot} ->
+        {:ok, snapshot, true}
+
+      :error ->
+        {:ok,
+         %Snapshot{
+           version: 0,
+           markings: Storage.get_initial_markings(state.enactment_id)
+         }, false}
+    end
+  rescue
+    e in [Ecto.NoResultsError] ->
+      {:fatal, :enactment_data_missing,
+       %{phase: :populate_state, missing: :enactment, underlying: e}}
+
+    e in [
+      ColouredFlow.Definition.ColourSet.ColourSetMismatch,
+      ArgumentError,
+      KeyError,
+      MatchError
+    ] ->
+      {:fatal, :snapshot_corrupt, %{phase: :populate_state, underlying: e}}
+  end
+
+  # Apply the persisted occurrence stream from the loaded snapshot's version
+  # forward.
+  #
+  # Errors raised here are attributed to occurrence replay (codec corruption
+  # on the occurrence row, MultiSet mismatch, etc.), not to snapshot decoding.
+  defp replay_occurrences(%__MODULE__{} = state, %Snapshot{} = snapshot) do
+    {snapshot, replayed_steps} = catchup_snapshot(state.enactment_id, snapshot)
+    {:ok, snapshot, replayed_steps}
+  rescue
+    e in [
+      ArgumentError,
+      KeyError,
+      MatchError,
+      ColouredFlow.Definition.ColourSet.ColourSetMismatch
+    ] ->
+      {:fatal, :replay_failed, %{phase: :populate_state, underlying: e}}
+  end
+
+  defp maybe_persist_bootstrap_snapshot(%__MODULE__{} = state, %Snapshot{} = snapshot) do
+    case Storage.take_enactment_snapshot(state.enactment_id, snapshot) do
+      :ok ->
+        :ok
+
+      {:error, {:snapshot_persistence_failed, ctx}} ->
+        # Bootstrap snapshot write is best-effort. Worst case the next
+        # restart replays from an older snapshot; data is not lost.
+        Logger.warning(
+          "Bootstrap snapshot persistence failed for enactment " <>
+            "#{inspect(state.enactment_id)} at version #{snapshot.version}: " <>
+            "#{inspect(ctx)}"
+        )
+    end
+  end
+
+  @spec catchup_snapshot(enactment_id(), Snapshot.t()) ::
+          {Snapshot.t(), replayed_steps :: non_neg_integer()}
   defp catchup_snapshot(enactment_id, %Snapshot{} = snapshot) do
     occurrences = Storage.occurrences_stream(enactment_id, snapshot.version)
 
     {steps, markings} = CatchingUp.apply(snapshot.markings, occurrences)
 
-    %{snapshot | version: snapshot.version + steps, markings: markings}
+    {%{snapshot | version: snapshot.version + steps, markings: markings}, steps}
   end
 
+  @spec apply_calibration(WorkitemCalibration.t()) ::
+          {:ok, state()} | {:error, Exception.t()}
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
-    # We don't need to ensure `withdraw_workitems` and `produce_workitems` are atomic,
-    # because the gen_server will restart if the process crashes.
+    with(
+      {:ok, _withdrawn} <- run_withdraw_step(state, calibration.to_withdraw),
+      {:ok, produced_workitems_map} <- run_produce_step(state, calibration.to_produce)
+    ) do
+      {:ok, %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems_map)}}
+    end
+  end
+
+  defp run_withdraw_step(%__MODULE__{} = state, to_withdraw) do
     with_span(
       :withdraw_workitems,
       state,
-      %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
+      %{workitem_ids: Enum.map(to_withdraw, & &1.id)},
       fn ->
-        # the workitems from calibration.to_withdraw are not in `withdrawn` state
-        grouped_wokitems =
-          Enum.group_by(calibration.to_withdraw, & &1.state, fn %Workitem{} = workitem ->
+        # the workitems from `to_withdraw` are not yet in `withdrawn` state
+        grouped_workitems =
+          Enum.group_by(to_withdraw, & &1.state, fn %Workitem{} = workitem ->
             %{workitem | state: :withdrawn}
           end)
 
-        workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
+        workitems = Enum.flat_map(grouped_workitems, &elem(&1, 1))
 
-        Enum.each(grouped_wokitems, fn
-          {:enabled, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
+        case withdraw_grouped_workitems(grouped_workitems) do
+          :ok ->
+            {:ok, workitems, %{workitems: workitems}}
 
-          {:started, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
-        end)
-
-        {:ok, workitems, %{workitems: workitems}}
+          {:error, {:state_drift, ctx}} ->
+            {:error,
+             Exceptions.StateDrift.exception(
+               enactment_id: state.enactment_id,
+               operation: :withdraw_workitems,
+               context: ctx
+             )}
+        end
       end
     )
+  end
 
-    {:ok, produced_workitems} =
-      with_span(
-        :produce_workitems,
-        state,
-        %{binding_elements: calibration.to_produce},
-        fn ->
-          workitems = Storage.produce_workitems(state.enactment_id, calibration.to_produce)
-
-          {:ok, to_map(workitems), %{workitems: workitems}}
+  defp withdraw_grouped_workitems(grouped) do
+    Enum.reduce_while(grouped, :ok, fn {workitem_state, workitems}, _acc ->
+      action =
+        case workitem_state do
+          :enabled -> :withdraw
+          :started -> :withdraw_s
         end
-      )
 
-    %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
+      case Storage.withdraw_workitems(workitems, action: action) do
+        :ok -> {:cont, :ok}
+        {:error, _drift} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp run_produce_step(%__MODULE__{} = state, to_produce) do
+    with_span(
+      :produce_workitems,
+      state,
+      %{binding_elements: to_produce},
+      fn ->
+        case Storage.produce_workitems(state.enactment_id, to_produce) do
+          {:error, {:produce_persistence_failed, ctx}} ->
+            {:error,
+             Exceptions.StateDrift.exception(
+               enactment_id: state.enactment_id,
+               operation: :produce_workitems,
+               context: ctx
+             )}
+
+          workitems when is_list(workitems) ->
+            {:ok, to_map(workitems), %{workitems: workitems}}
+        end
+      end
+    )
   end
 
   # `:explicit` takes priority over `:implicit`
-  @spec check_termination(state(), ColouredPetriNet.t()) :: {:stop, reason :: binary()} | :cont
+  # credo:disable-for-lines:2 JetCredo.Checks.ExplicitAnyType
+  @spec check_termination(state(), ColouredPetriNet.t()) ::
+          :cont | {:stop, term(), state()}
   defp check_termination(%__MODULE__{} = state, cpnet) do
     import EnactmentTermination
 
@@ -258,54 +429,132 @@ defmodule ColouredFlow.Runner.Enactment do
       :cont
     else
       {:stop, type} when type in [:explicit, :implicit] ->
-        :ok = Storage.terminate_enactment(state.enactment_id, type, markings, [])
-
-        emit_event(:terminate, state, %{termination_type: type})
-
-        {:stop, "Terminated as #{type} criteria were met."}
+        perform_termination(state, type, markings, [])
 
       {:error, exception} ->
-        :ok =
-          Storage.exception_occurs(
-            state.enactment_id,
-            :termination_criteria_evaluation,
-            exception
-          )
-
-        emit_event(:exception, state, %{
-          exception_reason: :termination_criteria_evaluation,
+        to_exception(state, :termination_criteria_evaluation, %{
+          phase: :check_termination,
           exception: exception
         })
+    end
+  end
 
-        {:stop, "Terminated due to an exception in evaluating termination criteria."}
+  # credo:disable-for-lines:6 JetCredo.Checks.ExplicitAnyType
+  @spec perform_termination(
+          state(),
+          ColouredFlow.Runner.Termination.type(),
+          [Marking.t()],
+          options :: [message: String.t()]
+        ) :: {:stop, term(), state()}
+  defp perform_termination(%__MODULE__{} = state, type, markings, options) do
+    case Storage.terminate_enactment(state.enactment_id, type, markings, options) do
+      :ok ->
+        emit_event(:terminate, state, %{
+          termination_type: type,
+          termination_message: Keyword.get(options, :message)
+        })
+
+        {:stop, {:shutdown, {:terminated, type}}, state}
+
+      {:error, {:terminate_persistence_failed, ctx}} ->
+        to_exception(state, :state_drift, %{
+          phase: :perform_termination,
+          operation: :terminate_enactment,
+          context: Map.put(ctx, :termination_type, type)
+        })
+    end
+  end
+
+  # The unified Tier 2 fatal-stop funnel.
+  #
+  # Persists the enactment as `:exception`, emits a lifecycle exception event,
+  # and stops the GenServer with `{:shutdown, {:fatal, reason}}` so the
+  # supervisor does not count it against `max_restarts`. If the persistence
+  # itself fails (leak mode 1, see `error_handling_design.md` §7) the funnel
+  # falls through to an abnormal exit so the supervisor can retry.
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @spec to_exception(state(), atom(), map()) :: {:stop, term(), state()}
+  defp to_exception(%__MODULE__{} = state, reason, ctx) do
+    full_ctx = Map.put(ctx, :enactment_id, state.enactment_id)
+    exception = Errors.build_exception(reason, full_ctx)
+
+    case Storage.exception_occurs(state.enactment_id, reason, exception) do
+      :ok ->
+        emit_event(:exception, state, %{
+          tier: 2,
+          lifecycle: true,
+          severity: :fatal,
+          source_phase: ctx[:phase],
+          exception_reason: reason,
+          error_code: Errors.error_code(exception),
+          exception: exception,
+          degraded: false
+        })
+
+        {:stop, {:shutdown, {:fatal, reason}}, state}
+
+      {:error, persistence_error} ->
+        emit_event(:exception, state, %{
+          tier: 2,
+          lifecycle: true,
+          severity: :fatal,
+          source_phase: ctx[:phase],
+          exception_reason: reason,
+          error_code: Errors.error_code(exception),
+          exception: exception,
+          degraded: true,
+          persistence_error: persistence_error
+        })
+
+        Logger.error(
+          "Tier 2 fatal but persistence failed for enactment " <>
+            "#{inspect(state.enactment_id)}: reason=#{reason}, " <>
+            "persistence_error=#{inspect(persistence_error)}"
+        )
+
+        {:stop, {:fatal_persistence_failed, persistence_error}, state}
     end
   end
 
   @impl GenServer
   def handle_call({:terminate, options}, _from, %__MODULE__{} = state) when is_list(options) do
-    :ok =
-      Storage.terminate_enactment(
-        state.enactment_id,
-        :force,
-        to_list(state.markings),
-        options
-      )
+    markings = to_list(state.markings)
 
-    message = Keyword.get(options, :message)
-    emit_event(:terminate, state, %{termination_type: :force, termination_message: message})
+    case Storage.terminate_enactment(state.enactment_id, :force, markings, options) do
+      :ok ->
+        emit_event(:terminate, state, %{
+          termination_type: :force,
+          termination_message: Keyword.get(options, :message)
+        })
 
-    {:stop, {:shutdown, "Terminated manually"}, :ok, state}
+        {:stop, {:shutdown, {:terminated, :force}}, :ok, state}
+
+      {:error, {:terminate_persistence_failed, ctx}} ->
+        ctx = Map.put(ctx, :termination_type, :force)
+
+        {:stop, stop_reason, state} =
+          to_exception(state, :state_drift, %{
+            phase: :handle_terminate,
+            operation: :terminate_enactment,
+            context: ctx
+          })
+
+        drift_ex =
+          Exceptions.StateDrift.exception(
+            enactment_id: state.enactment_id,
+            operation: :terminate_enactment,
+            context: ctx
+          )
+
+        {:stop, stop_reason, {:error, drift_ex}, state}
+    end
   end
 
   def handle_call({:start_workitems, workitem_ids}, _from, %__MODULE__{} = state)
       when is_list(workitem_ids) do
     :start_workitems
     |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
-      with {:ok, {started_workitems, new_state}} <- start_workitems(state, workitem_ids) do
-        :ok = Storage.start_workitems(started_workitems, action: :start)
-
-        {:ok, {started_workitems, new_state}, %{workitems: started_workitems}}
-      end
+      do_start_workitems(state, workitem_ids)
     end)
     |> case do
       {:ok, {started_workitems, new_state}} ->
@@ -315,6 +564,16 @@ defmodule ColouredFlow.Runner.Enactment do
           new_state,
           {:continue, {:calibrate_workitems, :start, [workitems: started_workitems]}}
         }
+
+      {:error, %Exceptions.StateDrift{} = ex} ->
+        {:stop, stop_reason, new_state} =
+          to_exception(state, :state_drift, %{
+            phase: :handle_start_workitems,
+            operation: ex.operation,
+            context: ex.context
+          })
+
+        {:stop, stop_reason, {:error, ex}, new_state}
 
       {:error, exception} ->
         {:reply, {:error, exception}, state, Lifespan.timeout(state)}
@@ -336,16 +595,15 @@ defmodule ColouredFlow.Runner.Enactment do
         with(
           {:ok, transition_action, state} <- preflight_completion(state, workitem_ids),
           {:ok, {workitem_occurrences, new_state, calibration_options}} <-
-            complete_workitems(state, workitem_ids, workitem_id_and_outputs)
-        ) do
-          :ok =
+            complete_workitems(state, workitem_ids, workitem_id_and_outputs),
+          :ok <-
             Storage.complete_workitems(
               new_state.enactment_id,
               new_state.version,
               workitem_occurrences,
               action: transition_action
             )
-
+        ) do
           completed_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
 
           {
@@ -356,6 +614,17 @@ defmodule ColouredFlow.Runner.Enactment do
             },
             %{workitems: completed_workitems}
           }
+        else
+          {:error, ex} when is_exception(ex) ->
+            {:error, ex}
+
+          {:error, {:state_drift, ctx}} ->
+            {:error,
+             Exceptions.StateDrift.exception(
+               enactment_id: state.enactment_id,
+               operation: :complete_workitems,
+               context: ctx
+             )}
         end
       end
     )
@@ -365,8 +634,76 @@ defmodule ColouredFlow.Runner.Enactment do
 
         {:reply, {:ok, completed_workitems}, new_state, continue}
 
+      {:error, %Exceptions.StateDrift{} = ex} ->
+        {:stop, stop_reason, new_state} =
+          to_exception(state, :state_drift, %{
+            phase: :handle_complete_workitems,
+            operation: ex.operation,
+            context: ex.context
+          })
+
+        {:stop, stop_reason, {:error, ex}, new_state}
+
       {:error, exception} ->
         {:reply, {:error, exception}, state, Lifespan.timeout(state)}
+    end
+  rescue
+    e in [Ecto.NoResultsError] ->
+      # `Storage.get_flow_by_enactment/1` raised because the flow row is gone.
+      ex =
+        Exceptions.EnactmentDataMissing.exception(
+          enactment_id: state.enactment_id,
+          missing: :flow
+        )
+
+      {:stop, stop_reason, new_state} =
+        to_exception(state, :enactment_data_missing, %{
+          phase: :handle_complete_workitems,
+          missing: :flow,
+          underlying: e
+        })
+
+      {:stop, stop_reason, {:error, ex}, new_state}
+
+    e in [
+      ColouredFlow.Definition.ColourSet.ColourSetMismatch,
+      ArgumentError,
+      KeyError,
+      MatchError,
+      RuntimeError
+    ] ->
+      ex =
+        Exceptions.CpnetCorrupt.exception(
+          enactment_id: state.enactment_id,
+          underlying: e
+        )
+
+      {:stop, stop_reason, new_state} =
+        to_exception(state, :cpnet_corrupt, %{
+          phase: :handle_complete_workitems,
+          underlying: e
+        })
+
+      {:stop, stop_reason, {:error, ex}, new_state}
+  end
+
+  defp do_start_workitems(%__MODULE__{} = state, workitem_ids) do
+    with(
+      {:ok, {started_workitems, new_state}} <- start_workitems(state, workitem_ids),
+      :ok <- Storage.start_workitems(started_workitems, action: :start)
+    ) do
+      {:ok, {started_workitems, new_state}, %{workitems: started_workitems}}
+    else
+      {:error, {:state_drift, ctx}} ->
+        {:error,
+         Exceptions.StateDrift.exception(
+           enactment_id: state.enactment_id,
+           operation: :start_workitems,
+           context: ctx
+         )}
+
+      {:error, ex} when is_exception(ex) ->
+        {:error, ex}
     end
   end
 
@@ -544,10 +881,22 @@ defmodule ColouredFlow.Runner.Enactment do
 
     emit_event(:take_snapshot, state)
 
-    Storage.take_enactment_snapshot(state.enactment_id, %Snapshot{
-      version: state.version,
-      markings: to_list(state.markings)
-    })
+    snapshot = %Snapshot{version: state.version, markings: to_list(state.markings)}
+
+    case Storage.take_enactment_snapshot(state.enactment_id, snapshot) do
+      :ok ->
+        :ok
+
+      {:error, {:snapshot_persistence_failed, ctx}} ->
+        # Snapshot writes are best-effort; an asynchronous failure is not
+        # fatal. Log and continue. The next `complete_workitems` will send
+        # another snapshot attempt.
+        Logger.warning(
+          "Async snapshot persistence failed for enactment " <>
+            "#{inspect(state.enactment_id)} at version #{state.version}: " <>
+            "#{inspect(ctx)}"
+        )
+    end
 
     {:noreply, state, Lifespan.timeout(state)}
   end
@@ -569,12 +918,45 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   @impl GenServer
-  def terminate({:shutdown, reason}, state) do
+  def terminate({:shutdown, {:fatal, fatal_reason}}, state) when is_atom(fatal_reason) do
+    emit_event(:stop, state, %{
+      reason: "Terminated due to a fatal error: #{fatal_reason}.",
+      fatal_reason: fatal_reason
+    })
+  end
+
+  def terminate({:shutdown, {:terminated, :force}}, state) do
+    emit_event(:stop, state, %{
+      reason: "Terminated manually",
+      termination_type: :force
+    })
+  end
+
+  def terminate({:shutdown, {:terminated, termination_type}}, state)
+      when is_atom(termination_type) do
+    emit_event(:stop, state, %{
+      reason: "Terminated as #{termination_type} criteria were met.",
+      termination_type: termination_type
+    })
+  end
+
+  def terminate({:shutdown, reason}, state) when is_binary(reason) do
     emit_event(:stop, state, %{reason: reason})
   end
 
-  def terminate(_reason, state) do
-    emit_event(:stop, state, %{reason: "unknown"})
+  def terminate({:shutdown, reason}, state) do
+    emit_event(:stop, state, %{reason: inspect(reason)})
+  end
+
+  def terminate({:fatal_persistence_failed, persistence_error}, state) do
+    emit_event(:stop, state, %{
+      reason: "Terminated because the fatal-state persistence layer itself failed.",
+      persistence_error: inspect(persistence_error)
+    })
+  end
+
+  def terminate(reason, state) do
+    emit_event(:stop, state, %{reason: inspect(reason)})
   end
 
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()

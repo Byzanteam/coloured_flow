@@ -13,6 +13,7 @@ defmodule ColouredFlow.Runner.Exceptions.UnboundActionOutput do
   typed_structor definer: :defexception, enforce: true do
     field :transition, Transition.name()
     field :output, Variable.name()
+    field :error_code, atom(), default: :unbound_action_output
   end
 
   @impl Exception

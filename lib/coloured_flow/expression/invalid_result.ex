@@ -12,6 +12,7 @@ defmodule ColouredFlow.Expression.InvalidResult do
     field :expression, Expression.t()
 
     field :message, String.t()
+    field :error_code, atom(), default: :expression_eval_failed
   end
 
   @impl Exception

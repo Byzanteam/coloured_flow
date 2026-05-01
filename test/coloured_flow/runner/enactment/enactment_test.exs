@@ -354,4 +354,55 @@ defmodule ColouredFlow.Runner.EnactmentTest do
       assert snapshot_count < burst_size
     end
   end
+
+  describe "lifecycle :start telemetry metadata" do
+    setup %{enactment: enactment} do
+      handler_id = "enactment-test-#{Ecto.UUID.generate()}"
+
+      :telemetry_test.attach_event_handlers(self(), [
+        [:coloured_flow, :runner, :enactment, :start]
+      ])
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      {:ok, enactment: enactment, handler_id: handler_id}
+    end
+
+    test "fresh boot emits resumed: false and replayed_steps: 0", %{enactment: enactment} do
+      enactment_id = enactment.id
+      [enactment_server: _server] = start_enactment(%{enactment: enactment})
+
+      assert_receive {
+                       [:coloured_flow, :runner, :enactment, :start],
+                       _handler_id,
+                       _measurements,
+                       %{resumed: false, replayed_steps: 0, enactment_id: ^enactment_id}
+                     },
+                     5_000
+    end
+
+    test "boot after a snapshot was already persisted emits resumed: true", %{
+      enactment: enactment
+    } do
+      enactment_id = enactment.id
+
+      :snapshot
+      |> build(
+        enactment: enactment,
+        version: 1,
+        markings: [%Marking{place: "input", tokens: ~MS[1**1]}]
+      )
+      |> insert()
+
+      [enactment_server: _server] = start_enactment(%{enactment: enactment})
+
+      assert_receive {
+                       [:coloured_flow, :runner, :enactment, :start],
+                       _handler_id,
+                       _measurements,
+                       %{resumed: true, enactment_id: ^enactment_id}
+                     },
+                     5_000
+    end
+  end
 end
