@@ -15,6 +15,21 @@ defmodule ColouredFlow.Runner.Errors do
   | `3`  | Transient infrastructure errors. Let it crash; supervisor restarts.                                   |
   | `4`  | Programmer errors. Should be caught by validators or compile-time checks.                             |
 
+  ## Best-effort static dispatch
+
+  All public functions in this module are **best-effort static dispatch on
+  exception type**. They cannot infer the call site that produced the exception.
+  The same exception type may belong to different tiers depending on context — for
+  example, an `ArithmeticError` raised inside an arc expression during workitem
+  completion is operationally Tier 1, but the same `ArithmeticError` raised by a
+  buggy validator path is Tier 4.
+
+  Foreign exceptions (anything not registered with `tier/1`) fall back to
+  `tier == 3` and `error_code == :unknown`. Subscribers that need precise
+  classification should rely on the **telemetry metadata** emitted at the call
+  site (`:tier`, `:error_code`, `:exception_reason`, `:source_phase`) rather than
+  calling these helpers on a returned `{:error, exception}` tuple.
+
   See `error_handling_design.md` at the repository root for the full
   specification.
   """
