@@ -30,6 +30,13 @@ defmodule ColouredFlow.Runner.Errors do
   site (`:tier`, `:error_code`, `:exception_reason`, `:source_phase`) rather than
   calling these helpers on a returned `{:error, exception}` tuple.
 
+  Likewise, lifecycle persistence is driven by the **reason atom passed at the
+  call site**, not by the exception type. A foreign exception raised during
+  termination-criteria evaluation is persisted with
+  `enactment_logs.exception.reason = :termination_criteria_evaluation` even though
+  `lifecycle?(%ArithmeticError{})` returns `false` — that helper only knows what
+  `to_persisted_reason/1` can map by static dispatch.
+
   See `error_handling_design.md` at the repository root for the full
   specification.
   """
