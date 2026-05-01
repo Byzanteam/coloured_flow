@@ -44,7 +44,13 @@ defmodule ColouredFlow.MixProject do
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:ex_machina, "~> 2.8.0", only: :test},
       {:jason, "~> 1.0"},
-      {:jet_credo, [github: "Byzanteam/jet_credo", only: [:dev, :test], runtime: false]},
+      {:jet_credo,
+       [
+         github: "Byzanteam/jet_credo",
+         ref: "7e5855de2e8b41abfb0a1f5870bbc768a325f4e8",
+         only: [:dev, :test],
+         runtime: false
+       ]},
       {:kino, "~> 0.14.1", only: [:dev, :test]},
       {:postgrex, ">= 0.0.0"},
       {:telemetry, "~> 1.0"},
