@@ -149,6 +149,27 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
         500 -> flunk("enactment server did not stop")
       end
     end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "init shuts down when state is already :terminated", %{enactment: enactment} do
+      query = from(e in Schemas.Enactment, where: e.id == ^enactment.id)
+      Repo.update_all(query, set: [state: :terminated])
+
+      ref =
+        Process.monitor(
+          start_supervised!(
+            {EnactmentServer, [enactment_id: enactment.id]},
+            id: enactment.id
+          )
+        )
+
+      receive do
+        {:DOWN, ^ref, :process, _pid, {:shutdown, :terminated}} -> :ok
+        {:DOWN, ^ref, :process, _pid, reason} -> flunk("unexpected exit: #{inspect(reason)}")
+      after
+        500 -> flunk("enactment server did not stop")
+      end
+    end
   end
 
   describe "abnormal terminate logs :abnormal_exit" do
