@@ -29,8 +29,8 @@ defmodule ColouredFlow.DSLTest do
 
       assert %ColouredPetriNet{} = cpnet = SimpleSequenceDSL.cpnet()
 
-      assert SimpleSequenceDSL.__cf_name__() == "Simple Sequence"
-      assert SimpleSequenceDSL.__cf_version__() == "1.0.0"
+      assert SimpleSequenceDSL.__cpn__(:name) == "Simple Sequence"
+      assert SimpleSequenceDSL.__cpn__(:version) == "1.0.0"
 
       assert length(cpnet.places) == 2
       assert length(cpnet.transitions) == 1
@@ -38,7 +38,7 @@ defmodule ColouredFlow.DSLTest do
     end
   end
 
-  describe "initial_markings/0 accessor" do
+  describe "__cpn__(:initial_markings) reflection" do
     test "returns an empty list when no initial markings are declared" do
       defmodule NoInitialMarkings do
         use ColouredFlow.DSL
@@ -58,7 +58,7 @@ defmodule ColouredFlow.DSLTest do
         end
       end
 
-      assert NoInitialMarkings.initial_markings() == []
+      assert NoInitialMarkings.__cpn__(:initial_markings) == []
     end
 
     test "returns %Marking{} structs with string place names and multiset tokens" do
@@ -84,7 +84,7 @@ defmodule ColouredFlow.DSLTest do
 
       assert [
                %Marking{place: "input", tokens: tokens}
-             ] = WithInitialMarkings.initial_markings()
+             ] = WithInitialMarkings.__cpn__(:initial_markings)
 
       assert tokens == ~MS[1 2 3]
     end
@@ -111,7 +111,7 @@ defmodule ColouredFlow.DSLTest do
         end
       end
 
-      markings = MultipleInitialMarkings.initial_markings()
+      markings = MultipleInitialMarkings.__cpn__(:initial_markings)
 
       assert length(markings) == 2
 

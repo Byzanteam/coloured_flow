@@ -52,19 +52,24 @@ runtime.
 
 ## Generated module surface
 
-A module that uses `ColouredFlow.DSL` exposes two zero-arity helpers:
+A module that uses `ColouredFlow.DSL` exposes:
 
-    MyWorkflow.cpnet()             :: %ColouredFlow.Definition.ColouredPetriNet{}
-    MyWorkflow.initial_markings()  :: [%ColouredFlow.Enactment.Marking{}]
+    MyWorkflow.cpnet()                      :: %ColouredFlow.Definition.ColouredPetriNet{}
+    MyWorkflow.__cpn__(:name)               :: String.t() | nil
+    MyWorkflow.__cpn__(:version)            :: String.t() | nil
+    MyWorkflow.__cpn__(:initial_markings)   :: [%ColouredFlow.Enactment.Marking{}]
 
-`cpnet/0` returns the static CPN — colour sets, variables, places,
-transitions, arcs, and termination criteria. It is the input the runner
-reuses across every enactment of the workflow.
+`cpnet/0` is the **main API**: it returns the static CPN — colour sets,
+variables, places, transitions, arcs, and termination criteria — that
+the runner reuses across every enactment of the workflow.
 
-`initial_markings/0` returns the list of `%Marking{}` declared via
-`initial_marking/2`. This is enactment-seed data, deliberately *not*
-folded into `cpnet/0`. Pass it to `Storage.insert_enactment/1` (or your
-own runner glue) when starting an enactment.
+`__cpn__/1` is a **reflection helper** for declaration metadata
+(modeled after `Ecto.Schema.__schema__/1`). Pass an atom key to read
+the corresponding piece of workflow metadata. `:initial_markings`
+returns the list of `%Marking{}` declared via `initial_marking/2`;
+this is enactment-seed data, deliberately *not* folded into `cpnet/0`.
+Pass it to `Storage.insert_enactment/1` (or your own runner glue) when
+starting an enactment.
 
 Higher-level integration — spawning enactments, persisting flows,
 visualisation — is left to the existing `ColouredFlow.Runner.*` API.

@@ -28,6 +28,9 @@ defmodule ColouredFlow.DSL.Builder do
 
     case ColouredFlow.Validators.run(cpnet) do
       {:ok, validated} ->
+        name = Module.get_attribute(env.module, :cf_name)
+        version = Module.get_attribute(env.module, :cf_version)
+
         quote do
           @doc """
           The `%ColouredFlow.Definition.ColouredPetriNet{}` materialised from the DSL
@@ -37,24 +40,20 @@ defmodule ColouredFlow.DSL.Builder do
           def cpnet, do: unquote(Macro.escape(validated))
 
           @doc """
-          The list of `%ColouredFlow.Enactment.Marking{}` structs declared via
-          `initial_marking/2`. Used by the Runner to seed an enactment; this is *not* part
-          of the static CPN definition (see `cpnet/0`).
-          """
-          @spec initial_markings() :: [Marking.t()]
-          def initial_markings, do: unquote(Macro.escape(initial_markings))
+          Reflection helper exposing workflow metadata.
 
-          @doc """
-          The human-readable name of this workflow, or `nil` if unset.
+          | key                  | value                                                          |
+          | -------------------- | -------------------------------------------------------------- |
+          | `:name`              | `String.t() \| nil` — `name "..."` declaration                  |
+          | `:version`           | `String.t() \| nil` — `version "..."` declaration               |
+          | `:initial_markings`  | `[%Marking{}]` — declared via `initial_marking/2`              |
           """
-          @spec __cf_name__() :: String.t() | nil
-          def __cf_name__, do: unquote(Module.get_attribute(env.module, :cf_name))
-
-          @doc """
-          The version string of this workflow, or `nil` if unset.
-          """
-          @spec __cf_version__() :: String.t() | nil
-          def __cf_version__, do: unquote(Module.get_attribute(env.module, :cf_version))
+          @spec __cpn__(:name) :: String.t() | nil
+          @spec __cpn__(:version) :: String.t() | nil
+          @spec __cpn__(:initial_markings) :: [Marking.t()]
+          def __cpn__(:name), do: unquote(name)
+          def __cpn__(:version), do: unquote(version)
+          def __cpn__(:initial_markings), do: unquote(Macro.escape(initial_markings))
         end
 
       {:error, exception} ->
