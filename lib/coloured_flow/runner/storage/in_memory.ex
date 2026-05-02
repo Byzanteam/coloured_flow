@@ -165,6 +165,13 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
   end
 
   @impl Storage
+  def crash_threshold_exceeded?(_enactment_id) do
+    # In-memory storage does not persist crash log rows, so the circuit
+    # breaker is a no-op for tests using this backend.
+    false
+  end
+
+  @impl Storage
   def insert_enactment(params) do
     enactment =
       enactment(
@@ -280,33 +287,6 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
   def read_enactment_snapshot(_enactment_id) do
     # cause we don't take snapshots in the in-memory storage
     :error
-  end
-
-  @impl Storage
-  def recover_from_corrupt_snapshot(enactment_id, exception) do
-    Logger.debug("""
-    Recovering corrupt snapshot for enactment #{inspect(enactment_id)}: \
-    #{Exception.message(exception)}\
-    """)
-
-    :ok
-  end
-
-  @impl Storage
-  def record_crash(enactment_id, exception) do
-    Logger.debug("""
-    Recording crash for enactment #{inspect(enactment_id)}: \
-    #{Exception.message(exception)}\
-    """)
-
-    :ok
-  end
-
-  @impl Storage
-  def consecutive_crashes_since_progress(_enactment_id) do
-    # In-memory storage does not track restarts; the circuit breaker is a
-    # no-op for tests using this backend.
-    0
   end
 
   defp table(table_name)

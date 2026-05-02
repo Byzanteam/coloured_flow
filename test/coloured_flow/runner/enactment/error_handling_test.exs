@@ -2,8 +2,6 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
   use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 
-  import Ecto.Query, only: [from: 2]
-
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Runner.Enactment, as: EnactmentServer
   alias ColouredFlow.Runner.Enactment.Snapshot
@@ -17,7 +15,7 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
     @describetag cpnet: :simple_sequence
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
-    test "deletes the corrupt snapshot row and replays from initial markings",
+    test "writes a non-fatal :snapshot_corrupt log and replays from initial markings",
          %{enactment: enactment} do
       insert_corrupt_snapshot!(enactment.id, version: 1)
 
@@ -32,6 +30,9 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
                  match?(%{reason: :snapshot_corrupt}, log.exception)
              end)
 
+      schema = Repo.get(Schemas.Enactment, enactment.id)
+      assert schema.state === :running
+
       [marking] = get_enactment_markings(enactment_server)
       assert marking.place === "input"
       assert marking.tokens === ~MS[1]
@@ -44,8 +45,9 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
       [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
       :ok = wait_enactment_requests_handled!(enactment_server)
 
-      # The runner overwrote the corrupt row on boot. Subsequent reads succeed
-      # and reflect the replayed state (no occurrences exist yet, so version 0).
+      # The runner overwrote the corrupt row on boot via the next take_snapshot.
+      # Subsequent reads succeed and reflect the replayed state (no occurrences
+      # exist yet, so version 0).
       assert {:ok, %Snapshot{version: 0}} = Storage.read_enactment_snapshot(enactment.id)
     end
   end
@@ -61,8 +63,9 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
          %{enactment: enactment} do
       for _i <- 1..3 do
         :ok =
-          Storage.record_crash(
+          Storage.exception_occurs(
             enactment.id,
+            :crash,
             Exceptions.AbnormalExit.exception(reason: :boom)
           )
       end
@@ -86,8 +89,9 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
     test "starts normally below threshold", %{enactment: enactment} do
       :ok =
-        Storage.record_crash(
+        Storage.exception_occurs(
           enactment.id,
+          :crash,
           Exceptions.AbnormalExit.exception(reason: :boom)
         )
 
@@ -95,66 +99,6 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
 
       assert is_pid(enactment_server)
       :ok = wait_enactment_requests_handled!(enactment_server)
-    end
-  end
-
-  describe "state_drift fatal funnel" do
-    setup :setup_flow
-    setup :setup_enactment
-
-    @describetag cpnet: :simple_sequence
-
-    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
-    test "start_workitems drift exits with :shutdown and persists :state_drift",
-         %{enactment: enactment} do
-      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
-
-      [%Enactment.Workitem{state: :enabled} = workitem] =
-        get_enactment_workitems(enactment_server)
-
-      # Delete the workitem row out from under the GenServer to simulate drift.
-      delete_query = from(w in Schemas.Workitem, where: w.id == ^workitem.id)
-      Repo.delete_all(delete_query)
-
-      ref = Process.monitor(enactment_server)
-      catch_exit(GenServer.call(enactment_server, {:start_workitems, [workitem.id]}))
-
-      assert_receive {:DOWN, ^ref, :process, ^enactment_server,
-                      {:shutdown, {:fatal, :state_drift}}},
-                     500
-
-      schema = Repo.get(Schemas.Enactment, enactment.id)
-      assert schema.state === :exception
-
-      [exception_log] =
-        Schemas.EnactmentLog
-        |> Repo.all(enactment_id: enactment.id)
-        |> Enum.filter(&(&1.state === :exception))
-
-      assert exception_log.exception.reason === :state_drift
-    end
-
-    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
-    test "complete_workitems drift exits with :shutdown and persists :state_drift",
-         %{enactment: enactment} do
-      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
-
-      [workitem] = get_enactment_workitems(enactment_server)
-      workitem = start_workitem(workitem, enactment_server)
-
-      # Delete the started workitem row out from under the GenServer.
-      delete_query = from(w in Schemas.Workitem, where: w.id == ^workitem.id)
-      Repo.delete_all(delete_query)
-
-      ref = Process.monitor(enactment_server)
-      catch_exit(GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}}))
-
-      assert_receive {:DOWN, ^ref, :process, ^enactment_server,
-                      {:shutdown, {:fatal, :state_drift}}},
-                     500
-
-      schema = Repo.get(Schemas.Enactment, enactment.id)
-      assert schema.state === :exception
     end
   end
 

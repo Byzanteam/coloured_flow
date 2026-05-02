@@ -14,10 +14,23 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
   import Ecto.Query
 
-  require Logger
-
   @type enactment_id() :: ColouredFlow.Runner.Storage.enactment_id()
   @type flow_id() :: ColouredFlow.Runner.Storage.flow_id()
+
+  # Exception types raised by `Codec.Marking.decode/2` when it encounters a
+  # payload it cannot parse. Listed explicitly so that connection errors
+  # (`DBConnection.ConnectionError`, `Postgrex.Error`, etc.) are NOT
+  # reclassified as `:snapshot_corrupt`.
+  @snapshot_corrupt_exceptions [
+    ArgumentError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError
+  ]
+
+  @crash_threshold 3
 
   @impl ColouredFlow.Runner.Storage
   def get_flow_by_enactment(enactment_id) do
@@ -74,6 +87,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   fatal_reasons = ColouredFlow.Runner.Exception.__fatal_reasons__()
+  non_fatal_reasons = ColouredFlow.Runner.Exception.__non_fatal_reasons__()
 
   @impl ColouredFlow.Runner.Storage
   def exception_occurs(enactment_id, reason, exception)
@@ -102,6 +116,44 @@ defmodule ColouredFlow.Runner.Storage.Default do
         Changes so far: #{inspect(changes_so_far)}
         """
     end
+  end
+
+  def exception_occurs(enactment_id, reason, exception)
+      when reason in unquote(non_fatal_reasons) and is_exception(exception) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.one(:enactment, fn _changes ->
+      where(Schemas.Enactment, id: ^enactment_id)
+    end)
+    |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
+      Schemas.EnactmentLog.build_recovery(enactment, reason, exception)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to insert non-fatal enactment log.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def crash_threshold_exceeded?(enactment_id) do
+    reasons =
+      Schemas.EnactmentLog
+      |> where([el], el.enactment_id == ^enactment_id)
+      |> order_by([el], desc: el.inserted_at)
+      |> limit(@crash_threshold)
+      |> select([el], fragment("?->>'reason'", el.exception))
+      |> Repo.all()
+
+    length(reasons) === @crash_threshold and Enum.all?(reasons, &(&1 === "crash"))
   end
 
   @impl ColouredFlow.Runner.Storage
@@ -229,13 +281,12 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   @typep transition_option() :: ColouredFlow.Runner.Storage.transition_option()
-  @typep write_result() :: ColouredFlow.Runner.Storage.write_result()
 
   @doc """
   Transition a workitem from one state to another. This is a shortcut for
   `ColouredFlow.Runner.Default.transition_workitems/2`.
   """
-  @spec transition_workitem(Workitem.t(), [transition_option()]) :: write_result()
+  @spec transition_workitem(Workitem.t(), [transition_option()]) :: :ok
   def transition_workitem(workitem, options) do
     workitem
     |> List.wrap()
@@ -246,7 +297,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
   Transition the workitems from one state to another in accordance with the state
   machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
   """
-  @spec transition_workitems([Workitem.t()], [transition_option()]) :: write_result()
+  @spec transition_workitems([Workitem.t()], [transition_option()]) :: :ok
   def transition_workitems([], _options), do: :ok
 
   def transition_workitems(workitems, options) when is_list(workitems) do
@@ -259,18 +310,13 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:ok, _changes} ->
         :ok
 
-      {:error, :result, {:unexpected_updated_rows, ctx}, _changes} ->
-        {:error, {:state_drift, ctx}}
-
-      {:error, op, value, changes} ->
-        raise """
-        Workitem transition failed unexpectedly.
-
-        Action: #{inspect(action)}
-        Operation: #{inspect(op)}
-        Value: #{inspect(value)}
-        Changes: #{inspect(changes)}
-        """
+      {
+        :error,
+        :result,
+        {:unexpected_updated_rows, exception_ctx},
+        _changes_so_far
+      } ->
+        unexpected_updated_rows!(workitems, action, exception_ctx)
     end
   end
 
@@ -339,6 +385,22 @@ defmodule ColouredFlow.Runner.Storage.Default do
     defp get_from_state(unquote(to), unquote(action)), do: unquote(from)
   end
 
+  defp unexpected_updated_rows!(workitems, transition, options) do
+    # When the actual number is not equal to the expected number,
+    # it means the workitems in the gen_server are not consistent with the database.
+    # So we just raise an error to crash the process; `terminate/2` will record
+    # the abnormal exit as `:crash`, and the consecutive-crash circuit breaker
+    # trips after the configured threshold.
+    expected = Keyword.fetch!(options, :expected)
+    actual = Keyword.fetch!(options, :actual)
+
+    raise """
+    The number of workitems to #{transition} is not equal to the actual number.
+    Expected: #{expected}, Actual: #{actual}
+    Workitems: #{Enum.map_join(workitems, ", ", & &1.id)}
+    """
+  end
+
   @impl ColouredFlow.Runner.Storage
   def start_workitems(workitems, options) do
     transition_workitems(workitems, options)
@@ -373,18 +435,13 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:ok, _result} ->
         :ok
 
-      {:error, :result, {:unexpected_updated_rows, ctx}, _changes} ->
-        {:error, {:state_drift, ctx}}
-
-      {:error, op, value, changes} ->
-        raise """
-        Workitem completion failed unexpectedly.
-
-        Action: #{inspect(action)}
-        Operation: #{inspect(op)}
-        Value: #{inspect(value)}
-        Changes: #{inspect(changes)}
-        """
+      {
+        :error,
+        :result,
+        {:unexpected_updated_rows, exception_ctx},
+        _changes_so_far
+      } ->
+        unexpected_updated_rows!(completed_workitems, action, exception_ctx)
     end
   end
 
@@ -430,19 +487,6 @@ defmodule ColouredFlow.Runner.Storage.Default do
     :ok
   end
 
-  # Exception types raised by `Codec.Marking.decode/2` when it encounters a
-  # payload it cannot parse. Listed explicitly so that connection errors
-  # (`DBConnection.ConnectionError`, `Postgrex.Error`, etc.) are NOT
-  # reclassified as `:snapshot_corrupt`.
-  @snapshot_corrupt_exceptions [
-    ArgumentError,
-    FunctionClauseError,
-    KeyError,
-    MatchError,
-    Protocol.UndefinedError,
-    RuntimeError
-  ]
-
   @impl ColouredFlow.Runner.Storage
   def read_enactment_snapshot(enactment_id) do
     # Codec decoding runs inside `Repo.get_by/2` when Ecto loads the
@@ -465,97 +509,5 @@ defmodule ColouredFlow.Runner.Storage.Default do
     end
   catch
     {:snapshot_corrupt, error} -> {:error, {:snapshot_corrupt, error}}
-  end
-
-  @impl ColouredFlow.Runner.Storage
-  def recover_from_corrupt_snapshot(enactment_id, exception) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.one(:enactment, fn _changes ->
-      where(Schemas.Enactment, id: ^enactment_id)
-    end)
-    |> Ecto.Multi.delete_all(
-      :delete_snapshot,
-      from(s in Schemas.Snapshot, where: s.enactment_id == ^enactment_id)
-    )
-    |> Ecto.Multi.insert(:insert_log, fn %{enactment: enactment} ->
-      Schemas.EnactmentLog.build_recovery(enactment, :snapshot_corrupt, exception)
-    end)
-    |> Repo.transaction()
-    |> case do
-      {:ok, _changes} ->
-        :ok
-
-      {:error, failed_operation, failed_value, changes_so_far} ->
-        raise """
-        Failed to recover from corrupt snapshot.
-
-        Failed operation: #{inspect(failed_operation)}
-        Failed value: #{inspect(failed_value)}
-        Changes so far: #{inspect(changes_so_far)}
-        """
-    end
-  end
-
-  @impl ColouredFlow.Runner.Storage
-  def record_crash(enactment_id, exception) do
-    Schemas.Enactment
-    |> Repo.get(enactment_id)
-    |> case do
-      nil ->
-        Logger.warning(
-          "record_crash skipped: enactment #{inspect(enactment_id)} no longer exists"
-        )
-
-        :ok
-
-      enactment ->
-        enactment
-        |> Schemas.EnactmentLog.build_recovery(:crash, exception)
-        |> Repo.insert()
-        |> case do
-          {:ok, _log} ->
-            :ok
-
-          {:error, changeset} ->
-            Logger.warning("""
-            record_crash failed to persist :crash log row for enactment \
-            #{inspect(enactment_id)}; the consecutive-crash circuit \
-            breaker may not advance. Changeset errors: \
-            #{inspect(changeset.errors)}\
-            """)
-
-            :ok
-        end
-    end
-  end
-
-  @impl ColouredFlow.Runner.Storage
-  def consecutive_crashes_since_progress(enactment_id) do
-    cutoff = cutoff_for_consecutive_crashes(enactment_id)
-
-    Schemas.EnactmentLog
-    |> where([el], el.enactment_id == ^enactment_id and el.state == :running)
-    |> where([el], fragment("?->>'reason'", el.exception) == "crash")
-    |> where([el], el.inserted_at > ^cutoff)
-    |> Repo.aggregate(:count)
-  end
-
-  defp cutoff_for_consecutive_crashes(enactment_id) do
-    last_progress =
-      Schemas.Occurrence
-      |> where([o], o.enactment_id == ^enactment_id)
-      |> select([o], max(o.inserted_at))
-      |> Repo.one()
-
-    case last_progress do
-      nil ->
-        Schemas.Enactment
-        |> where([e], e.id == ^enactment_id)
-        |> select([e], e.inserted_at)
-        |> Repo.one!()
-
-      timestamp ->
-        timestamp
-    end
   end
 end

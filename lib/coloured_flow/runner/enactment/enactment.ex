@@ -54,10 +54,6 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Telemetry
 
-  require Logger
-
-  @consecutive_crash_threshold 3
-
   @typep enactment_id() :: Storage.enactment_id()
 
   @typedoc "The markings map of the enactment."
@@ -123,22 +119,19 @@ defmodule ColouredFlow.Runner.Enactment do
 
     state = struct(__MODULE__, options)
 
-    case Storage.consecutive_crashes_since_progress(state.enactment_id) do
-      count when count >= @consecutive_crash_threshold ->
-        exception =
-          Exceptions.RestartLoop.exception(
-            enactment_id: state.enactment_id,
-            count: count
-          )
+    if Storage.crash_threshold_exceeded?(state.enactment_id) do
+      exception = Exceptions.RestartLoop.exception(enactment_id: state.enactment_id)
 
-        :ok = Storage.exception_occurs(state.enactment_id, :restart_loop, exception)
+      :ok = Storage.exception_occurs(state.enactment_id, :restart_loop, exception)
 
-        Logger.warning(Exception.message(exception))
+      emit_event(:exception, state, %{
+        exception_reason: :restart_loop,
+        exception: exception
+      })
 
-        :ignore
-
-      _count ->
-        {:ok, state, {:continue, :populate_state}}
+      :ignore
+    else
+      {:ok, state, {:continue, :populate_state}}
     end
   end
 
@@ -220,16 +213,14 @@ defmodule ColouredFlow.Runner.Enactment do
       :error ->
         initial_snapshot(state)
 
-      {:error, {:snapshot_corrupt, underlying}} ->
+      {:error, {:snapshot_corrupt, cause}} ->
         exception =
           Exceptions.SnapshotCorrupt.exception(
             enactment_id: state.enactment_id,
-            underlying: underlying
+            cause: cause
           )
 
-        :ok = Storage.recover_from_corrupt_snapshot(state.enactment_id, exception)
-
-        Logger.warning(Exception.message(exception))
+        :ok = Storage.exception_occurs(state.enactment_id, :snapshot_corrupt, exception)
 
         emit_event(:exception, state, %{
           exception_reason: :snapshot_corrupt,
@@ -246,31 +237,6 @@ defmodule ColouredFlow.Runner.Enactment do
       version: 0,
       markings: Storage.get_initial_markings(state.enactment_id)
     }
-  end
-
-  # Funnel storage writes that may report `:state_drift`. On drift, persist
-  # `:exception` state and exit via `{:shutdown, _}` so the supervisor does
-  # not restart and `terminate/2` does not record a `:crash`.
-  @spec persist_or_drift!(Storage.write_result(), state(), Workitem.transition_action()) ::
-          :ok | no_return()
-  defp persist_or_drift!(:ok, %__MODULE__{}, _action), do: :ok
-
-  defp persist_or_drift!({:error, {:state_drift, ctx}}, %__MODULE__{} = state, action) do
-    exception =
-      Exceptions.StateDrift.exception(
-        enactment_id: state.enactment_id,
-        action: action,
-        context: ctx
-      )
-
-    :ok = Storage.exception_occurs(state.enactment_id, :state_drift, exception)
-
-    emit_event(:exception, state, %{
-      exception_reason: :state_drift,
-      exception: exception
-    })
-
-    exit({:shutdown, {:fatal, :state_drift}})
   end
 
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
@@ -291,14 +257,10 @@ defmodule ColouredFlow.Runner.Enactment do
 
         Enum.each(grouped_wokitems, fn
           {:enabled, workitems} ->
-            workitems
-            |> Storage.withdraw_workitems(action: :withdraw)
-            |> persist_or_drift!(state, :withdraw)
+            :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
 
           {:started, workitems} ->
-            workitems
-            |> Storage.withdraw_workitems(action: :withdraw_s)
-            |> persist_or_drift!(state, :withdraw_s)
+            :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
         end)
 
         {:ok, workitems, %{workitems: workitems}}
@@ -378,9 +340,7 @@ defmodule ColouredFlow.Runner.Enactment do
     :start_workitems
     |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
       with {:ok, {started_workitems, new_state}} <- start_workitems(state, workitem_ids) do
-        started_workitems
-        |> Storage.start_workitems(action: :start)
-        |> persist_or_drift!(state, :start)
+        :ok = Storage.start_workitems(started_workitems, action: :start)
 
         {:ok, {started_workitems, new_state}, %{workitems: started_workitems}}
       end
@@ -416,13 +376,13 @@ defmodule ColouredFlow.Runner.Enactment do
           {:ok, {workitem_occurrences, new_state, calibration_options}} <-
             complete_workitems(state, workitem_ids, workitem_id_and_outputs)
         ) do
-          new_state.enactment_id
-          |> Storage.complete_workitems(
-            new_state.version,
-            workitem_occurrences,
-            action: transition_action
-          )
-          |> persist_or_drift!(state, transition_action)
+          :ok =
+            Storage.complete_workitems(
+              new_state.enactment_id,
+              new_state.version,
+              workitem_occurrences,
+              action: transition_action
+            )
 
           completed_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
 
@@ -657,7 +617,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
   def terminate(reason, state) do
     exception = Exceptions.AbnormalExit.exception(reason: reason)
-    :ok = Storage.record_crash(state.enactment_id, exception)
+    :ok = Storage.exception_occurs(state.enactment_id, :crash, exception)
     emit_event(:stop, state, %{reason: reason})
   end
 

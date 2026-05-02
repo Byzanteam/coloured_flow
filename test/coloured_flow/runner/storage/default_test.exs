@@ -40,7 +40,7 @@ defmodule ColouredFlow.Runner.Storage.DefaultTest do
       # bypasses the codec on insert so the failure surfaces only on read.
       insert_raw_snapshot!(enactment.id, ~s(["not-a-marking-object"]))
 
-      assert {:error, {:snapshot_corrupt, _underlying}} =
+      assert {:error, {:snapshot_corrupt, _cause}} =
                Default.read_enactment_snapshot(enactment.id)
     end
 
@@ -55,86 +55,108 @@ defmodule ColouredFlow.Runner.Storage.DefaultTest do
         ~s([{"place": "p", "tokens": "not-a-list"}])
       )
 
-      assert {:error, {:snapshot_corrupt, _underlying}} =
+      assert {:error, {:snapshot_corrupt, _cause}} =
                Default.read_enactment_snapshot(enactment.id)
     end
   end
 
-  describe "recover_from_corrupt_snapshot/2" do
-    test "deletes corrupt snapshot row and records a recovery log entry" do
-      flow = :flow |> build() |> insert()
-      enactment = :enactment |> build(flow: flow) |> insert()
-
-      :ok =
-        Default.take_enactment_snapshot(enactment.id, %Snapshot{
-          version: 1,
-          markings: []
-        })
-
-      exception =
-        Exceptions.SnapshotCorrupt.exception(
-          enactment_id: enactment.id,
-          underlying: RuntimeError.exception("boom")
-        )
-
-      assert :ok === Default.recover_from_corrupt_snapshot(enactment.id, exception)
-
-      refute Repo.get_by(Schemas.Snapshot, enactment_id: enactment.id)
-
-      [log] = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
-
-      assert log.state === :running
-      assert log.exception.reason === :snapshot_corrupt
-      assert log.exception.type === inspect(Exceptions.SnapshotCorrupt)
-    end
-  end
-
-  describe "record_crash/2 + consecutive_crashes_since_progress/1" do
+  describe "exception_occurs/3 (non-fatal reasons)" do
     setup do
       flow = :flow |> build() |> insert()
       enactment = :enactment |> build(flow: flow) |> insert()
       [enactment: enactment]
     end
 
-    test "record_crash inserts a non-fatal log row with reason=:crash", %{enactment: enactment} do
+    test "writes a :crash log row without flipping enactment state", %{enactment: enactment} do
       exception = Exceptions.AbnormalExit.exception(reason: :killed)
 
-      assert :ok === Default.record_crash(enactment.id, exception)
+      assert :ok === Default.exception_occurs(enactment.id, :crash, exception)
 
       [crash_log] = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
-
       assert crash_log.state === :running
       assert crash_log.exception.reason === :crash
+
+      schema = Repo.get(Schemas.Enactment, enactment.id)
+      assert schema.state === :running
     end
 
-    test "counts crash log rows since enactment creation when no occurrences exist",
-         %{enactment: enactment} do
-      assert 0 === Default.consecutive_crashes_since_progress(enactment.id)
+    test "writes a :snapshot_corrupt log row without flipping state", %{enactment: enactment} do
+      exception =
+        Exceptions.SnapshotCorrupt.exception(
+          enactment_id: enactment.id,
+          cause: RuntimeError.exception("boom")
+        )
 
+      assert :ok === Default.exception_occurs(enactment.id, :snapshot_corrupt, exception)
+
+      [log] = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+      assert log.state === :running
+      assert log.exception.reason === :snapshot_corrupt
+
+      schema = Repo.get(Schemas.Enactment, enactment.id)
+      assert schema.state === :running
+    end
+  end
+
+  describe "crash_threshold_exceeded?/1" do
+    setup do
+      flow = :flow |> build() |> insert()
+      enactment = :enactment |> build(flow: flow) |> insert()
+      [enactment: enactment]
+    end
+
+    test "returns false when fewer than 3 logs exist", %{enactment: enactment} do
+      refute Default.crash_threshold_exceeded?(enactment.id)
+
+      :ok =
+        Default.exception_occurs(
+          enactment.id,
+          :crash,
+          Exceptions.AbnormalExit.exception(reason: :boom)
+        )
+
+      refute Default.crash_threshold_exceeded?(enactment.id)
+    end
+
+    test "returns true when the last 3 logs are all :crash", %{enactment: enactment} do
       for _i <- 1..3 do
         :ok =
-          Default.record_crash(
+          Default.exception_occurs(
             enactment.id,
+            :crash,
             Exceptions.AbnormalExit.exception(reason: :boom)
           )
       end
 
-      assert 3 === Default.consecutive_crashes_since_progress(enactment.id)
+      assert Default.crash_threshold_exceeded?(enactment.id)
     end
 
-    test "resets the count once a new occurrence is persisted", %{enactment: enactment} do
+    test "returns false when a non-crash log breaks the streak", %{enactment: enactment} do
       :ok =
-        Default.record_crash(
+        Default.exception_occurs(
           enactment.id,
+          :crash,
           Exceptions.AbnormalExit.exception(reason: :boom)
         )
 
-      assert 1 === Default.consecutive_crashes_since_progress(enactment.id)
+      :ok =
+        Default.exception_occurs(
+          enactment.id,
+          :snapshot_corrupt,
+          Exceptions.SnapshotCorrupt.exception(
+            enactment_id: enactment.id,
+            cause: RuntimeError.exception("boom")
+          )
+        )
 
-      workitem = :workitem |> build(enactment: enactment) |> insert()
-      :occurrence |> build(enactment: enactment, workitem: workitem) |> insert()
+      :ok =
+        Default.exception_occurs(
+          enactment.id,
+          :crash,
+          Exceptions.AbnormalExit.exception(reason: :boom)
+        )
 
-      assert 0 === Default.consecutive_crashes_since_progress(enactment.id)
+      refute Default.crash_threshold_exceeded?(enactment.id)
     end
   end
 

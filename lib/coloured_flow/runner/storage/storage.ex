@@ -25,16 +25,6 @@ defmodule ColouredFlow.Runner.Storage do
   @type enactment_id() :: Ecto.UUID.t()
   @type flow_id() :: Ecto.UUID.t()
 
-  @typedoc """
-  Mutating workitem operations may return `{:error, {:state_drift, ctx}}` when the
-  in-memory state diverges from storage (Multi `:result` step rejecting an
-  `:unexpected_updated_rows` mismatch). Callers funnel this into a Tier 2 fatal
-  exit; the keyword `ctx` carries `expected:` / `actual:` row counts so operators
-  see the discrepancy in the persisted exception.
-  """
-  @type state_drift_context() :: [expected: pos_integer(), actual: non_neg_integer()]
-  @type write_result() :: :ok | {:error, {:state_drift, state_drift_context()}}
-
   @doc """
   Get the flow of an enactment.
   """
@@ -55,16 +45,27 @@ defmodule ColouredFlow.Runner.Storage do
               Enumerable.t(Occurrence.t())
 
   @doc """
-  An exception occurred during the enactment, and the corresponding enactment will
-  be stopped. The enactment row's state is flipped to `:exception` and a log row
-  is recorded.
+  Records an exceptional event in `enactment_logs`.
+
+  When `reason` is fatal (see
+  `ColouredFlow.Runner.Exception.__fatal_reasons__/0`), the enactment row is also
+  flipped to `:exception`. Non-fatal reasons only insert a log row; the enactment
+  state is unchanged.
   """
   @doc group: :enactment
   @callback exception_occurs(
               enactment_id(),
-              reason :: ColouredFlow.Runner.Exception.fatal_reason(),
+              reason :: ColouredFlow.Runner.Exception.reason(),
               exception :: Exception.t()
             ) :: :ok
+
+  @doc """
+  Returns `true` when the enactment is in a restart loop and `init/1` should abort
+  via `:ignore`. The default backend trips when the most recent three
+  `enactment_logs` rows all carry an `exception.reason` of `:crash`.
+  """
+  @doc group: :enactment
+  @callback crash_threshold_exceeded?(enactment_id()) :: boolean()
 
   @doc """
   Insert an enactment.
@@ -111,13 +112,13 @@ defmodule ColouredFlow.Runner.Storage do
   @callback start_workitems(
               started_workitems :: [Workitem.t(:started)],
               options :: [transition_option()]
-            ) :: write_result()
+            ) :: :ok
 
   @doc group: :workitem
   @callback withdraw_workitems(
               withdrawn_workitems :: [Workitem.t(:withdrawn)],
               options :: [transition_option()]
-            ) :: write_result()
+            ) :: :ok
 
   @doc group: :workitem
   @callback complete_workitems(
@@ -125,7 +126,7 @@ defmodule ColouredFlow.Runner.Storage do
               current_version :: non_neg_integer(),
               workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
               options :: [transition_option()]
-            ) :: write_result()
+            ) :: :ok
 
   @doc """
   Takes a snapshot of the given enactment.
@@ -136,38 +137,16 @@ defmodule ColouredFlow.Runner.Storage do
   @doc """
   Reads the snapshot of the given enactment.
 
-  Returns `{:error, {:snapshot_corrupt, ctx}}` when the snapshot row exists but
-  cannot be decoded. Callers self-heal by calling
-  `recover_from_corrupt_snapshot/2` and then replaying from initial markings.
+  Returns `{:error, {:snapshot_corrupt, cause}}` when the snapshot row exists but
+  cannot be decoded. Callers self-heal by recording a non-fatal
+  `:snapshot_corrupt` event via `exception_occurs/3` and replaying from initial
+  markings; the next `take_enactment_snapshot/2` overwrites the bad row.
   """
   @doc group: :snapshot
   @callback read_enactment_snapshot(enactment_id()) ::
               {:ok, Snapshot.t()}
               | :error
-              | {:error, {:snapshot_corrupt, ctx :: Exception.t()}}
-
-  @doc """
-  Self-heal a corrupt snapshot row: delete it and record a `:snapshot_corrupt` log
-  entry. The enactment stays in `:running` state and a fresh snapshot is written
-  on the next `take_enactment_snapshot/2` call.
-  """
-  @doc group: :snapshot
-  @callback recover_from_corrupt_snapshot(enactment_id(), exception :: Exception.t()) :: :ok
-
-  @doc """
-  Records a non-fatal `:crash` log row when `terminate/2` exits abnormally. Used
-  by the consecutive-crash circuit breaker.
-  """
-  @doc group: :enactment
-  @callback record_crash(enactment_id(), exception :: Exception.t()) :: :ok
-
-  @doc """
-  Counts `:crash` log rows recorded since the most recent occurrence (or the
-  enactment's creation, if it has never made progress). The init callback consumes
-  this to detect restart loops.
-  """
-  @doc group: :enactment
-  @callback consecutive_crashes_since_progress(enactment_id()) :: non_neg_integer()
+              | {:error, {:snapshot_corrupt, cause :: Exception.t()}}
 
   @doc false
   @spec get_flow_by_enactment(enactment_id()) :: ColouredPetriNet.t()
@@ -191,11 +170,17 @@ defmodule ColouredFlow.Runner.Storage do
   @doc false
   @spec exception_occurs(
           enactment_id(),
-          ColouredFlow.Runner.Exception.fatal_reason(),
+          ColouredFlow.Runner.Exception.reason(),
           Exception.t()
         ) :: :ok
   def exception_occurs(enactment_id, reason, exception) do
     __storage__().exception_occurs(enactment_id, reason, exception)
+  end
+
+  @doc false
+  @spec crash_threshold_exceeded?(enactment_id()) :: boolean()
+  def crash_threshold_exceeded?(enactment_id) do
+    __storage__().crash_threshold_exceeded?(enactment_id)
   end
 
   @doc false
@@ -229,13 +214,13 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec start_workitems([Workitem.t(:started)], [transition_option()]) :: write_result()
+  @spec start_workitems([Workitem.t(:started)], [transition_option()]) :: :ok
   def start_workitems(workitems, options) do
     __storage__().start_workitems(workitems, options)
   end
 
   @doc false
-  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: write_result()
+  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: :ok
   def withdraw_workitems(workitems, options) do
     __storage__().withdraw_workitems(workitems, options)
   end
@@ -246,7 +231,7 @@ defmodule ColouredFlow.Runner.Storage do
           current_version :: non_neg_integer(),
           workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
           [transition_option()]
-        ) :: write_result()
+        ) :: :ok
   def complete_workitems(enactment_id, current_version, workitem_occurrences, options) do
     __storage__().complete_workitems(enactment_id, current_version, workitem_occurrences, options)
   end
@@ -264,24 +249,6 @@ defmodule ColouredFlow.Runner.Storage do
           | {:error, {:snapshot_corrupt, Exception.t()}}
   def read_enactment_snapshot(enactment_id) do
     __storage__().read_enactment_snapshot(enactment_id)
-  end
-
-  @doc false
-  @spec recover_from_corrupt_snapshot(enactment_id(), Exception.t()) :: :ok
-  def recover_from_corrupt_snapshot(enactment_id, exception) do
-    __storage__().recover_from_corrupt_snapshot(enactment_id, exception)
-  end
-
-  @doc false
-  @spec record_crash(enactment_id(), Exception.t()) :: :ok
-  def record_crash(enactment_id, exception) do
-    __storage__().record_crash(enactment_id, exception)
-  end
-
-  @doc false
-  @spec consecutive_crashes_since_progress(enactment_id()) :: non_neg_integer()
-  def consecutive_crashes_since_progress(enactment_id) do
-    __storage__().consecutive_crashes_since_progress(enactment_id)
   end
 
   @doc """
