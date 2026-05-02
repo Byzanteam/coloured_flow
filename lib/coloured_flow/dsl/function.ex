@@ -21,7 +21,9 @@ defmodule ColouredFlow.DSL.Function do
       end
   """
   defmacro function(head_with_type, body \\ nil) do
-    {name, args, result} = decompose_head(head_with_type)
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
+    {name, args, result} = decompose_head(head_with_type, __CALLER__)
     expr_ast = ExpressionHelper.block_to_ast(body)
     expression = ExpressionHelper.build_from_ast!(expr_ast)
 
@@ -39,7 +41,9 @@ defmodule ColouredFlow.DSL.Function do
         unquote(name_ast),
         unquote(args_ast),
         unquote(missing_ast),
-        unquote(extra_ast)
+        unquote(extra_ast),
+        unquote(caller_file),
+        unquote(caller_line)
       )
 
       @cf_functions %Procedure{
@@ -51,14 +55,17 @@ defmodule ColouredFlow.DSL.Function do
   end
 
   @doc false
-  @spec __validate_args__!(atom(), [atom()], [atom()], [atom()]) :: :ok
-  def __validate_args__!(name, args, missing, _extra) do
+  @spec __validate_args__!(atom(), [atom()], [atom()], [atom()], String.t(), non_neg_integer()) ::
+          :ok
+  def __validate_args__!(name, args, missing, _extra, file, line) do
     if missing != [] do
       raise CompileError,
         description: """
         Function `#{name}/#{length(args)}` declares argument(s) \
         #{inspect(missing)}, but they are not referenced in the body.
-        """
+        """,
+        file: file,
+        line: line
     end
 
     # Extra free variables are allowed (other vars/constants resolved at the
@@ -66,64 +73,41 @@ defmodule ColouredFlow.DSL.Function do
     :ok
   end
 
-  @spec decompose_head(Macro.t()) :: {atom(), [atom()], ColouredFlow.Definition.ColourSet.descr()}
-  defp decompose_head({:"::", _meta, [head, type_ast]}) do
-    {name, args} = decompose_call(head)
-    type_descr = decompose_type(type_ast)
+  @spec decompose_head(Macro.t(), Macro.Env.t()) ::
+          {atom(), [atom()], ColouredFlow.Definition.ColourSet.descr()}
+  defp decompose_head({:"::", _meta, [head, type_ast]}, caller) do
+    {name, args} = decompose_call(head, caller)
+    type_descr = ColouredFlow.Notation.Colset.__decompose_type__(type_ast)
     {name, args, type_descr}
   end
 
-  defp decompose_head(other) do
-    raise ArgumentError, """
-    Invalid function head, expected `name(arg1, arg2) :: type()`,
-    got: #{Macro.to_string(other)}
-    """
+  defp decompose_head(other, caller) do
+    raise CompileError,
+      description: """
+      Invalid function head, expected `name(arg1, arg2) :: type()`,
+      got: #{Macro.to_string(other)}
+      """,
+      file: caller.file,
+      line: caller.line
   end
 
-  defp decompose_call({name, _meta, args}) when is_atom(name) and is_list(args) do
+  defp decompose_call({name, _meta, args}, caller) when is_atom(name) and is_list(args) do
     arg_names =
       Enum.map(args, fn
         {arg, _meta, ctx} when is_atom(arg) and is_atom(ctx) ->
           arg
 
         other ->
-          raise ArgumentError,
-                "function argument must be a variable, got: #{Macro.to_string(other)}"
+          raise CompileError,
+            description: "function argument must be a variable, got: #{Macro.to_string(other)}",
+            file: caller.file,
+            line: caller.line
       end)
 
     {name, arg_names}
   end
 
-  defp decompose_call({name, _meta, ctx}) when is_atom(name) and is_atom(ctx) do
+  defp decompose_call({name, _meta, ctx}, _caller) when is_atom(name) and is_atom(ctx) do
     {name, []}
-  end
-
-  # Reuse Notation.Colset's type decomposer through a public-ish path. Falls
-  # back to a small local impl for the cases we need.
-  @spec decompose_type(Macro.t()) :: ColouredFlow.Definition.ColourSet.descr()
-  defp decompose_type({:{}, _meta, []}), do: {:unit, []}
-
-  defp decompose_type({type1, type2}) do
-    {:tuple, [decompose_type(type1), decompose_type(type2)]}
-  end
-
-  defp decompose_type({:{}, _meta, types}) do
-    {:tuple, Enum.map(types, &decompose_type/1)}
-  end
-
-  defp decompose_type({:%{}, _meta, fields}) do
-    map = Map.new(fields, fn {key, type} -> {key, decompose_type(type)} end)
-    {:map, map}
-  end
-
-  defp decompose_type({:list, _meta, [type]}) do
-    {:list, decompose_type(type)}
-  end
-
-  defp decompose_type(type) do
-    case Macro.decompose_call(type) do
-      {name, []} when is_atom(name) -> {name, []}
-      _other -> raise ArgumentError, "Invalid function return type: #{Macro.to_string(type)}"
-    end
   end
 end

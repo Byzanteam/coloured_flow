@@ -10,6 +10,7 @@ defmodule ColouredFlow.DSL.Builder do
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Procedure
+  alias ColouredFlow.Enactment.Marking
 
   @doc false
   defmacro __before_compile__(env) do
@@ -20,6 +21,7 @@ defmodule ColouredFlow.DSL.Builder do
     # and lets the arc validator allow free vars on outgoing arcs that are
     # produced by the action.
     cpnet = ColouredFlow.Builder.build(cpnet)
+    initial_markings = build_initial_markings(env.module)
 
     case ColouredFlow.Validators.run(cpnet) do
       {:ok, validated} ->
@@ -30,6 +32,14 @@ defmodule ColouredFlow.DSL.Builder do
           """
           @spec cpnet() :: ColouredPetriNet.t()
           def cpnet, do: unquote(Macro.escape(validated))
+
+          @doc """
+          The list of `%ColouredFlow.Enactment.Marking{}` structs declared via
+          `initial_marking/2`. Used by the Runner to seed an enactment; this is *not* part
+          of the static CPN definition (see `cpnet/0`).
+          """
+          @spec initial_markings() :: [Marking.t()]
+          def initial_markings, do: unquote(Macro.escape(initial_markings))
 
           @doc """
           The human-readable name of this workflow, or `nil` if unset.
@@ -54,6 +64,13 @@ defmodule ColouredFlow.DSL.Builder do
           file: env.file,
           line: env.line
     end
+  end
+
+  @spec build_initial_markings(module()) :: [Marking.t()]
+  defp build_initial_markings(module) do
+    module
+    |> pull(:cf_initial_markings)
+    |> Enum.map(fn {place, tokens} -> %Marking{place: place, tokens: tokens} end)
   end
 
   @spec build_cpnet(module()) :: ColouredPetriNet.t()

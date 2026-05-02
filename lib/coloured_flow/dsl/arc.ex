@@ -23,7 +23,7 @@ defmodule ColouredFlow.DSL.Arc do
       end
   """
   defmacro input(place, expression_or_opts, opts_or_block \\ []) do
-    build_arc(place, expression_or_opts, opts_or_block, :p_to_t, "input")
+    build_arc(place, expression_or_opts, opts_or_block, :p_to_t, "input", __CALLER__)
   end
 
   @doc """
@@ -40,7 +40,7 @@ defmodule ColouredFlow.DSL.Arc do
       end
   """
   defmacro output(place, expression_or_opts, opts_or_block \\ []) do
-    build_arc(place, expression_or_opts, opts_or_block, :t_to_p, "output")
+    build_arc(place, expression_or_opts, opts_or_block, :t_to_p, "output", __CALLER__)
   end
 
   @spec build_arc(
@@ -48,23 +48,29 @@ defmodule ColouredFlow.DSL.Arc do
           Macro.t(),
           Macro.t(),
           Arc.orientation(),
-          String.t()
+          String.t(),
+          Macro.Env.t()
         ) :: Macro.t()
-  defp build_arc(place, arg2, arg3, orientation, label) do
-    place_value = unquote_atom!(place, "#{label} place")
-    {opts, expr_ast} = decompose_args(arg2, arg3, label)
+  defp build_arc(place, arg2, arg3, orientation, label, caller) do
+    place_value = unquote_atom!(place, "#{label} place", caller)
+    {opts, expr_ast} = decompose_args(arg2, arg3, label, caller)
 
     arc_label = Keyword.get(opts, :label)
     expression = ExpressionHelper.build_arc_expression!(orientation, expr_ast)
 
     quote do
-      ColouredFlow.DSL.Transition.__push_arc__(__MODULE__, %Arc{
-        label: unquote(arc_label),
-        orientation: unquote(orientation),
-        transition: nil,
-        place: unquote(Atom.to_string(place_value)),
-        expression: unquote(Macro.escape(expression))
-      })
+      ColouredFlow.DSL.Transition.__push_arc__(
+        __MODULE__,
+        %Arc{
+          label: unquote(arc_label),
+          orientation: unquote(orientation),
+          transition: nil,
+          place: unquote(Atom.to_string(place_value)),
+          expression: unquote(Macro.escape(expression))
+        },
+        unquote(caller.file),
+        unquote(caller.line)
+      )
     end
   end
 
@@ -75,10 +81,10 @@ defmodule ColouredFlow.DSL.Arc do
   #   - (place, expression, opts_keyword)            -- arg3 is keyword (no :do)
   #   - (place, opts_keyword, do: expression)        -- arg2 is keyword, arg3 has :do
   #   - (place, do: expression)                      -- arg2 is keyword with :do, arg3 == []
-  @spec decompose_args(Macro.t(), Macro.t(), String.t()) :: {keyword(), Macro.t()}
-  defp decompose_args(arg2, arg3, label)
+  @spec decompose_args(Macro.t(), Macro.t(), String.t(), Macro.Env.t()) :: {keyword(), Macro.t()}
+  defp decompose_args(arg2, arg3, label, caller)
 
-  defp decompose_args(arg2, [], _label) do
+  defp decompose_args(arg2, [], _label, _caller) do
     if keyword?(arg2) and Keyword.has_key?(arg2, :do) do
       {body, opts} = Keyword.pop!(arg2, :do)
       {opts, body}
@@ -87,7 +93,7 @@ defmodule ColouredFlow.DSL.Arc do
     end
   end
 
-  defp decompose_args(arg2, arg3, label) when is_list(arg3) do
+  defp decompose_args(arg2, arg3, label, caller) when is_list(arg3) do
     cond do
       Keyword.has_key?(arg3, :do) and keyword?(arg2) ->
         {body, opts_after_do} = Keyword.pop!(arg3, :do)
@@ -101,13 +107,18 @@ defmodule ColouredFlow.DSL.Arc do
         {arg3, arg2}
 
       true ->
-        raise ArgumentError, "Invalid `#{label}` arguments: #{inspect(arg3)}"
+        raise CompileError,
+          description: "Invalid `#{label}` arguments: #{inspect(arg3)}",
+          file: caller.file,
+          line: caller.line
     end
   end
 
-  defp decompose_args(arg2, arg3, label) do
-    raise ArgumentError,
-          "Invalid `#{label}` arguments: arg2=#{inspect(arg2)}, arg3=#{inspect(arg3)}"
+  defp decompose_args(arg2, arg3, label, caller) do
+    raise CompileError,
+      description: "Invalid `#{label}` arguments: arg2=#{inspect(arg2)}, arg3=#{inspect(arg3)}",
+      file: caller.file,
+      line: caller.line
   end
 
   defp keyword?(list) when is_list(list) do
@@ -120,10 +131,13 @@ defmodule ColouredFlow.DSL.Arc do
 
   defp keyword?(_other), do: false
 
-  @spec unquote_atom!(Macro.t(), String.t()) :: atom()
-  defp unquote_atom!(value, _label) when is_atom(value), do: value
+  @spec unquote_atom!(Macro.t(), String.t(), Macro.Env.t()) :: atom()
+  defp unquote_atom!(value, _label, _caller) when is_atom(value), do: value
 
-  defp unquote_atom!(value, label) do
-    raise ArgumentError, "Expected #{label} to be an atom, got: #{Macro.to_string(value)}"
+  defp unquote_atom!(value, label, caller) do
+    raise CompileError,
+      description: "Expected #{label} to be an atom, got: #{Macro.to_string(value)}",
+      file: caller.file,
+      line: caller.line
   end
 end

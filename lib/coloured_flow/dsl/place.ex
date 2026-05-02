@@ -15,8 +15,8 @@ defmodule ColouredFlow.DSL.Place do
       place :output, :int
   """
   defmacro place(name, colour_set) do
-    name_value = unquote_atom!(name, "place name")
-    colour_set_value = unquote_atom!(colour_set, "place colour set")
+    name_value = unquote_atom!(name, "place name", __CALLER__)
+    colour_set_value = unquote_atom!(colour_set, "place colour set", __CALLER__)
 
     quote do
       @cf_places %Place{
@@ -32,20 +32,23 @@ defmodule ColouredFlow.DSL.Place do
 
   ## Examples
 
-      initial_marking :input, ~MS[1, 2, 3]
+      initial_marking :input, ~MS[1 2 3]
   """
   defmacro initial_marking(name, marking) do
-    name_value = unquote_atom!(name, "initial_marking place name")
+    name_value = unquote_atom!(name, "initial_marking place name", __CALLER__)
 
     quote do
       @cf_initial_markings {unquote(Atom.to_string(name_value)), unquote(marking)}
     end
   end
 
-  @spec unquote_atom!(Macro.t(), String.t()) :: atom()
-  defp unquote_atom!(value, _label) when is_atom(value), do: value
+  @spec unquote_atom!(Macro.t(), String.t(), Macro.Env.t()) :: atom()
+  defp unquote_atom!(value, _label, _caller) when is_atom(value), do: value
 
-  defp unquote_atom!(value, label) do
-    raise ArgumentError, "Expected #{label} to be an atom, got: #{Macro.to_string(value)}"
+  defp unquote_atom!(value, label, caller) do
+    raise CompileError,
+      description: "Expected #{label} to be an atom, got: #{Macro.to_string(value)}",
+      file: caller.file,
+      line: caller.line
   end
 end

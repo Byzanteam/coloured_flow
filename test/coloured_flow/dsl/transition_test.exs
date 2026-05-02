@@ -104,5 +104,71 @@ defmodule ColouredFlow.DSL.TransitionTest do
         end
       end
     end
+
+    test "rejects duplicate guard in same transition" do
+      source = """
+      defmodule ColouredFlow.DSL.TransitionTest.DuplicateGuard do
+        use ColouredFlow.DSL
+
+        name("DuplicateGuard")
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place(:input, :int)
+        place(:output, :int)
+
+        transition :t do
+          guard x > 0
+          guard x < 10
+
+          input :input, bind({1, x})
+          output :output, {1, x}
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/guard.+already.+declared/i, fn ->
+          Code.compile_string(source, "duplicate_guard.exs")
+        end
+
+      # Points at the second `guard` (line 15, 1-indexed).
+      assert error.line == 15
+    end
+
+    test "rejects duplicate action in same transition" do
+      source = """
+      defmodule ColouredFlow.DSL.TransitionTest.DuplicateAction do
+        use ColouredFlow.DSL
+
+        name("DuplicateAction")
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place(:input, :int)
+        place(:output, :int)
+
+        transition :t do
+          input :input, bind({1, x})
+          output :output, {1, x}
+
+          action :ok
+          action :also_ok
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/action.+already.+declared/i, fn ->
+          Code.compile_string(source, "duplicate_action.exs")
+        end
+
+      # Points at the second `action` (line 18, 1-indexed).
+      assert error.line == 18
+    end
   end
 end
