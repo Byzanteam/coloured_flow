@@ -42,11 +42,11 @@ defmodule ColouredFlow.DSL.Builder do
           @doc """
           Reflection helper exposing workflow metadata.
 
-          | key                  | value                                                          |
-          | -------------------- | -------------------------------------------------------------- |
-          | `:name`              | `String.t() \| nil` — `name "..."` declaration                  |
-          | `:version`           | `String.t() \| nil` — `version "..."` declaration               |
-          | `:initial_markings`  | `[%Marking{}]` — declared via `initial_marking/2`              |
+          | key                 | value                                             |
+          | ------------------- | ------------------------------------------------- |
+          | `:name`             | `String.t() \| nil` — `name "..."` declaration    |
+          | `:version`          | `String.t() \| nil` — `version "..."` declaration |
+          | `:initial_markings` | `[%Marking{}]` — declared via `initial_marking/2` |
           """
           @spec __cpn__(:name) :: String.t() | nil
           @spec __cpn__(:version) :: String.t() | nil
