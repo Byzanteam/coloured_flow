@@ -83,7 +83,7 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.TransitionWithoutTokenP
                Repo.get!(Schemas.Workitem, workitem.id)
 
       assert %Schemas.EnactmentLog{
-               state: :terminated,
+               kind: :terminated,
                termination: %Schemas.EnactmentLog.Termination{
                  type: :implicit,
                  message: nil

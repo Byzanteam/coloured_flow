@@ -109,7 +109,7 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.ConstantsTest do
     assert_receive {:DOWN, ^ref, :process, ^enactment_server, {:shutdown, _reason}}
 
     assert %Schemas.EnactmentLog{
-             state: :terminated,
+             kind: :terminated,
              termination: %Schemas.EnactmentLog.Termination{
                type: :implicit,
                message: nil
@@ -160,7 +160,7 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.ConstantsTest do
            } = Repo.get!(Schemas.Enactment, enactment.id)
 
     assert %Schemas.EnactmentLog{
-             state: :terminated,
+             kind: :terminated,
              termination: %Schemas.EnactmentLog.Termination{
                type: :implicit,
                message: nil

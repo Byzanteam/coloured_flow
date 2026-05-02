@@ -84,7 +84,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
       assert match?(
                [
                  %Schemas.EnactmentLog{
-                   state: :terminated,
+                   kind: :terminated,
                    termination: %Schemas.EnactmentLog.Termination{type: :implicit, message: nil},
                    exception: nil
                  }
@@ -163,7 +163,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
       assert match?(
                [
                  %Schemas.EnactmentLog{
-                   state: :terminated,
+                   kind: :terminated,
                    termination: %Schemas.EnactmentLog.Termination{type: :explicit, message: nil},
                    exception: nil
                  }
@@ -217,6 +217,7 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
       assert match?(
                [
                  %Schemas.EnactmentLog{
+                   kind: :terminated,
                    termination: %Schemas.EnactmentLog.Termination{
                      type: :force,
                      message: "forceful termination"
@@ -263,9 +264,10 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
       assert match?(
                [
                  %Schemas.EnactmentLog{
+                   kind: :exception,
                    termination: nil,
                    exception: %Schemas.EnactmentLog.Exception{
-                     reason: :termination_criteria_evaluation,
+                     reason: :invalid_termination_criteria,
                      type: "ArithmeticError",
                      message: "bad argument in arithmetic expression",
                      original:
@@ -327,9 +329,10 @@ defmodule ColouredFlow.Runner.Enactment.EnactmentTerminationAndExceptionTest do
       assert match?(
                [
                  %Schemas.EnactmentLog{
+                   kind: :exception,
                    termination: nil,
                    exception: %Schemas.EnactmentLog.Exception{
-                     reason: :termination_criteria_evaluation,
+                     reason: :invalid_termination_criteria,
                      type: "ArithmeticError",
                      message: "bad argument in arithmetic expression",
                      original:

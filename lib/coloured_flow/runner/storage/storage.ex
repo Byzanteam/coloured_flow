@@ -20,6 +20,7 @@ defmodule ColouredFlow.Runner.Storage do
 
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage.Schemas
 
   @type enactment_id() :: Ecto.UUID.t()
@@ -45,8 +46,11 @@ defmodule ColouredFlow.Runner.Storage do
               Enumerable.t(Occurrence.t())
 
   @doc """
-  An exception occurred during the enactment, and the corresponding enactment will
-  be stopped.
+  Records an exceptional event in `enactment_logs`. The row is written with
+  `kind = :exception`; `enactments.state` is **not** changed by this call.
+
+  The state column flips to `:exception` only when `ensure_runnable/1` trips the
+  consecutive-exception circuit breaker.
   """
   @doc group: :enactment
   @callback exception_occurs(
@@ -54,6 +58,23 @@ defmodule ColouredFlow.Runner.Storage do
               reason :: ColouredFlow.Runner.Exception.reason(),
               exception :: Exception.t()
             ) :: :ok
+
+  @doc """
+  Confirms that the enactment is allowed to start. Called from `init/1` (via
+  `handle_continue/2`) before any state is loaded.
+
+  Returns `:ok` when the enactment is healthy. Returns `{:error, reason}` when the
+  runner should abort startup:
+
+  | reason                      | meaning                                                                               |
+  | --------------------------- | ------------------------------------------------------------------------------------- |
+  | `:terminated`               | The enactment has already terminated.                                                 |
+  | `:already_in_exception`     | The enactment is already in `:exception` state and must be retried first.             |
+  | `:crash_threshold_exceeded` | The most recent three log rows are all exceptions; state was flipped to `:exception`. |
+  """
+  @doc group: :enactment
+  @callback ensure_runnable(enactment_id()) ::
+              :ok | {:error, :terminated | :already_in_exception | :crash_threshold_exceeded}
 
   @doc """
   Insert an enactment.
@@ -78,6 +99,13 @@ defmodule ColouredFlow.Runner.Storage do
               final_markings :: [Marking.t()],
               options :: [message: String.t()]
             ) :: :ok
+
+  @doc """
+  Reoffers an enactment that landed in `:exception` state. Writes a `:retried` log
+  row and flips `enactments.state` back to `:running`.
+  """
+  @doc group: :enactment
+  @callback retry_enactment(enactment_id(), options :: [message: String.t()]) :: :ok
 
   @doc """
   Returns a list of live workitems for the given enactment.
@@ -124,9 +152,17 @@ defmodule ColouredFlow.Runner.Storage do
 
   @doc """
   Reads the snapshot of the given enactment.
+
+  Returns `{:error, %Exceptions.SnapshotCorrupt{}}` when the snapshot row exists
+  but cannot be decoded. Callers self-heal by recording the exception via
+  `exception_occurs/3` and replaying from initial markings; the next
+  `take_enactment_snapshot/2` overwrites the bad row.
   """
   @doc group: :snapshot
-  @callback read_enactment_snapshot(enactment_id()) :: {:ok, Snapshot.t()} | :error
+  @callback read_enactment_snapshot(enactment_id()) ::
+              {:ok, Snapshot.t()}
+              | :error
+              | {:error, Exceptions.SnapshotCorrupt.t()}
 
   @doc false
   @spec get_flow_by_enactment(enactment_id()) :: ColouredPetriNet.t()
@@ -148,10 +184,20 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec exception_occurs(enactment_id(), ColouredFlow.Runner.Exception.reason(), Exception.t()) ::
-          :ok
+  @spec exception_occurs(
+          enactment_id(),
+          ColouredFlow.Runner.Exception.reason(),
+          Exception.t()
+        ) :: :ok
   def exception_occurs(enactment_id, reason, exception) do
     __storage__().exception_occurs(enactment_id, reason, exception)
+  end
+
+  @doc false
+  @spec ensure_runnable(enactment_id()) ::
+          :ok | {:error, :terminated | :already_in_exception | :crash_threshold_exceeded}
+  def ensure_runnable(enactment_id) do
+    __storage__().ensure_runnable(enactment_id)
   end
 
   @doc false
@@ -169,6 +215,12 @@ defmodule ColouredFlow.Runner.Storage do
         ) :: :ok
   def terminate_enactment(enactment_id, type, final_markings, options) do
     __storage__().terminate_enactment(enactment_id, type, final_markings, options)
+  end
+
+  @doc false
+  @spec retry_enactment(enactment_id(), options :: [message: String.t()]) :: :ok
+  def retry_enactment(enactment_id, options) do
+    __storage__().retry_enactment(enactment_id, options)
   end
 
   @doc false
@@ -214,7 +266,10 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec read_enactment_snapshot(enactment_id()) :: {:ok, Snapshot.t()} | :error
+  @spec read_enactment_snapshot(enactment_id()) ::
+          {:ok, Snapshot.t()}
+          | :error
+          | {:error, Exceptions.SnapshotCorrupt.t()}
   def read_enactment_snapshot(enactment_id) do
     __storage__().read_enactment_snapshot(enactment_id)
   end

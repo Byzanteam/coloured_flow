@@ -9,6 +9,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
   alias ColouredFlow.Enactment.Occurrence
 
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage.Repo
   alias ColouredFlow.Runner.Storage.Schemas
 
@@ -16,6 +17,21 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
   @type enactment_id() :: ColouredFlow.Runner.Storage.enactment_id()
   @type flow_id() :: ColouredFlow.Runner.Storage.flow_id()
+
+  # Exception types raised by `Codec.Marking.decode/2` when it encounters a
+  # payload it cannot parse. Listed explicitly so that connection errors
+  # (`DBConnection.ConnectionError`, `Postgrex.Error`, etc.) are NOT
+  # reclassified as `:snapshot_corrupt`.
+  @snapshot_corrupt_exceptions [
+    ArgumentError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError
+  ]
+
+  @crash_threshold 3
 
   @impl ColouredFlow.Runner.Storage
   def get_flow_by_enactment(enactment_id) do
@@ -71,17 +87,14 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
-  exception_reasons = ColouredFlow.Runner.Exception.__reasons__()
+  reasons = ColouredFlow.Runner.Exception.__reasons__()
 
   @impl ColouredFlow.Runner.Storage
   def exception_occurs(enactment_id, reason, exception)
-      when reason in unquote(exception_reasons) and is_exception(exception) do
+      when reason in unquote(reasons) and is_exception(exception) do
     Ecto.Multi.new()
     |> Ecto.Multi.one(:enactment, fn _changes ->
       where(Schemas.Enactment, id: ^enactment_id)
-    end)
-    |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
-      Ecto.Changeset.change(enactment, state: :exception)
     end)
     |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
       Schemas.EnactmentLog.build_exception(enactment, reason, exception)
@@ -93,13 +106,54 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
       {:error, failed_operation, failed_value, changes_so_far} ->
         raise """
-        Failed to update the enactment to exception state.
+        Failed to record an enactment exception log.
 
         Failed operation: #{inspect(failed_operation)}
         Failed value: #{inspect(failed_value)}
         Changes so far: #{inspect(changes_so_far)}
         """
     end
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def ensure_runnable(enactment_id) do
+    enactment = Repo.get!(Schemas.Enactment, enactment_id)
+
+    cond do
+      enactment.state === :terminated ->
+        {:error, :terminated}
+
+      enactment.state === :exception ->
+        {:error, :already_in_exception}
+
+      crash_threshold_tripped?(enactment_id) ->
+        flip_state_to_exception!(enactment_id)
+        {:error, :crash_threshold_exceeded}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp crash_threshold_tripped?(enactment_id) do
+    kinds =
+      Schemas.EnactmentLog
+      |> where([el], el.enactment_id == ^enactment_id)
+      |> order_by([el], desc: el.inserted_at)
+      |> limit(@crash_threshold)
+      |> select([el], el.kind)
+      |> Repo.all()
+
+    length(kinds) === @crash_threshold and Enum.all?(kinds, &(&1 === :exception))
+  end
+
+  defp flip_state_to_exception!(enactment_id) do
+    {1, _result} =
+      Schemas.Enactment
+      |> where([e], e.id == ^enactment_id)
+      |> Repo.update_all(set: [state: :exception])
+
+    :ok
   end
 
   @impl ColouredFlow.Runner.Storage
@@ -110,7 +164,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
       Schemas.Enactment.build(params)
     end)
     |> Ecto.Multi.insert(:enactment_log, fn %{enactment: enactment} ->
-      Schemas.EnactmentLog.build_running(enactment)
+      Schemas.EnactmentLog.build_started(enactment)
     end)
     |> Repo.transaction()
     |> case do
@@ -152,6 +206,34 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:error, failed_operation, failed_value, changes_so_far} ->
         raise """
         Failed to update the enactment to terminated state.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def retry_enactment(enactment_id, options) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.one(:enactment, fn _changes ->
+      where(Schemas.Enactment, id: ^enactment_id)
+    end)
+    |> Ecto.Multi.update(:update_enactment, fn %{enactment: enactment} ->
+      Ecto.Changeset.change(enactment, state: :running)
+    end)
+    |> Ecto.Multi.insert(:insert_enactment_log, fn %{enactment: enactment} ->
+      Schemas.EnactmentLog.build_retry(enactment, options)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to retry the enactment.
 
         Failed operation: #{inspect(failed_operation)}
         Failed value: #{inspect(failed_value)}
@@ -334,8 +416,9 @@ defmodule ColouredFlow.Runner.Storage.Default do
   defp unexpected_updated_rows!(workitems, transition, options) do
     # When the actual number is not equal to the expected number,
     # it means the workitems in the gen_server are not consistent with the database.
-    # So we just raise an error to crash the process, and let the supervisor
-    # restart the gen_server and retry.
+    # We raise to crash the GenServer; `terminate/2` records the abnormal exit
+    # via `exception_occurs/3`, and the consecutive-exception circuit breaker
+    # in `ensure_runnable/1` trips after the configured threshold.
     expected = Keyword.fetch!(options, :expected)
     actual = Keyword.fetch!(options, :actual)
 
@@ -434,11 +517,26 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
   @impl ColouredFlow.Runner.Storage
   def read_enactment_snapshot(enactment_id) do
-    Schemas.Snapshot
-    |> Repo.get_by(enactment_id: enactment_id)
-    |> case do
+    # Codec decoding runs inside `Repo.get_by/2` when Ecto loads the
+    # `:markings` field through `Codec.Marking`. A bad payload manifests as
+    # one of the exceptions enumerated in `@snapshot_corrupt_exceptions`.
+    # The rescue is intentionally scoped to only that call so connection
+    # errors (DBConnection.ConnectionError, Postgrex.Error) and programmer
+    # bugs in the surrounding `case` propagate normally.
+    raw_snapshot =
+      try do
+        Repo.get_by(Schemas.Snapshot, enactment_id: enactment_id)
+      rescue
+        error in @snapshot_corrupt_exceptions ->
+          throw({:snapshot_corrupt, error})
+      end
+
+    case raw_snapshot do
       nil -> :error
       snapshot -> {:ok, Schemas.Snapshot.to_snapshot(snapshot)}
     end
+  catch
+    {:snapshot_corrupt, error} ->
+      {:error, Exceptions.SnapshotCorrupt.exception(enactment_id: enactment_id, cause: error)}
   end
 end

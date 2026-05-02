@@ -165,6 +165,21 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
   end
 
   @impl Storage
+  def ensure_runnable(_enactment_id) do
+    # In-memory storage does not persist log rows, so the circuit breaker is a
+    # no-op for tests using this backend.
+    :ok
+  end
+
+  @impl Storage
+  def retry_enactment(enactment_id, options) do
+    Logger.debug("""
+    Retrying the enactment with the ID #{inspect(enactment_id)}.
+    Options: #{inspect(options)}
+    """)
+  end
+
+  @impl Storage
   def insert_enactment(params) do
     enactment =
       enactment(

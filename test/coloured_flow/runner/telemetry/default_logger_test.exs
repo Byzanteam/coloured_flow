@@ -119,7 +119,7 @@ defmodule ColouredFlow.Runner.Telemetry.DefaultLoggerTest do
         end)
 
       assert log =~ ~S|"event":"enactment:exception"|
-      assert log =~ ~S|"exception_reason":"termination_criteria_evaluation"|
+      assert log =~ ~S|"exception_reason":"invalid_termination_criteria"|
     end
   end
 end
