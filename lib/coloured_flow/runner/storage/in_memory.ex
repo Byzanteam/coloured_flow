@@ -282,6 +282,33 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
     :error
   end
 
+  @impl Storage
+  def recover_from_corrupt_snapshot(enactment_id, exception) do
+    Logger.debug("""
+    Recovering corrupt snapshot for enactment #{inspect(enactment_id)}: \
+    #{Exception.message(exception)}\
+    """)
+
+    :ok
+  end
+
+  @impl Storage
+  def record_crash(enactment_id, exception) do
+    Logger.debug("""
+    Recording crash for enactment #{inspect(enactment_id)}: \
+    #{Exception.message(exception)}\
+    """)
+
+    :ok
+  end
+
+  @impl Storage
+  def consecutive_crashes_since_progress(_enactment_id) do
+    # In-memory storage does not track restarts; the circuit breaker is a
+    # no-op for tests using this backend.
+    0
+  end
+
   defp table(table_name)
   defp table(:flow), do: __MODULE__.Flow
   defp table(:enactment), do: __MODULE__.Enactment

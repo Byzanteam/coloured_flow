@@ -14,8 +14,23 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
   import Ecto.Query
 
+  require Logger
+
   @type enactment_id() :: ColouredFlow.Runner.Storage.enactment_id()
   @type flow_id() :: ColouredFlow.Runner.Storage.flow_id()
+
+  # Exception types raised by `Codec.Marking.decode/2` when it encounters a
+  # payload it cannot parse. Listed explicitly so that connection errors
+  # (`DBConnection.ConnectionError`, `Postgrex.Error`, etc.) are NOT
+  # reclassified as `:snapshot_corrupt`.
+  @snapshot_corrupt_exceptions [
+    ArgumentError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError
+  ]
 
   @impl ColouredFlow.Runner.Storage
   def get_flow_by_enactment(enactment_id) do
@@ -71,11 +86,11 @@ defmodule ColouredFlow.Runner.Storage.Default do
     |> Stream.map(&Schemas.Occurrence.to_occurrence/1)
   end
 
-  exception_reasons = ColouredFlow.Runner.Exception.__reasons__()
+  fatal_reasons = ColouredFlow.Runner.Exception.__fatal_reasons__()
 
   @impl ColouredFlow.Runner.Storage
   def exception_occurs(enactment_id, reason, exception)
-      when reason in unquote(exception_reasons) and is_exception(exception) do
+      when reason in unquote(fatal_reasons) and is_exception(exception) do
     Ecto.Multi.new()
     |> Ecto.Multi.one(:enactment, fn _changes ->
       where(Schemas.Enactment, id: ^enactment_id)
@@ -434,11 +449,117 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
   @impl ColouredFlow.Runner.Storage
   def read_enactment_snapshot(enactment_id) do
-    Schemas.Snapshot
-    |> Repo.get_by(enactment_id: enactment_id)
-    |> case do
+    # Codec decoding runs inside `Repo.get_by/2` when Ecto loads the
+    # `:markings` field through `Codec.Marking`. A bad payload manifests as
+    # one of the exceptions enumerated in `@snapshot_corrupt_exceptions`.
+    # The rescue is intentionally scoped to only that call so connection
+    # errors (DBConnection.ConnectionError, Postgrex.Error) and programmer
+    # bugs in the surrounding `case` propagate normally.
+    raw_snapshot =
+      try do
+        Repo.get_by(Schemas.Snapshot, enactment_id: enactment_id)
+      rescue
+        error in @snapshot_corrupt_exceptions ->
+          throw({:snapshot_corrupt, error})
+      end
+
+    case raw_snapshot do
       nil -> :error
       snapshot -> {:ok, Schemas.Snapshot.to_snapshot(snapshot)}
+    end
+  catch
+    {:snapshot_corrupt, error} -> {:error, {:snapshot_corrupt, error}}
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def recover_from_corrupt_snapshot(enactment_id, exception) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.one(:enactment, fn _changes ->
+      where(Schemas.Enactment, id: ^enactment_id)
+    end)
+    |> Ecto.Multi.delete_all(
+      :delete_snapshot,
+      from(s in Schemas.Snapshot, where: s.enactment_id == ^enactment_id)
+    )
+    |> Ecto.Multi.insert(:insert_log, fn %{enactment: enactment} ->
+      Schemas.EnactmentLog.build_recovery(enactment, :snapshot_corrupt, exception)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, _changes} ->
+        :ok
+
+      {:error, failed_operation, failed_value, changes_so_far} ->
+        raise """
+        Failed to recover from corrupt snapshot.
+
+        Failed operation: #{inspect(failed_operation)}
+        Failed value: #{inspect(failed_value)}
+        Changes so far: #{inspect(changes_so_far)}
+        """
+    end
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def record_crash(enactment_id, exception) do
+    Schemas.Enactment
+    |> Repo.get(enactment_id)
+    |> case do
+      nil ->
+        Logger.warning(
+          "record_crash skipped: enactment #{inspect(enactment_id)} no longer exists"
+        )
+
+        :ok
+
+      enactment ->
+        enactment
+        |> Schemas.EnactmentLog.build_recovery(:crash, exception)
+        |> Repo.insert()
+        |> case do
+          {:ok, _log} ->
+            :ok
+
+          {:error, changeset} ->
+            Logger.warning("""
+            record_crash failed to persist :crash log row for enactment \
+            #{inspect(enactment_id)}; the consecutive-crash circuit \
+            breaker may not advance. Changeset errors: \
+            #{inspect(changeset.errors)}\
+            """)
+
+            :ok
+        end
+    end
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def consecutive_crashes_since_progress(enactment_id) do
+    cutoff = cutoff_for_consecutive_crashes(enactment_id)
+
+    Schemas.EnactmentLog
+    |> where([el], el.enactment_id == ^enactment_id and el.state == :running)
+    |> where([el], fragment("?->>'reason'", el.exception) == "crash")
+    |> where([el], el.inserted_at > ^cutoff)
+    |> Repo.aggregate(:count)
+  end
+
+  defp cutoff_for_consecutive_crashes(enactment_id) do
+    last_progress =
+      Schemas.Occurrence
+      |> where([o], o.enactment_id == ^enactment_id)
+      |> select([o], max(o.inserted_at))
+      |> Repo.one()
+
+    case last_progress do
+      nil ->
+        Schemas.Enactment
+        |> where([e], e.id == ^enactment_id)
+        |> select([e], e.inserted_at)
+        |> Repo.one!()
+
+      timestamp ->
+        timestamp
     end
   end
 end

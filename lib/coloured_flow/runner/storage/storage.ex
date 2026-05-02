@@ -46,12 +46,13 @@ defmodule ColouredFlow.Runner.Storage do
 
   @doc """
   An exception occurred during the enactment, and the corresponding enactment will
-  be stopped.
+  be stopped. The enactment row's state is flipped to `:exception` and a log row
+  is recorded.
   """
   @doc group: :enactment
   @callback exception_occurs(
               enactment_id(),
-              reason :: ColouredFlow.Runner.Exception.reason(),
+              reason :: ColouredFlow.Runner.Exception.fatal_reason(),
               exception :: Exception.t()
             ) :: :ok
 
@@ -124,9 +125,39 @@ defmodule ColouredFlow.Runner.Storage do
 
   @doc """
   Reads the snapshot of the given enactment.
+
+  Returns `{:error, {:snapshot_corrupt, ctx}}` when the snapshot row exists but
+  cannot be decoded. Callers self-heal by calling
+  `recover_from_corrupt_snapshot/2` and then replaying from initial markings.
   """
   @doc group: :snapshot
-  @callback read_enactment_snapshot(enactment_id()) :: {:ok, Snapshot.t()} | :error
+  @callback read_enactment_snapshot(enactment_id()) ::
+              {:ok, Snapshot.t()}
+              | :error
+              | {:error, {:snapshot_corrupt, ctx :: Exception.t()}}
+
+  @doc """
+  Self-heal a corrupt snapshot row: delete it and record a `:snapshot_corrupt` log
+  entry. The enactment stays in `:running` state and a fresh snapshot is written
+  on the next `take_enactment_snapshot/2` call.
+  """
+  @doc group: :snapshot
+  @callback recover_from_corrupt_snapshot(enactment_id(), exception :: Exception.t()) :: :ok
+
+  @doc """
+  Records a non-fatal `:crash` log row when `terminate/2` exits abnormally. Used
+  by the consecutive-crash circuit breaker.
+  """
+  @doc group: :enactment
+  @callback record_crash(enactment_id(), exception :: Exception.t()) :: :ok
+
+  @doc """
+  Counts `:crash` log rows recorded since the most recent occurrence (or the
+  enactment's creation, if it has never made progress). The init callback consumes
+  this to detect restart loops.
+  """
+  @doc group: :enactment
+  @callback consecutive_crashes_since_progress(enactment_id()) :: non_neg_integer()
 
   @doc false
   @spec get_flow_by_enactment(enactment_id()) :: ColouredPetriNet.t()
@@ -148,8 +179,11 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec exception_occurs(enactment_id(), ColouredFlow.Runner.Exception.reason(), Exception.t()) ::
-          :ok
+  @spec exception_occurs(
+          enactment_id(),
+          ColouredFlow.Runner.Exception.fatal_reason(),
+          Exception.t()
+        ) :: :ok
   def exception_occurs(enactment_id, reason, exception) do
     __storage__().exception_occurs(enactment_id, reason, exception)
   end
@@ -214,9 +248,30 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec read_enactment_snapshot(enactment_id()) :: {:ok, Snapshot.t()} | :error
+  @spec read_enactment_snapshot(enactment_id()) ::
+          {:ok, Snapshot.t()}
+          | :error
+          | {:error, {:snapshot_corrupt, Exception.t()}}
   def read_enactment_snapshot(enactment_id) do
     __storage__().read_enactment_snapshot(enactment_id)
+  end
+
+  @doc false
+  @spec recover_from_corrupt_snapshot(enactment_id(), Exception.t()) :: :ok
+  def recover_from_corrupt_snapshot(enactment_id, exception) do
+    __storage__().recover_from_corrupt_snapshot(enactment_id, exception)
+  end
+
+  @doc false
+  @spec record_crash(enactment_id(), Exception.t()) :: :ok
+  def record_crash(enactment_id, exception) do
+    __storage__().record_crash(enactment_id, exception)
+  end
+
+  @doc false
+  @spec consecutive_crashes_since_progress(enactment_id()) :: non_neg_integer()
+  def consecutive_crashes_since_progress(enactment_id) do
+    __storage__().consecutive_crashes_since_progress(enactment_id)
   end
 
   @doc """
