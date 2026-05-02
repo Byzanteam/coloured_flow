@@ -35,7 +35,9 @@ defmodule ColouredFlow.DSL.Transition do
       end
   """
   defmacro transition(name, opts \\ []) do
-    name_value = unquote_atom!(name, "transition name")
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
+    name_value = unquote_atom!(name, "transition name", __CALLER__)
     name_str = Atom.to_string(name_value)
 
     block =
@@ -45,12 +47,19 @@ defmodule ColouredFlow.DSL.Transition do
       end
 
     if is_nil(block) do
-      raise ArgumentError,
-            "transition/2 requires a `do ... end` block, got: #{inspect(opts)}"
+      raise CompileError,
+        description: "transition/2 requires a `do ... end` block, got: #{inspect(opts)}",
+        file: caller_file,
+        line: caller_line
     end
 
     quote do
-      ColouredFlow.DSL.Transition.__open_transition__!(__MODULE__, unquote(name_str))
+      ColouredFlow.DSL.Transition.__open_transition__!(
+        __MODULE__,
+        unquote(name_str),
+        unquote(caller_file),
+        unquote(caller_line)
+      )
 
       unquote(block)
 
@@ -70,11 +79,18 @@ defmodule ColouredFlow.DSL.Transition do
       end
   """
   defmacro guard(expression) do
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
     expr_ast = ExpressionHelper.block_to_ast(expression)
     expr = ExpressionHelper.build_from_ast!(expr_ast)
 
     quote do
-      ColouredFlow.DSL.Transition.__set_guard__!(__MODULE__, unquote(Macro.escape(expr)))
+      ColouredFlow.DSL.Transition.__set_guard__!(
+        __MODULE__,
+        unquote(Macro.escape(expr)),
+        unquote(caller_file),
+        unquote(caller_line)
+      )
     end
   end
 
@@ -92,22 +108,29 @@ defmodule ColouredFlow.DSL.Transition do
       end
   """
   defmacro action(expression) do
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
     expr_ast = ExpressionHelper.block_to_ast(expression)
     code = ExpressionHelper.ast_to_code(expr_ast)
 
     quote do
-      ColouredFlow.DSL.Transition.__set_action__!(__MODULE__, unquote(code))
+      ColouredFlow.DSL.Transition.__set_action__!(
+        __MODULE__,
+        unquote(code),
+        unquote(caller_file),
+        unquote(caller_line)
+      )
     end
   end
 
   @doc false
-  @spec __open_transition__!(module(), String.t()) :: :ok
-  def __open_transition__!(module, name) when is_atom(module) and is_binary(name) do
+  @spec __open_transition__!(module(), String.t(), String.t(), non_neg_integer()) :: :ok
+  def __open_transition__!(module, name, file, line) when is_atom(module) and is_binary(name) do
     if Module.get_attribute(module, @scope_attr) do
       raise CompileError,
         description: "transition/2 cannot be nested",
-        file: source_file(module),
-        line: 0
+        file: file,
+        line: line
     end
 
     Module.put_attribute(module, @scope_attr, %{
@@ -154,14 +177,14 @@ defmodule ColouredFlow.DSL.Transition do
   end
 
   @doc false
-  @spec __push_arc__(module(), Arc.t()) :: :ok
-  def __push_arc__(module, %Arc{} = arc) do
+  @spec __push_arc__(module(), Arc.t(), String.t(), non_neg_integer()) :: :ok
+  def __push_arc__(module, %Arc{} = arc, file, line) do
     case Module.get_attribute(module, @scope_attr) do
       nil ->
         raise CompileError,
           description: "input/output may only be used inside a `transition do ... end` block",
-          file: source_file(module),
-          line: 0
+          file: file,
+          line: line
 
       scope ->
         Module.put_attribute(module, @scope_attr, %{scope | arcs: [arc | scope.arcs]})
@@ -171,34 +194,46 @@ defmodule ColouredFlow.DSL.Transition do
   end
 
   @doc false
-  @spec __set_guard__!(module(), Expression.t()) :: :ok
-  def __set_guard__!(module, guard) do
+  @spec __set_guard__!(module(), Expression.t(), String.t(), non_neg_integer()) :: :ok
+  def __set_guard__!(module, guard, file, line) do
     case Module.get_attribute(module, @scope_attr) do
       nil ->
         raise CompileError,
           description: "guard may only be used inside a `transition do ... end` block",
-          file: source_file(module),
-          line: 0
+          file: file,
+          line: line
 
-      scope ->
+      %{guard: nil} = scope ->
         Module.put_attribute(module, @scope_attr, %{scope | guard: guard})
+
+      %{guard: _existing} ->
+        raise CompileError,
+          description: "guard already declared in this transition",
+          file: file,
+          line: line
     end
 
     :ok
   end
 
   @doc false
-  @spec __set_action__!(module(), String.t()) :: :ok
-  def __set_action__!(module, code) do
+  @spec __set_action__!(module(), String.t(), String.t(), non_neg_integer()) :: :ok
+  def __set_action__!(module, code, file, line) do
     case Module.get_attribute(module, @scope_attr) do
       nil ->
         raise CompileError,
           description: "action may only be used inside a `transition do ... end` block",
-          file: source_file(module),
-          line: 0
+          file: file,
+          line: line
 
-      scope ->
+      %{action: nil} = scope ->
         Module.put_attribute(module, @scope_attr, %{scope | action: code})
+
+      %{action: _existing} ->
+        raise CompileError,
+          description: "action already declared in this transition",
+          file: file,
+          line: line
     end
 
     :ok
@@ -210,11 +245,14 @@ defmodule ColouredFlow.DSL.Transition do
     %Action{payload: code, outputs: []}
   end
 
-  @spec unquote_atom!(Macro.t(), String.t()) :: atom()
-  defp unquote_atom!(value, _label) when is_atom(value), do: value
+  @spec unquote_atom!(Macro.t(), String.t(), Macro.Env.t()) :: atom()
+  defp unquote_atom!(value, _label, _caller) when is_atom(value), do: value
 
-  defp unquote_atom!(value, label) do
-    raise ArgumentError, "Expected #{label} to be an atom, got: #{Macro.to_string(value)}"
+  defp unquote_atom!(value, label, caller) do
+    raise CompileError,
+      description: "Expected #{label} to be an atom, got: #{Macro.to_string(value)}",
+      file: caller.file,
+      line: caller.line
   end
 
   defp source_file(module) do

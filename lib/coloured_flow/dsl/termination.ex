@@ -27,6 +27,9 @@ defmodule ColouredFlow.DSL.Termination do
       end
   """
   defmacro termination(opts \\ []) do
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
+
     block =
       case opts do
         list when is_list(list) -> Keyword.get(list, :do)
@@ -34,12 +37,18 @@ defmodule ColouredFlow.DSL.Termination do
       end
 
     if is_nil(block) do
-      raise ArgumentError,
-            "termination/1 requires a `do ... end` block, got: #{inspect(opts)}"
+      raise CompileError,
+        description: "termination/1 requires a `do ... end` block, got: #{inspect(opts)}",
+        file: caller_file,
+        line: caller_line
     end
 
     quote do
-      ColouredFlow.DSL.Termination.__open_termination__!(__MODULE__)
+      ColouredFlow.DSL.Termination.__open_termination__!(
+        __MODULE__,
+        unquote(caller_file),
+        unquote(caller_line)
+      )
 
       unquote(block)
 
@@ -60,6 +69,8 @@ defmodule ColouredFlow.DSL.Termination do
       end
   """
   defmacro on_markings(expression) do
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
     expr_ast = ExpressionHelper.block_to_ast(expression)
     expression = ExpressionHelper.build_from_ast!(expr_ast)
     markings = %Markings{expression: expression}
@@ -67,19 +78,21 @@ defmodule ColouredFlow.DSL.Termination do
     quote do
       ColouredFlow.DSL.Termination.__set_markings__!(
         __MODULE__,
-        unquote(Macro.escape(markings))
+        unquote(Macro.escape(markings)),
+        unquote(caller_file),
+        unquote(caller_line)
       )
     end
   end
 
   @doc false
-  @spec __open_termination__!(module()) :: :ok
-  def __open_termination__!(module) do
+  @spec __open_termination__!(module(), String.t(), non_neg_integer()) :: :ok
+  def __open_termination__!(module, file, line) do
     if Module.get_attribute(module, @scope_attr) do
       raise CompileError,
         description: "termination/1 cannot be nested",
-        file: source_file(module),
-        line: 0
+        file: file,
+        line: line
     end
 
     Module.put_attribute(module, @scope_attr, %{markings: nil})
@@ -98,27 +111,31 @@ defmodule ColouredFlow.DSL.Termination do
         line: 0
     end
 
-    if scope.markings || true do
-      criteria = %TerminationCriteria{markings: scope.markings}
-      Module.put_attribute(module, :cf_termination_criteria, criteria)
-    end
+    criteria = %TerminationCriteria{markings: scope.markings}
+    Module.put_attribute(module, :cf_termination_criteria, criteria)
 
     Module.delete_attribute(module, @scope_attr)
     :ok
   end
 
   @doc false
-  @spec __set_markings__!(module(), Markings.t()) :: :ok
-  def __set_markings__!(module, %Markings{} = markings) do
+  @spec __set_markings__!(module(), Markings.t(), String.t(), non_neg_integer()) :: :ok
+  def __set_markings__!(module, %Markings{} = markings, file, line) do
     case Module.get_attribute(module, @scope_attr) do
       nil ->
         raise CompileError,
           description: "on_markings may only be used inside a `termination do ... end` block",
-          file: source_file(module),
-          line: 0
+          file: file,
+          line: line
 
-      scope ->
+      %{markings: nil} = scope ->
         Module.put_attribute(module, @scope_attr, %{scope | markings: markings})
+
+      %{markings: _existing} ->
+        raise CompileError,
+          description: "on_markings already declared in this termination",
+          file: file,
+          line: line
     end
 
     :ok

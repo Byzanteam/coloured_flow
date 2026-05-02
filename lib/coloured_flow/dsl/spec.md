@@ -32,7 +32,7 @@ time.
       place :input, :int
       place :output, :int
 
-      initial_marking :input, ~MS[1, 2, 3]
+      initial_marking :input, ~MS[1 2 3]
 
       transition :pass_through do
         guard x > 0
@@ -70,9 +70,14 @@ declarations and runs `ColouredFlow.Validators.run/1` against it. Any
 validator failure raises at compile time so misconfigured workflows never
 reach runtime.
 
-Compiled modules expose a single zero-arity helper:
+Compiled modules expose two zero-arity helpers:
 
-    MyWorkflow.cpnet() :: %ColouredFlow.Definition.ColouredPetriNet{}
+    MyWorkflow.cpnet()             :: %ColouredFlow.Definition.ColouredPetriNet{}
+    MyWorkflow.initial_markings()  :: [%ColouredFlow.Enactment.Marking{}]
+
+`cpnet/0` returns the static CPN definition. `initial_markings/0` returns
+the list of `%Marking{}` structs declared via `initial_marking/2` — Runner
+seed data, deliberately *not* part of `cpnet/0`.
 
 Higher-level integration (running an enactment, persisting it, etc.) is
 intentionally left to the existing `ColouredFlow.Runner.*` API. The DSL
@@ -162,7 +167,7 @@ Declare the initial marking for a place. Multiple `initial_marking/2`
 calls may target different places; they are scattered freely between
 other declarations.
 
-    initial_marking :input, ~MS[1, 2, 3]
+    initial_marking :input, ~MS[1 2 3]
 
 ### `function/2` and `function/3`
 

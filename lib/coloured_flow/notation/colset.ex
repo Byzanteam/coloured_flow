@@ -29,7 +29,7 @@ defmodule ColouredFlow.Notation.Colset do
   @spec __colset__(Macro.t()) :: {name :: Macro.t(), type :: Macro.t()}
   def __colset__({:"::", _meta, [name, type]}) do
     name = name |> decompose_name() |> Macro.escape()
-    type = type |> decompose_type() |> Macro.escape()
+    type = type |> __decompose_type__() |> Macro.escape()
 
     {name, type}
   end
@@ -40,6 +40,19 @@ defmodule ColouredFlow.Notation.Colset do
     See the documentation for valid colour set declarations at `ColouredFlow.Definition.ColourSet`.
     """
   end
+
+  @doc """
+  Decompose a colour-set type AST into a
+  `t:ColouredFlow.Definition.ColourSet.descr/0`.
+
+  Public-ish helper (matches the `__colset__/1` convention) so other DSL modules —
+  notably `ColouredFlow.DSL.Function` — can reuse the same parser without
+  duplicating clauses. Names that resolve to user-defined colour sets stay in
+  `{name, []}` form; callers needing primitive descrs must resolve them separately
+  (see `ColouredFlow.DSL.Builder.resolve_descr/2`).
+  """
+  @spec __decompose_type__(Macro.t()) :: ColourSet.descr()
+  def __decompose_type__(type), do: decompose_type(type)
 
   @name_example """
   Valid examples:
