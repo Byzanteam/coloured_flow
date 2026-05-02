@@ -1,0 +1,187 @@
+defmodule ColouredFlow.DSL.TransitionTest do
+  use ExUnit.Case, async: true
+
+  alias ColouredFlow.Definition.Action
+  alias ColouredFlow.Definition.Transition
+
+  describe "transition/2 block" do
+    test "captures guard, action, input, output" do
+      defmodule FullTransition do
+        use ColouredFlow.DSL
+
+        name "FullTransition"
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place :input, :int
+        place :output, :int
+
+        transition :pass_through do
+          guard x > 0
+
+          input :input, bind({1, x}), label: "in"
+          output :output, {1, x * 2}, label: "out"
+
+          action do
+            :ok
+          end
+        end
+      end
+
+      cpnet = FullTransition.cpnet()
+
+      assert [%Transition{name: "pass_through"} = transition] = cpnet.transitions
+      assert transition.guard.code == "x > 0"
+      assert transition.guard.vars == [:x]
+      assert %Action{payload: payload} = transition.action
+      assert payload =~ ":ok"
+
+      assert length(cpnet.arcs) == 2
+      [in_arc, out_arc] = cpnet.arcs
+      assert in_arc.label == "in"
+      assert in_arc.transition == "pass_through"
+      assert out_arc.label == "out"
+      assert out_arc.transition == "pass_through"
+    end
+
+    test "guard outside transition raises" do
+      assert_raise CompileError, ~r/guard.+transition/i, fn ->
+        defmodule GuardOutside do
+          use ColouredFlow.DSL
+
+          name "GuardOutside"
+
+          colset int() :: integer()
+
+          guard true
+        end
+      end
+    end
+
+    test "input outside transition raises" do
+      assert_raise CompileError, ~r/input.+transition/i, fn ->
+        defmodule InputOutside do
+          use ColouredFlow.DSL
+
+          name "InputOutside"
+
+          colset int() :: integer()
+
+          var x :: int()
+
+          place :input, :int
+
+          input :input, bind({1, x})
+        end
+      end
+    end
+
+    test "rejects duplicate transition names at compile time" do
+      source = """
+      defmodule ColouredFlow.DSL.TransitionTest.DuplicateTransitions do
+        use ColouredFlow.DSL
+
+        name "DuplicateTransitions"
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place :a, :int
+        place :b, :int
+        place :c, :int
+        place :d, :int
+
+        transition :t do
+          input :a, bind({1, x})
+          output :b, {1, x}
+        end
+
+        transition :t do
+          input :c, bind({1, x})
+          output :d, {1, x}
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/unique|transition/i, fn ->
+          Code.compile_string(source, "duplicate_transitions.exs")
+        end
+
+      assert error.file == "duplicate_transitions.exs"
+      # Points at the second `transition :t do ... end` (line 20, 1-indexed).
+      assert error.line == 20
+    end
+
+    test "rejects duplicate guard in same transition" do
+      source = """
+      defmodule ColouredFlow.DSL.TransitionTest.DuplicateGuard do
+        use ColouredFlow.DSL
+
+        name "DuplicateGuard"
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place :input, :int
+        place :output, :int
+
+        transition :t do
+          guard x > 0
+          guard x < 10
+
+          input :input, bind({1, x})
+          output :output, {1, x}
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/guard.+already.+declared/i, fn ->
+          Code.compile_string(source, "duplicate_guard.exs")
+        end
+
+      assert error.file == "duplicate_guard.exs"
+      # Points at the second `guard` (line 15, 1-indexed).
+      assert error.line == 15
+    end
+
+    test "rejects duplicate action in same transition" do
+      source = """
+      defmodule ColouredFlow.DSL.TransitionTest.DuplicateAction do
+        use ColouredFlow.DSL
+
+        name "DuplicateAction"
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place :input, :int
+        place :output, :int
+
+        transition :t do
+          input :input, bind({1, x})
+          output :output, {1, x}
+
+          action :ok
+          action :also_ok
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/action.+already.+declared/i, fn ->
+          Code.compile_string(source, "duplicate_action.exs")
+        end
+
+      assert error.file == "duplicate_action.exs"
+      # Points at the second `action` (line 18, 1-indexed).
+      assert error.line == 18
+    end
+  end
+end

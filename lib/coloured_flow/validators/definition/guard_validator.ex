@@ -33,9 +33,13 @@ defmodule ColouredFlow.Validators.Definition.GuardValidator do
     :ok
   end
 
-  defp validate_guard(%Transition{guard: %Expression{} = guard}, %ColouredPetriNet{} = cpnet) do
+  defp validate_guard(
+         %Transition{guard: %Expression{} = guard} = transition,
+         %ColouredPetriNet{} = cpnet
+       ) do
     bound_vars =
       cpnet.arcs
+      |> Enum.filter(&(&1.transition == transition.name))
       |> Enum.flat_map(fn
         %Arc{orientation: :p_to_t} = arc -> arc.expression.vars
         %Arc{} -> []

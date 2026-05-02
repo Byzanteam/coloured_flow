@@ -430,7 +430,7 @@ defmodule ColouredFlow.CpnetBuilder do
             [
               place: "b",
               orientation: :t_to_p,
-              expression: "if success do: {1, {n, d}}, else: {0, {n, d}}"
+              expression: "if success, do: {1, {n, d}}, else: {0, {n, d}}"
             ]
           ]),
           build_transition_arcs!("receive_packet", [
@@ -452,7 +452,7 @@ defmodule ColouredFlow.CpnetBuilder do
             [
               place: "data_recevied",
               orientation: :t_to_p,
-              expression: "if n == k do: {1, data <> d}, else: {1, data}"
+              expression: "if n == k, do: {1, data <> d}, else: {1, data}"
             ],
             [
               place: "c",
@@ -474,7 +474,7 @@ defmodule ColouredFlow.CpnetBuilder do
             [
               place: "d",
               orientation: :t_to_p,
-              expression: "if success do: {1, n}, else: {0, n}"
+              expression: "if success, do: {1, n}, else: {0, n}"
             ]
           ]),
           build_transition_arcs!("receive_ack", [
