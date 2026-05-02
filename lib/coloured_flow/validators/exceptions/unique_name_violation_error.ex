@@ -7,7 +7,7 @@ defmodule ColouredFlow.Validators.Exceptions.UniqueNameViolationError do
   use TypedStructor
 
   typed_structor definer: :defexception, enforce: true do
-    field :scope, :colour_set | :variable | :place | :transition
+    field :scope, :colour_set | :variable | :place | :transition | :function
     field :name, String.t() | atom()
   end
 
