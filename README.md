@@ -81,7 +81,7 @@ you can change it in the above setup block if your database URL is different.
 
 ```mermaid
 flowchart TB
-  %% colset unit() :: {}
+  %% colset signal() :: {}
 
   subgraph EW
     %% places
@@ -95,12 +95,12 @@ flowchart TB
     tg_ew[turn_green_ew]
     ty_ew[turn_yellow_ew]
 
-    r_ew --{1,u}--> tg_ew
-    tg_ew --{1,u}--> g_ew
-    g_ew --{1,u}--> ty_ew
-    ty_ew --{1,u}--> y_ew
-    y_ew --{1,u}--> tr_ew
-    tr_ew --{1,u}--> r_ew
+    r_ew --{1,s}--> tg_ew
+    tg_ew --{1,s}--> g_ew
+    g_ew --{1,s}--> ty_ew
+    ty_ew --{1,s}--> y_ew
+    y_ew --{1,s}--> tr_ew
+    tr_ew --{1,s}--> r_ew
   end
 
   subgraph NS
@@ -115,12 +115,12 @@ flowchart TB
     tg_ns[turn_green_ns]
     ty_ns[turn_yellow_ns]
 
-    r_ns --{1,u}--> tg_ns
-    tg_ns --{1,u}--> g_ns
-    g_ns --{1,u}--> ty_ns
-    ty_ns --{1,u}--> y_ns
-    y_ns --{1,u}--> tr_ns
-    tr_ns --{1,u}--> r_ns
+    r_ns --{1,s}--> tg_ns
+    tg_ns --{1,s}--> g_ns
+    g_ns --{1,s}--> ty_ns
+    ty_ns --{1,s}--> y_ns
+    y_ns --{1,s}--> tr_ns
+    tr_ns --{1,s}--> r_ns
   end
 
   %% safe
@@ -128,10 +128,10 @@ flowchart TB
   s_ew((safe_ew))
   s_ns((safe_ns))
 
-  tr_ns --{1,u}--> s_ew
-  s_ew --{1,u}--> tg_ew
-  tr_ew --{1,u}--> s_ns
-  s_ns --{1,u}--> tg_ns
+  tr_ns --{1,s}--> s_ew
+  s_ew --{1,s}--> tg_ew
+  tr_ew --{1,s}--> s_ns
+  s_ns --{1,s}--> tg_ns
 ```
 
 </details>
@@ -177,67 +177,71 @@ IO.inspect("Runner supervisor started: #{inspect(supervisor_pid)}")
 
 ```elixir
 defmodule TrafficLight do
+  use ColouredFlow.DSL
+
+  import ColouredFlow.MultiSet, only: :sigils
+
   alias ColouredFlow.Runner.Storage.Schemas
 
-  def flow do
-    alias ColouredFlow.Definition.ColouredPetriNet
-    alias ColouredFlow.Definition.Place
-    alias ColouredFlow.Definition.Variable
+  name "TrafficLight"
 
-    import ColouredFlow.Builder.DefinitionHelper
-    import ColouredFlow.Notation.Colset
+  colset signal() :: {}
 
-    %ColouredPetriNet{
-      colour_sets: [
-        colset(unit() :: {})
-      ],
-      places:
-        Enum.map(
-          ~w[red_ew green_ew yellow_ew red_ns green_ns yellow_ns safe_ew safe_ns],
-          fn name ->
-            %Place{name: name, colour_set: :unit}
-          end
-        ),
-      transitions:
-        Enum.map(
-          ~w[turn_red_ew turn_green_ew turn_yellow_ew turn_red_ns turn_green_ns turn_yellow_ns],
-          &build_transition!(name: &1)
-        ),
-      arcs:
-        [
-          arc(turn_green_ew <~ red_ew :: "bind {1, u}"),
-          arc(turn_green_ew ~> green_ew :: "{1, u}"),
-          arc(turn_yellow_ew <~ green_ew :: "bind {1, u}"),
-          arc(turn_yellow_ew ~> yellow_ew :: "{1, u}"),
-          arc(turn_red_ew <~ yellow_ew :: "bind {1, u}"),
-          arc(turn_red_ew ~> red_ew :: "{1, u}")
-        ] ++
-          [
-            arc(turn_green_ns <~ red_ns :: "bind {1, u}"),
-            arc(turn_green_ns ~> green_ns :: "{1, u}"),
-            arc(turn_yellow_ns <~ green_ns :: "bind {1, u}"),
-            arc(turn_yellow_ns ~> yellow_ns :: "{1, u}"),
-            arc(turn_red_ns <~ yellow_ns :: "bind {1, u}"),
-            arc(turn_red_ns ~> red_ns :: "{1, u}")
-          ] ++
-          [
-            arc(turn_red_ns ~> safe_ew :: "{1, u}"),
-            arc(turn_green_ew <~ safe_ew :: "bind {1, u}"),
-            arc(turn_red_ew ~> safe_ns :: "{1, u}"),
-            arc(turn_green_ns <~ safe_ns :: "bind {1, u}")
-          ],
-      variables: [
-        %Variable{name: :u, colour_set: :unit}
-      ]
-    }
+  var s :: signal()
+
+  place :red_ew, :signal
+  place :green_ew, :signal
+  place :yellow_ew, :signal
+  place :red_ns, :signal
+  place :green_ns, :signal
+  place :yellow_ns, :signal
+  place :safe_ew, :signal
+  place :safe_ns, :signal
+
+  initial_marking :red_ew, ~MS[{}]
+  initial_marking :red_ns, ~MS[{}]
+  initial_marking :safe_ew, ~MS[{}]
+
+  transition :turn_green_ew do
+    input :red_ew, bind({1, s})
+    input :safe_ew, bind({1, s})
+    output :green_ew, {1, s}
+  end
+
+  transition :turn_yellow_ew do
+    input :green_ew, bind({1, s})
+    output :yellow_ew, {1, s}
+  end
+
+  transition :turn_red_ew do
+    input :yellow_ew, bind({1, s})
+    output :red_ew, {1, s}
+    output :safe_ns, {1, s}
+  end
+
+  transition :turn_green_ns do
+    input :red_ns, bind({1, s})
+    input :safe_ns, bind({1, s})
+    output :green_ns, {1, s}
+  end
+
+  transition :turn_yellow_ns do
+    input :green_ns, bind({1, s})
+    output :yellow_ns, {1, s}
+  end
+
+  transition :turn_red_ns do
+    input :yellow_ns, bind({1, s})
+    output :red_ns, {1, s}
+    output :safe_ew, {1, s}
   end
 
   def setup_flow do
     %Schemas.Flow{}
     |> Ecto.Changeset.cast(
       %{
-        name: "TrafficLight",
-        definition: flow()
+        name: __cpn__(:name),
+        definition: cpnet()
       },
       [:name, :definition]
     )
@@ -252,17 +256,7 @@ defmodule TrafficLight do
   end
 
   def start_enactment(flow) do
-    import ColouredFlow.MultiSet, only: :sigils
-
-    enactment =
-      TrafficLight.setup_enactment(
-        flow,
-        [
-          %{place: "red_ew", tokens: ~MS[{}]},
-          %{place: "red_ns", tokens: ~MS[{}]},
-          %{place: "safe_ew", tokens: ~MS[{}]}
-        ]
-      )
+    enactment = setup_enactment(flow, __cpn__(:initial_markings))
 
     {:ok, enactment_pid} = ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment.id)
 
