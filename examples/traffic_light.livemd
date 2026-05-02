@@ -38,78 +38,76 @@ Kino.nothing()
 
 ```elixir
 defmodule TrafficLight do
-  alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Place
-  alias ColouredFlow.Definition.Variable
-  alias ColouredFlow.Enactment.Marking
+  use ColouredFlow.DSL
 
-  import ColouredFlow.Builder.DefinitionHelper
-  import ColouredFlow.Notation.Colset
-
+  import ColouredFlow.MultiSet, only: :sigils
   import Record, only: [is_record: 2]
 
-  @flow %ColouredPetriNet{
-    colour_sets: [
-      colset(unit() :: {})
-    ],
-    places:
-      Enum.map(
-        ~w[red_ew green_ew yellow_ew red_ns green_ns yellow_ns safe_ew safe_ns],
-        fn name ->
-          %Place{name: name, colour_set: :unit}
-        end
-      ),
-    transitions:
-      Enum.map(
-        ~w[turn_red_ew turn_green_ew turn_yellow_ew turn_red_ns turn_green_ns turn_yellow_ns],
-        &build_transition!(name: &1)
-      ),
-    arcs:
-      [
-        arc(turn_green_ew <~ red_ew :: "bind {1, u}"),
-        arc(turn_green_ew ~> green_ew :: "{1, u}"),
-        arc(turn_yellow_ew <~ green_ew :: "bind {1, u}"),
-        arc(turn_yellow_ew ~> yellow_ew :: "{1, u}"),
-        arc(turn_red_ew <~ yellow_ew :: "bind {1, u}"),
-        arc(turn_red_ew ~> red_ew :: "{1, u}")
-      ] ++
-        [
-          arc(turn_green_ns <~ red_ns :: "bind {1, u}"),
-          arc(turn_green_ns ~> green_ns :: "{1, u}"),
-          arc(turn_yellow_ns <~ green_ns :: "bind {1, u}"),
-          arc(turn_yellow_ns ~> yellow_ns :: "{1, u}"),
-          arc(turn_red_ns <~ yellow_ns :: "bind {1, u}"),
-          arc(turn_red_ns ~> red_ns :: "{1, u}")
-        ] ++
-        [
-          arc(turn_red_ns ~> safe_ew :: "{1, u}"),
-          arc(turn_green_ew <~ safe_ew :: "bind {1, u}"),
-          arc(turn_red_ew ~> safe_ns :: "{1, u}"),
-          arc(turn_green_ns <~ safe_ns :: "bind {1, u}")
-        ],
-    variables: [
-      %Variable{name: :u, colour_set: :unit}
-    ]
-  }
+  name "TrafficLight"
+
+  colset signal() :: {}
+
+  var s :: signal()
+
+  place :red_ew, :signal
+  place :green_ew, :signal
+  place :yellow_ew, :signal
+  place :red_ns, :signal
+  place :green_ns, :signal
+  place :yellow_ns, :signal
+  place :safe_ew, :signal
+  place :safe_ns, :signal
+
+  initial_marking :red_ew, ~MS[{}]
+  initial_marking :red_ns, ~MS[{}]
+  initial_marking :safe_ew, ~MS[{}]
+
+  transition :turn_green_ew do
+    input :red_ew, bind({1, s})
+    input :safe_ew, bind({1, s})
+    output :green_ew, {1, s}
+  end
+
+  transition :turn_yellow_ew do
+    input :green_ew, bind({1, s})
+    output :yellow_ew, {1, s}
+  end
+
+  transition :turn_red_ew do
+    input :yellow_ew, bind({1, s})
+    output :red_ew, {1, s}
+    output :safe_ns, {1, s}
+  end
+
+  transition :turn_green_ns do
+    input :red_ns, bind({1, s})
+    input :safe_ns, bind({1, s})
+    output :green_ns, {1, s}
+  end
+
+  transition :turn_yellow_ns do
+    input :green_ns, bind({1, s})
+    output :yellow_ns, {1, s}
+  end
+
+  transition :turn_red_ns do
+    input :yellow_ns, bind({1, s})
+    output :red_ns, {1, s}
+    output :safe_ew, {1, s}
+  end
 
   def to_mermaid do
-    @flow
+    cpnet()
     |> ColouredFlow.Definition.Presentation.to_mermaid()
     |> Kino.Mermaid.new()
   end
 
   def insert_flow do
-    ColouredFlow.Runner.Storage.InMemory.insert_flow!(@flow)
+    ColouredFlow.Runner.Storage.InMemory.insert_flow!(cpnet())
   end
 
   def insert_enactment(flow) when is_record(flow, :flow) do
-    import ColouredFlow.MultiSet, only: :sigils
-
-    ColouredFlow.Runner.Storage.InMemory.insert_enactment!(flow, [
-      %Marking{place: "red_ew", tokens: ~MS[{}]},
-      %Marking{place: "red_ns", tokens: ~MS[{}]},
-      %Marking{place: "safe_ew", tokens: ~MS[{}]}
-    ])
+    ColouredFlow.Runner.Storage.InMemory.insert_enactment!(flow, __cpn__(:initial_markings))
   end
 
   def to_kino do
