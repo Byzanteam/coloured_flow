@@ -2,6 +2,8 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
   use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 
+  import Ecto.Query, only: [from: 2]
+
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Runner.Enactment, as: EnactmentServer
   alias ColouredFlow.Runner.Enactment.Snapshot
@@ -93,6 +95,66 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
 
       assert is_pid(enactment_server)
       :ok = wait_enactment_requests_handled!(enactment_server)
+    end
+  end
+
+  describe "state_drift fatal funnel" do
+    setup :setup_flow
+    setup :setup_enactment
+
+    @describetag cpnet: :simple_sequence
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "start_workitems drift exits with :shutdown and persists :state_drift",
+         %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+
+      [%Enactment.Workitem{state: :enabled} = workitem] =
+        get_enactment_workitems(enactment_server)
+
+      # Delete the workitem row out from under the GenServer to simulate drift.
+      delete_query = from(w in Schemas.Workitem, where: w.id == ^workitem.id)
+      Repo.delete_all(delete_query)
+
+      ref = Process.monitor(enactment_server)
+      catch_exit(GenServer.call(enactment_server, {:start_workitems, [workitem.id]}))
+
+      assert_receive {:DOWN, ^ref, :process, ^enactment_server,
+                      {:shutdown, {:fatal, :state_drift}}},
+                     500
+
+      schema = Repo.get(Schemas.Enactment, enactment.id)
+      assert schema.state === :exception
+
+      [exception_log] =
+        Schemas.EnactmentLog
+        |> Repo.all(enactment_id: enactment.id)
+        |> Enum.filter(&(&1.state === :exception))
+
+      assert exception_log.exception.reason === :state_drift
+    end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "complete_workitems drift exits with :shutdown and persists :state_drift",
+         %{enactment: enactment} do
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+
+      [workitem] = get_enactment_workitems(enactment_server)
+      workitem = start_workitem(workitem, enactment_server)
+
+      # Delete the started workitem row out from under the GenServer.
+      delete_query = from(w in Schemas.Workitem, where: w.id == ^workitem.id)
+      Repo.delete_all(delete_query)
+
+      ref = Process.monitor(enactment_server)
+      catch_exit(GenServer.call(enactment_server, {:complete_workitems, %{workitem.id => []}}))
+
+      assert_receive {:DOWN, ^ref, :process, ^enactment_server,
+                      {:shutdown, {:fatal, :state_drift}}},
+                     500
+
+      schema = Repo.get(Schemas.Enactment, enactment.id)
+      assert schema.state === :exception
     end
   end
 

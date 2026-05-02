@@ -25,6 +25,16 @@ defmodule ColouredFlow.Runner.Storage do
   @type enactment_id() :: Ecto.UUID.t()
   @type flow_id() :: Ecto.UUID.t()
 
+  @typedoc """
+  Mutating workitem operations may return `{:error, {:state_drift, ctx}}` when the
+  in-memory state diverges from storage (Multi `:result` step rejecting an
+  `:unexpected_updated_rows` mismatch). Callers funnel this into a Tier 2 fatal
+  exit; the keyword `ctx` carries `expected:` / `actual:` row counts so operators
+  see the discrepancy in the persisted exception.
+  """
+  @type state_drift_context() :: [expected: pos_integer(), actual: non_neg_integer()]
+  @type write_result() :: :ok | {:error, {:state_drift, state_drift_context()}}
+
   @doc """
   Get the flow of an enactment.
   """
@@ -101,13 +111,13 @@ defmodule ColouredFlow.Runner.Storage do
   @callback start_workitems(
               started_workitems :: [Workitem.t(:started)],
               options :: [transition_option()]
-            ) :: :ok
+            ) :: write_result()
 
   @doc group: :workitem
   @callback withdraw_workitems(
               withdrawn_workitems :: [Workitem.t(:withdrawn)],
               options :: [transition_option()]
-            ) :: :ok
+            ) :: write_result()
 
   @doc group: :workitem
   @callback complete_workitems(
@@ -115,7 +125,7 @@ defmodule ColouredFlow.Runner.Storage do
               current_version :: non_neg_integer(),
               workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
               options :: [transition_option()]
-            ) :: :ok
+            ) :: write_result()
 
   @doc """
   Takes a snapshot of the given enactment.
@@ -219,13 +229,13 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec start_workitems([Workitem.t(:started)], [transition_option()]) :: :ok
+  @spec start_workitems([Workitem.t(:started)], [transition_option()]) :: write_result()
   def start_workitems(workitems, options) do
     __storage__().start_workitems(workitems, options)
   end
 
   @doc false
-  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: :ok
+  @spec withdraw_workitems([Workitem.t(:withdrawn)], [transition_option()]) :: write_result()
   def withdraw_workitems(workitems, options) do
     __storage__().withdraw_workitems(workitems, options)
   end
@@ -236,7 +246,7 @@ defmodule ColouredFlow.Runner.Storage do
           current_version :: non_neg_integer(),
           workitem_occurrences :: [{Workitem.t(:completed), Occurrence.t()}],
           [transition_option()]
-        ) :: :ok
+        ) :: write_result()
   def complete_workitems(enactment_id, current_version, workitem_occurrences, options) do
     __storage__().complete_workitems(enactment_id, current_version, workitem_occurrences, options)
   end

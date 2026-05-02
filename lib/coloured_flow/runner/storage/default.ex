@@ -19,19 +19,6 @@ defmodule ColouredFlow.Runner.Storage.Default do
   @type enactment_id() :: ColouredFlow.Runner.Storage.enactment_id()
   @type flow_id() :: ColouredFlow.Runner.Storage.flow_id()
 
-  # Exception types raised by `Codec.Marking.decode/2` when it encounters a
-  # payload it cannot parse. Listed explicitly so that connection errors
-  # (`DBConnection.ConnectionError`, `Postgrex.Error`, etc.) are NOT
-  # reclassified as `:snapshot_corrupt`.
-  @snapshot_corrupt_exceptions [
-    ArgumentError,
-    FunctionClauseError,
-    KeyError,
-    MatchError,
-    Protocol.UndefinedError,
-    RuntimeError
-  ]
-
   @impl ColouredFlow.Runner.Storage
   def get_flow_by_enactment(enactment_id) do
     Schemas.Flow
@@ -242,12 +229,13 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   @typep transition_option() :: ColouredFlow.Runner.Storage.transition_option()
+  @typep write_result() :: ColouredFlow.Runner.Storage.write_result()
 
   @doc """
   Transition a workitem from one state to another. This is a shortcut for
   `ColouredFlow.Runner.Default.transition_workitems/2`.
   """
-  @spec transition_workitem(Workitem.t(), [transition_option()]) :: :ok
+  @spec transition_workitem(Workitem.t(), [transition_option()]) :: write_result()
   def transition_workitem(workitem, options) do
     workitem
     |> List.wrap()
@@ -258,7 +246,7 @@ defmodule ColouredFlow.Runner.Storage.Default do
   Transition the workitems from one state to another in accordance with the state
   machine (See `t:ColouredFlow.Runner.Enactment.Workitem.state/0`).
   """
-  @spec transition_workitems([Workitem.t()], [transition_option()]) :: :ok
+  @spec transition_workitems([Workitem.t()], [transition_option()]) :: write_result()
   def transition_workitems([], _options), do: :ok
 
   def transition_workitems(workitems, options) when is_list(workitems) do
@@ -271,13 +259,18 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:ok, _changes} ->
         :ok
 
-      {
-        :error,
-        :result,
-        {:unexpected_updated_rows, exception_ctx},
-        _changes_so_far
-      } ->
-        unexpected_updated_rows!(workitems, action, exception_ctx)
+      {:error, :result, {:unexpected_updated_rows, ctx}, _changes} ->
+        {:error, {:state_drift, ctx}}
+
+      {:error, op, value, changes} ->
+        raise """
+        Workitem transition failed unexpectedly.
+
+        Action: #{inspect(action)}
+        Operation: #{inspect(op)}
+        Value: #{inspect(value)}
+        Changes: #{inspect(changes)}
+        """
     end
   end
 
@@ -346,21 +339,6 @@ defmodule ColouredFlow.Runner.Storage.Default do
     defp get_from_state(unquote(to), unquote(action)), do: unquote(from)
   end
 
-  defp unexpected_updated_rows!(workitems, transition, options) do
-    # When the actual number is not equal to the expected number,
-    # it means the workitems in the gen_server are not consistent with the database.
-    # So we just raise an error to crash the process, and let the supervisor
-    # restart the gen_server and retry.
-    expected = Keyword.fetch!(options, :expected)
-    actual = Keyword.fetch!(options, :actual)
-
-    raise """
-    The number of workitems to #{transition} is not equal to the actual number.
-    Expected: #{expected}, Actual: #{actual}
-    Workitems: #{Enum.map_join(workitems, ", ", & &1.id)}
-    """
-  end
-
   @impl ColouredFlow.Runner.Storage
   def start_workitems(workitems, options) do
     transition_workitems(workitems, options)
@@ -395,13 +373,18 @@ defmodule ColouredFlow.Runner.Storage.Default do
       {:ok, _result} ->
         :ok
 
-      {
-        :error,
-        :result,
-        {:unexpected_updated_rows, exception_ctx},
-        _changes_so_far
-      } ->
-        unexpected_updated_rows!(completed_workitems, action, exception_ctx)
+      {:error, :result, {:unexpected_updated_rows, ctx}, _changes} ->
+        {:error, {:state_drift, ctx}}
+
+      {:error, op, value, changes} ->
+        raise """
+        Workitem completion failed unexpectedly.
+
+        Action: #{inspect(action)}
+        Operation: #{inspect(op)}
+        Value: #{inspect(value)}
+        Changes: #{inspect(changes)}
+        """
     end
   end
 
@@ -446,6 +429,19 @@ defmodule ColouredFlow.Runner.Storage.Default do
 
     :ok
   end
+
+  # Exception types raised by `Codec.Marking.decode/2` when it encounters a
+  # payload it cannot parse. Listed explicitly so that connection errors
+  # (`DBConnection.ConnectionError`, `Postgrex.Error`, etc.) are NOT
+  # reclassified as `:snapshot_corrupt`.
+  @snapshot_corrupt_exceptions [
+    ArgumentError,
+    FunctionClauseError,
+    KeyError,
+    MatchError,
+    Protocol.UndefinedError,
+    RuntimeError
+  ]
 
   @impl ColouredFlow.Runner.Storage
   def read_enactment_snapshot(enactment_id) do

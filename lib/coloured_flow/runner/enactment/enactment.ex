@@ -248,6 +248,31 @@ defmodule ColouredFlow.Runner.Enactment do
     }
   end
 
+  # Funnel storage writes that may report `:state_drift`. On drift, persist
+  # `:exception` state and exit via `{:shutdown, _}` so the supervisor does
+  # not restart and `terminate/2` does not record a `:crash`.
+  @spec persist_or_drift!(Storage.write_result(), state(), Workitem.transition_action()) ::
+          :ok | no_return()
+  defp persist_or_drift!(:ok, %__MODULE__{}, _action), do: :ok
+
+  defp persist_or_drift!({:error, {:state_drift, ctx}}, %__MODULE__{} = state, action) do
+    exception =
+      Exceptions.StateDrift.exception(
+        enactment_id: state.enactment_id,
+        action: action,
+        context: ctx
+      )
+
+    :ok = Storage.exception_occurs(state.enactment_id, :state_drift, exception)
+
+    emit_event(:exception, state, %{
+      exception_reason: :state_drift,
+      exception: exception
+    })
+
+    exit({:shutdown, {:fatal, :state_drift}})
+  end
+
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
     # We don't need to ensure `withdraw_workitems` and `produce_workitems` are atomic,
     # because the gen_server will restart if the process crashes.
@@ -266,10 +291,14 @@ defmodule ColouredFlow.Runner.Enactment do
 
         Enum.each(grouped_wokitems, fn
           {:enabled, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
+            workitems
+            |> Storage.withdraw_workitems(action: :withdraw)
+            |> persist_or_drift!(state, :withdraw)
 
           {:started, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
+            workitems
+            |> Storage.withdraw_workitems(action: :withdraw_s)
+            |> persist_or_drift!(state, :withdraw_s)
         end)
 
         {:ok, workitems, %{workitems: workitems}}
@@ -349,7 +378,9 @@ defmodule ColouredFlow.Runner.Enactment do
     :start_workitems
     |> with_span(state, %{workitem_ids: workitem_ids}, fn ->
       with {:ok, {started_workitems, new_state}} <- start_workitems(state, workitem_ids) do
-        :ok = Storage.start_workitems(started_workitems, action: :start)
+        started_workitems
+        |> Storage.start_workitems(action: :start)
+        |> persist_or_drift!(state, :start)
 
         {:ok, {started_workitems, new_state}, %{workitems: started_workitems}}
       end
@@ -385,13 +416,13 @@ defmodule ColouredFlow.Runner.Enactment do
           {:ok, {workitem_occurrences, new_state, calibration_options}} <-
             complete_workitems(state, workitem_ids, workitem_id_and_outputs)
         ) do
-          :ok =
-            Storage.complete_workitems(
-              new_state.enactment_id,
-              new_state.version,
-              workitem_occurrences,
-              action: transition_action
-            )
+          new_state.enactment_id
+          |> Storage.complete_workitems(
+            new_state.version,
+            workitem_occurrences,
+            action: transition_action
+          )
+          |> persist_or_drift!(state, transition_action)
 
           completed_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
 
