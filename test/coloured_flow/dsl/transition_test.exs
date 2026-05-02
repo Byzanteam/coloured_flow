@@ -79,30 +79,41 @@ defmodule ColouredFlow.DSL.TransitionTest do
     end
 
     test "rejects duplicate transition names at compile time" do
-      assert_raise CompileError, ~r/duplicate|unique|transition/i, fn ->
-        defmodule DuplicateTransitions do
-          use ColouredFlow.DSL
+      source = """
+      defmodule ColouredFlow.DSL.TransitionTest.DuplicateTransitions do
+        use ColouredFlow.DSL
 
-          name "DuplicateTransitions"
+        name "DuplicateTransitions"
 
-          colset int() :: integer()
+        colset int() :: integer()
 
-          var x :: int()
+        var x :: int()
 
-          place :input, :int
-          place :output, :int
+        place :a, :int
+        place :b, :int
+        place :c, :int
+        place :d, :int
 
-          transition :t do
-            input :input, bind({1, x})
-            output :output, {1, x}
-          end
+        transition :t do
+          input :a, bind({1, x})
+          output :b, {1, x}
+        end
 
-          transition :t do
-            input :input, bind({1, x})
-            output :output, {1, x}
-          end
+        transition :t do
+          input :c, bind({1, x})
+          output :d, {1, x}
         end
       end
+      """
+
+      error =
+        assert_raise CompileError, ~r/unique|transition/i, fn ->
+          Code.compile_string(source, "duplicate_transitions.exs")
+        end
+
+      assert error.file == "duplicate_transitions.exs"
+      # Points at the second `transition :t do ... end` (line 20, 1-indexed).
+      assert error.line == 20
     end
 
     test "rejects duplicate guard in same transition" do
@@ -134,6 +145,7 @@ defmodule ColouredFlow.DSL.TransitionTest do
           Code.compile_string(source, "duplicate_guard.exs")
         end
 
+      assert error.file == "duplicate_guard.exs"
       # Points at the second `guard` (line 15, 1-indexed).
       assert error.line == 15
     end
@@ -167,6 +179,7 @@ defmodule ColouredFlow.DSL.TransitionTest do
           Code.compile_string(source, "duplicate_action.exs")
         end
 
+      assert error.file == "duplicate_action.exs"
       # Points at the second `action` (line 18, 1-indexed).
       assert error.line == 18
     end

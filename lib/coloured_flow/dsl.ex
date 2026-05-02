@@ -66,6 +66,15 @@ defmodule ColouredFlow.DSL do
       Module.register_attribute(__MODULE__, :cf_name, accumulate: false)
       Module.register_attribute(__MODULE__, :cf_version, accumulate: false)
 
+      # Per-declaration metadata: accumulates `{name, file, line}` triples so
+      # `Builder` can map validator-driven errors back to the offending callsite.
+      Module.register_attribute(__MODULE__, :cf_colour_sets_meta, accumulate: true)
+      Module.register_attribute(__MODULE__, :cf_variables_meta, accumulate: true)
+      Module.register_attribute(__MODULE__, :cf_constants_meta, accumulate: true)
+      Module.register_attribute(__MODULE__, :cf_functions_meta, accumulate: true)
+      Module.register_attribute(__MODULE__, :cf_places_meta, accumulate: true)
+      Module.register_attribute(__MODULE__, :cf_transitions_meta, accumulate: true)
+
       @before_compile ColouredFlow.DSL.Builder
     end
   end
@@ -109,12 +118,15 @@ defmodule ColouredFlow.DSL do
   """
   defmacro colset(declaration) do
     {name, type} = ColouredFlow.Notation.Colset.__colset__(declaration)
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
 
     quote do
       @cf_colour_sets %ColourSet{
         name: unquote(name),
         type: unquote(type)
       }
+      @cf_colour_sets_meta {unquote(name), unquote(caller_file), unquote(caller_line)}
     end
   end
 
@@ -128,12 +140,15 @@ defmodule ColouredFlow.DSL do
   """
   defmacro var(declaration) do
     {name, colour_set} = ColouredFlow.Notation.Var.__var__(declaration)
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
 
     quote do
       @cf_variables %Variable{
         name: unquote(name),
         colour_set: unquote(colour_set)
       }
+      @cf_variables_meta {unquote(name), unquote(caller_file), unquote(caller_line)}
     end
   end
 
@@ -147,6 +162,8 @@ defmodule ColouredFlow.DSL do
   """
   defmacro val(declaration) do
     {name, colour_set, value} = ColouredFlow.Notation.Val.__val__(declaration)
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
 
     quote do
       @cf_constants %Constant{
@@ -154,6 +171,7 @@ defmodule ColouredFlow.DSL do
         colour_set: unquote(colour_set),
         value: unquote(value)
       }
+      @cf_constants_meta {unquote(name), unquote(caller_file), unquote(caller_line)}
     end
   end
 end

@@ -89,8 +89,52 @@ defmodule ColouredFlow.DSL.TerminationTest do
           Code.compile_string(source, "duplicate_on_markings.exs")
         end
 
+      assert error.file == "duplicate_on_markings.exs"
       # Points at the second `on_markings` (line 23, 1-indexed).
       assert error.line == 23
+    end
+
+    test "rejects multiple termination blocks in the same workflow" do
+      source = """
+      defmodule ColouredFlow.DSL.TerminationTest.MultipleTermination do
+        use ColouredFlow.DSL
+
+        name "MultipleTermination"
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place :input, :int
+        place :output, :int
+
+        transition :t do
+          input :input, bind({1, x})
+          output :output, {1, x}
+        end
+
+        termination do
+          on_markings do
+            match?(%{"output" => _}, markings)
+          end
+        end
+
+        termination do
+          on_markings do
+            match?(%{"input" => _}, markings)
+          end
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/termination.+already.+declared/i, fn ->
+          Code.compile_string(source, "multiple_termination.exs")
+        end
+
+      assert error.file == "multiple_termination.exs"
+      # Points at the second `termination do ... end` (line 24, 1-indexed).
+      assert error.line == 24
     end
   end
 end

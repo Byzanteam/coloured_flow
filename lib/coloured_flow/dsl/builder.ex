@@ -12,6 +12,9 @@ defmodule ColouredFlow.DSL.Builder do
   alias ColouredFlow.Definition.Procedure
   alias ColouredFlow.Enactment.Marking
 
+  alias ColouredFlow.Validators.Exceptions.MissingColourSetError
+  alias ColouredFlow.Validators.Exceptions.UniqueNameViolationError
+
   @doc false
   defmacro __before_compile__(env) do
     cpnet = build_cpnet(env.module)
@@ -55,14 +58,153 @@ defmodule ColouredFlow.DSL.Builder do
         end
 
       {:error, exception} ->
+        {file, line} = locate_error(exception, env)
+
         raise CompileError,
           description: """
           ColouredFlow.DSL: invalid workflow definition.
 
           #{Exception.message(exception)}
           """,
-          file: env.file,
-          line: env.line
+          file: file,
+          line: line
+    end
+  end
+
+  # Map a validator-driven error back to the originating declaration's
+  # `{file, line}`. Falls back to the `defmodule` callsite when the offending
+  # declaration cannot be identified.
+  @spec locate_error(Exception.t(), Macro.Env.t()) :: {String.t(), non_neg_integer()}
+  defp locate_error(%UniqueNameViolationError{scope: scope, name: name}, env) do
+    locate_unique_violation(scope, name, env)
+  end
+
+  defp locate_error(%MissingColourSetError{colour_set: colour_set}, env) do
+    locate_missing_colour_set(colour_set, env)
+  end
+
+  defp locate_error(_other, env) do
+    {env.file, env.line}
+  end
+
+  # `UniqueNameValidator` halts on the *second* occurrence of a duplicate name.
+  # The metadata accumulator stores entries in reverse declaration order
+  # (most-recent first), so reverse to source order and pick the second
+  # occurrence — that's the duplicate the validator rejected. The validator
+  # uses `:variable_and_constant` to lump variables and constants together,
+  # despite that not appearing in the exception's declared scope type.
+  @unique_scope_attrs %{
+    colour_set: [:cf_colour_sets_meta],
+    place: [:cf_places_meta],
+    transition: [:cf_transitions_meta],
+    function: [:cf_functions_meta],
+    variable_and_constant: [:cf_variables_meta, :cf_constants_meta]
+  }
+
+  defp locate_unique_violation(scope, name, env) do
+    case Map.fetch(@unique_scope_attrs, scope) do
+      {:ok, attrs} ->
+        attrs
+        |> Enum.flat_map(&source_order_meta(env.module, &1))
+        |> locate_duplicate(name, env)
+
+      :error ->
+        {env.file, env.line}
+    end
+  end
+
+  # `MissingColourSetError` is raised by the places/functions/variables/
+  # constants validators when a referenced colour set is not declared. The
+  # exception carries the missing colour set name. We probe each declaration
+  # scope in the same order the validator pipeline does and return the first
+  # match.
+  defp locate_missing_colour_set(colour_set, env) do
+    locate_missing_in_places(colour_set, env) ||
+      locate_missing_in_functions(colour_set, env) ||
+      locate_missing_in_constants(colour_set, env) ||
+      locate_missing_in_variables(colour_set, env) ||
+      {env.file, env.line}
+  end
+
+  defp locate_missing_in_places(colour_set, env) do
+    env.module
+    |> zip_meta(:cf_places, :cf_places_meta)
+    |> Enum.find_value(fn
+      {%Place{colour_set: ^colour_set}, {_name, file, line}} -> {file, line}
+      _other -> nil
+    end)
+  end
+
+  defp locate_missing_in_functions(colour_set, env) do
+    env.module
+    |> zip_meta(:cf_functions, :cf_functions_meta)
+    |> Enum.find_value(fn
+      {%Procedure{result: result}, {_name, file, line}} ->
+        if descr_references?(result, colour_set), do: {file, line}, else: nil
+
+      _other ->
+        nil
+    end)
+  end
+
+  defp locate_missing_in_constants(colour_set, env) do
+    env.module
+    |> zip_meta(:cf_constants, :cf_constants_meta)
+    |> Enum.find_value(fn
+      {%{colour_set: ^colour_set}, {_name, file, line}} -> {file, line}
+      _other -> nil
+    end)
+  end
+
+  defp locate_missing_in_variables(colour_set, env) do
+    env.module
+    |> zip_meta(:cf_variables, :cf_variables_meta)
+    |> Enum.find_value(fn
+      {%{colour_set: ^colour_set}, {_name, file, line}} -> {file, line}
+      _other -> nil
+    end)
+  end
+
+  defp zip_meta(module, items_attr, meta_attr) do
+    items = source_order_meta(module, items_attr)
+    metas = source_order_meta(module, meta_attr)
+    Enum.zip(items, metas)
+  end
+
+  # Recursively check whether a `ColourSet.descr()` references the given
+  # colour-set name as a leaf node.
+  defp descr_references?({name, []}, target) when is_atom(name), do: name == target
+
+  defp descr_references?({:tuple, types}, target) when is_list(types) do
+    Enum.any?(types, &descr_references?(&1, target))
+  end
+
+  defp descr_references?({:list, type}, target), do: descr_references?(type, target)
+
+  defp descr_references?({:map, types}, target) when is_map(types) do
+    Enum.any?(types, fn {_key, type} -> descr_references?(type, target) end)
+  end
+
+  defp descr_references?({:union, types}, target) when is_map(types) do
+    Enum.any?(types, fn {_tag, type} -> descr_references?(type, target) end)
+  end
+
+  defp descr_references?(_other, _target), do: false
+
+  defp locate_duplicate(meta_list, name, env) do
+    meta_list
+    |> Enum.filter(fn {entry_name, _file, _line} -> entry_name == name end)
+    |> case do
+      [_first, {_name, file, line} | _rest] -> {file, line}
+      [{_name, file, line}] -> {file, line}
+      [] -> {env.file, env.line}
+    end
+  end
+
+  defp source_order_meta(module, attr) do
+    case Module.get_attribute(module, attr) do
+      nil -> []
+      list when is_list(list) -> Enum.reverse(list)
     end
   end
 
@@ -98,10 +240,14 @@ defmodule ColouredFlow.DSL.Builder do
     end
   end
 
+  # `Module.put_attribute/3` prepends in accumulate mode, so the head of the list
+  # is the most recent entry. This pulls that entry. Macros that should only
+  # appear once (e.g. `termination/1`) enforce uniqueness at macro-expansion
+  # time, so this list will contain at most one element.
   defp pull_one(module, attr) do
     case Module.get_attribute(module, attr) do
       nil -> nil
-      list when is_list(list) -> List.last(list)
+      list when is_list(list) -> List.first(list)
       other -> other
     end
   end

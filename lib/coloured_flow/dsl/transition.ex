@@ -64,6 +64,8 @@ defmodule ColouredFlow.DSL.Transition do
       unquote(block)
 
       ColouredFlow.DSL.Transition.__close_transition__!(__MODULE__)
+
+      @cf_transitions_meta {unquote(name_str), unquote(caller_file), unquote(caller_line)}
     end
   end
 

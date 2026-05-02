@@ -17,12 +17,16 @@ defmodule ColouredFlow.DSL.Place do
   defmacro place(name, colour_set) do
     name_value = unquote_atom!(name, "place name", __CALLER__)
     colour_set_value = unquote_atom!(colour_set, "place colour set", __CALLER__)
+    name_str = Atom.to_string(name_value)
+    caller_file = __CALLER__.file
+    caller_line = __CALLER__.line
 
     quote do
       @cf_places %Place{
-        name: unquote(Atom.to_string(name_value)),
+        name: unquote(name_str),
         colour_set: unquote(colour_set_value)
       }
+      @cf_places_meta {unquote(name_str), unquote(caller_file), unquote(caller_line)}
     end
   end
 

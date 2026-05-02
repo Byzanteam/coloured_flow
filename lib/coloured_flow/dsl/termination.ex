@@ -44,6 +44,12 @@ defmodule ColouredFlow.DSL.Termination do
     end
 
     quote do
+      ColouredFlow.DSL.Termination.__check_unique_termination__!(
+        __MODULE__,
+        unquote(caller_file),
+        unquote(caller_line)
+      )
+
       ColouredFlow.DSL.Termination.__open_termination__!(
         __MODULE__,
         unquote(caller_file),
@@ -82,6 +88,22 @@ defmodule ColouredFlow.DSL.Termination do
         unquote(caller_file),
         unquote(caller_line)
       )
+    end
+  end
+
+  @doc false
+  @spec __check_unique_termination__!(module(), String.t(), non_neg_integer()) :: :ok
+  def __check_unique_termination__!(module, file, line) do
+    case Module.get_attribute(module, :cf_termination_criteria) do
+      [] ->
+        :ok
+
+      list when is_list(list) ->
+        raise CompileError,
+          description:
+            "termination/1 already declared in this workflow; only a single termination block is allowed",
+          file: file,
+          line: line
     end
   end
 

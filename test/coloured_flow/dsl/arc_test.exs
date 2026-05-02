@@ -163,5 +163,39 @@ defmodule ColouredFlow.DSL.ArcTest do
         end
       end
     end
+
+    test "rejects do block when arg2 is not a keyword list of options" do
+      source = """
+      defmodule ColouredFlow.DSL.ArcTest.ArcExprBeforeDo do
+        use ColouredFlow.DSL
+
+        name "ArcExprBeforeDo"
+
+        colset int() :: integer()
+
+        var x :: int()
+
+        place :input, :int
+        place :output, :int
+
+        transition :t do
+          input :input, bind({1, x}) do
+            bind({2, x})
+          end
+
+          output :output, {1, x}
+        end
+      end
+      """
+
+      error =
+        assert_raise CompileError, ~r/options.+before.+do/i, fn ->
+          Code.compile_string(source, "arc_expr_before_do.exs")
+        end
+
+      assert error.file == "arc_expr_before_do.exs"
+      # Points at the offending `input :input, bind({1, x}) do ... end` (line 14, 1-indexed).
+      assert error.line == 14
+    end
   end
 end

@@ -51,6 +51,7 @@ defmodule ColouredFlow.DSL.Function do
         expression: unquote(Macro.escape(expression)),
         result: unquote(Macro.escape(result))
       }
+      @cf_functions_meta {unquote(name), unquote(caller_file), unquote(caller_line)}
     end
   end
 

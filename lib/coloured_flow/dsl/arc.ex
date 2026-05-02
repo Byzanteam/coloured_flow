@@ -100,8 +100,24 @@ defmodule ColouredFlow.DSL.Arc do
         {arg2 ++ opts_after_do, body}
 
       Keyword.has_key?(arg3, :do) ->
-        {body, _opts} = Keyword.pop!(arg3, :do)
-        {[], body}
+        raise CompileError,
+          description: """
+          Invalid `#{label}` arguments: options must come before the `do ... end` block.
+
+          The expression is the block body for multi-line arcs; any positional \
+          argument before the block (other than a keyword list of options) is \
+          ambiguous and would be silently dropped.
+
+          Got: #{Macro.to_string(arg2)} as the second argument before the `do` block.
+
+          Use one of:
+              #{label} :place, expression                    # single-line
+              #{label} :place, expression, label: "..."      # single-line, with options
+              #{label} :place, do: expression                # multi-line
+              #{label} :place, label: "..." do ... end       # multi-line, with options
+          """,
+          file: caller.file,
+          line: caller.line
 
       keyword?(arg3) ->
         {arg3, arg2}

@@ -34,45 +34,63 @@ defmodule ColouredFlow.DSL.PlaceTest do
     end
 
     test "rejects duplicate place names at compile time" do
-      assert_raise CompileError, ~r/duplicate|unique|already/i, fn ->
-        defmodule DuplicatePlaces do
-          use ColouredFlow.DSL
+      source = """
+      defmodule ColouredFlow.DSL.PlaceTest.DuplicatePlaces do
+        use ColouredFlow.DSL
 
-          name "DuplicatePlaces"
+        name "DuplicatePlaces"
 
-          colset int() :: integer()
+        colset int() :: integer()
 
-          place :input, :int
-          place :input, :int
+        place :input, :int
+        place :input, :int
 
-          var x :: int()
+        var x :: int()
 
-          transition :t do
-            input :input, bind({1, x})
-            output :input, {1, x}
-          end
+        transition :t do
+          input :input, bind({1, x})
+          output :input, {1, x}
         end
       end
+      """
+
+      error =
+        assert_raise CompileError, ~r/duplicate|unique|already/i, fn ->
+          Code.compile_string(source, "duplicate_places.exs")
+        end
+
+      assert error.file == "duplicate_places.exs"
+      # Points at the second `place :input, :int` (line 9, 1-indexed).
+      assert error.line == 9
     end
 
     test "rejects unknown colour set" do
-      assert_raise CompileError, ~r/colour set|undefined|unknown/i, fn ->
-        defmodule UnknownColset do
-          use ColouredFlow.DSL
+      source = """
+      defmodule ColouredFlow.DSL.PlaceTest.UnknownColset do
+        use ColouredFlow.DSL
 
-          name "UnknownColset"
+        name "UnknownColset"
 
-          colset int() :: integer()
+        colset int() :: integer()
 
-          place :input, :ghost
+        place :input, :ghost
 
-          var x :: int()
+        var x :: int()
 
-          transition :t do
-            input :input, bind({1, x})
-          end
+        transition :t do
+          input :input, bind({1, x})
         end
       end
+      """
+
+      error =
+        assert_raise CompileError, ~r/colour set|undefined|unknown/i, fn ->
+          Code.compile_string(source, "unknown_colset.exs")
+        end
+
+      assert error.file == "unknown_colset.exs"
+      # Points at the offending `place :input, :ghost` (line 8, 1-indexed).
+      assert error.line == 8
     end
   end
 end
