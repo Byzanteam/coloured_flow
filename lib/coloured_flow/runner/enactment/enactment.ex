@@ -54,6 +54,10 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Telemetry
 
+  require Logger
+
+  @consecutive_crash_threshold 3
+
   @typep enactment_id() :: Storage.enactment_id()
 
   @typedoc "The markings map of the enactment."
@@ -119,22 +123,28 @@ defmodule ColouredFlow.Runner.Enactment do
 
     state = struct(__MODULE__, options)
 
-    {:ok, state, {:continue, :populate_state}}
+    case Storage.consecutive_crashes_since_progress(state.enactment_id) do
+      count when count >= @consecutive_crash_threshold ->
+        exception =
+          Exceptions.RestartLoop.exception(
+            enactment_id: state.enactment_id,
+            count: count
+          )
+
+        :ok = Storage.exception_occurs(state.enactment_id, :restart_loop, exception)
+
+        Logger.warning(Exception.message(exception))
+
+        :ignore
+
+      _count ->
+        {:ok, state, {:continue, :populate_state}}
+    end
   end
 
   @impl GenServer
   def handle_continue(:populate_state, %__MODULE__{} = state) do
-    snapshot =
-      case Storage.read_enactment_snapshot(state.enactment_id) do
-        {:ok, snapshot} ->
-          snapshot
-
-        :error ->
-          %Snapshot{
-            version: 0,
-            markings: Storage.get_initial_markings(state.enactment_id)
-          }
-      end
+    snapshot = load_or_recover_snapshot(state)
 
     snapshot = catchup_snapshot(state.enactment_id, snapshot)
     Storage.take_enactment_snapshot(state.enactment_id, snapshot)
@@ -199,6 +209,43 @@ defmodule ColouredFlow.Runner.Enactment do
     {steps, markings} = CatchingUp.apply(snapshot.markings, occurrences)
 
     %{snapshot | version: snapshot.version + steps, markings: markings}
+  end
+
+  @spec load_or_recover_snapshot(state()) :: Snapshot.t()
+  defp load_or_recover_snapshot(%__MODULE__{} = state) do
+    case Storage.read_enactment_snapshot(state.enactment_id) do
+      {:ok, snapshot} ->
+        snapshot
+
+      :error ->
+        initial_snapshot(state)
+
+      {:error, {:snapshot_corrupt, underlying}} ->
+        exception =
+          Exceptions.SnapshotCorrupt.exception(
+            enactment_id: state.enactment_id,
+            underlying: underlying
+          )
+
+        :ok = Storage.recover_from_corrupt_snapshot(state.enactment_id, exception)
+
+        Logger.warning(Exception.message(exception))
+
+        emit_event(:exception, state, %{
+          exception_reason: :snapshot_corrupt,
+          exception: exception
+        })
+
+        initial_snapshot(state)
+    end
+  end
+
+  @spec initial_snapshot(state()) :: Snapshot.t()
+  defp initial_snapshot(%__MODULE__{} = state) do
+    %Snapshot{
+      version: 0,
+      markings: Storage.get_initial_markings(state.enactment_id)
+    }
   end
 
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
@@ -573,8 +620,14 @@ defmodule ColouredFlow.Runner.Enactment do
     emit_event(:stop, state, %{reason: reason})
   end
 
-  def terminate(_reason, state) do
-    emit_event(:stop, state, %{reason: "unknown"})
+  def terminate(:normal, state) do
+    emit_event(:stop, state, %{reason: :normal})
+  end
+
+  def terminate(reason, state) do
+    exception = Exceptions.AbnormalExit.exception(reason: reason)
+    :ok = Storage.record_crash(state.enactment_id, exception)
+    emit_event(:stop, state, %{reason: reason})
   end
 
   @spec to_map(Enumerable.t(item)) :: %{Place.name() => item} when item: Marking.t()
