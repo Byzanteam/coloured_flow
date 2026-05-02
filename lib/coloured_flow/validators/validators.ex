@@ -10,6 +10,7 @@ defmodule ColouredFlow.Validators do
   alias ColouredFlow.Validators.Definition.ColourSetValidator
   alias ColouredFlow.Validators.Definition.ConstantsValidator
   alias ColouredFlow.Validators.Definition.GuardValidator
+  alias ColouredFlow.Validators.Definition.PlacesValidator
   alias ColouredFlow.Validators.Definition.StructureValidator
   alias ColouredFlow.Validators.Definition.TerminationCriteriaValidator
   alias ColouredFlow.Validators.Definition.UniqueNameValidator
@@ -22,6 +23,7 @@ defmodule ColouredFlow.Validators do
       {:ok, %ColouredPetriNet{} = cpnet} <- StructureValidator.validate(cpnet),
       {:ok, %ColouredPetriNet{} = cpnet} <- UniqueNameValidator.validate(cpnet),
       {:ok, %ColouredPetriNet{} = cpnet} <- ColourSetValidator.validate(cpnet),
+      {:ok, %ColouredPetriNet{} = cpnet} <- PlacesValidator.validate(cpnet),
       {:ok, constants} <- ConstantsValidator.validate(cpnet.constants, cpnet),
       cpnet = %{cpnet | constants: constants},
       {:ok, variables} <- VariablesValidator.validate(cpnet.variables, cpnet),

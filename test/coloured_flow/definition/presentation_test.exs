@@ -62,13 +62,13 @@ defmodule ColouredFlow.Definition.PresentationTest do
           a --bind {1, {n, d}}--> transmit_packet
           send_packet --{1, {n, d}}--> a
           b --bind {1, {n, d}}--> receive_packet
-          transmit_packet --if success do: {1, {n, d}}, else: {0, {n, d}}--> b
+          transmit_packet --if success, do: {1, {n, d}}, else: {0, {n, d}}--> b
           c --bind {1, n}--> transmit_ack
           receive_packet --if n == k, do: {1, k + 1}, else: {1, k}--> c
           d --bind {1, n}--> receive_ack
-          transmit_ack --if success do: {1, n}, else: {0, n}--> d
+          transmit_ack --if success, do: {1, n}, else: {0, n}--> d
           data_recevied --bind {1, data}--> receive_packet
-          receive_packet --if n == k do: {1, data <> d}, else: {1, data}--> data_recevied
+          receive_packet --if n == k, do: {1, data <> d}, else: {1, data}--> data_recevied
           next_rec --bind {1, k}--> receive_packet
           receive_packet --if n == k, do: {1, k + 1}, else: {1, k}--> next_rec
           next_send --bind {1, k}--> receive_ack
