@@ -41,7 +41,8 @@ The code splits into **static CPN structure**, **CPN semantics**, and the
 | `definition/`               | Pure data model. `ColouredPetriNet` holds `colour_sets`, `places`, `transitions`, `arcs`, `variables`, `constants`, `functions`, optional `termination_criteria`. |
 | `enactment/`                | Runtime values: `Marking` (tokens on a place), `BindingElement` (transition bound to input tokens), `Occurrence` (fired binding — the event-source event).        |
 | `multi_set.ex`              | Multiset token bag. Sigil: `~MS[{1, "a"}, {2, "b"}]`.                                                                                                             |
-| `notation/`                 | Elixir DSL: `colset/1`, `val/1`, `var/1`, `arc` macro.                                                                                                            |
+| `notation/`                 | Low-level building blocks reused by `dsl/`: `colset/1`, `val/1`, `var/1`, plus `arc`/expression helpers.                                                          |
+| `dsl/`                      | High-level declarative workflow DSL (`use ColouredFlow.DSL`). Composes `notation/` into a validated `ColouredPetriNet` at compile time. See `dsl/spec.md`.        |
 | `builder/`                  | Converts DSL input into a validated `ColouredPetriNet`.                                                                                                           |
 | `validators/`               | Static definition checks (colour sets, arc typechecks) + enactment-time invariants.                                                                               |
 | `expression/`               | CPN ML compiler/evaluator; builds guards and bindings for arc inscriptions.                                                                                       |
@@ -82,10 +83,10 @@ tree.
   picked via
   `Application.get_env(:coloured_flow, ColouredFlow.Runner.Storage)[:storage]`.
 
-  | Implementation     | Use                        | Location                                                    |
-  | ------------------ | -------------------------- | ----------------------------------------------------------- |
-  | `Storage.Default`  | production — Ecto/Postgres | `storage/schemas/`; migrations `storage/migrations/{V0,V1}` |
-  | `Storage.InMemory` | tests                      | `storage/in_memory.ex`                                      |
+  | Implementation     | Use                        | Location                                                     |
+  | ------------------ | -------------------------- | ------------------------------------------------------------ |
+  | `Storage.Default`  | production — Ecto/Postgres | `storage/schemas/`; migrations `storage/migrations/{V0..V3}` |
+  | `Storage.InMemory` | tests                      | `storage/in_memory.ex`                                       |
 
 - **Worklist** (`runner/worklist/`). `WorkitemStream.live_query` + `list_live`
   stream live workitems via cursor (see `TrafficLight` example's
@@ -97,5 +98,12 @@ tree.
 
 - Prefer `typed_structor` over plain `defstruct` + `@type t` for new data types
   — used pervasively.
-- DSL macros `colset`, `val`, `var`, `return` are registered as
-  `locals_without_parens` — don't add parens when the formatter complains.
+- DSL macros are registered in `.formatter.exs` `locals_without_parens` — don't
+  add parens when the formatter complains. Current set: `colset/1`, `var/1`,
+  `val/1`, `return/1` (notation); `name/1`, `version/1`, `place/2`,
+  `initial_marking/2`, `function/{1,2}`, `transition/2`, `guard/1`, `action/1`,
+  `input/{2,3}`, `output/{2,3}`, `termination/1`, `on_markings/1` (high-level
+  DSL).
+- Modules using `ColouredFlow.DSL` expose `cpnet/0` (the materialised
+  `%ColouredPetriNet{}`) and `__cpn__/1` reflection (`:name`, `:version`,
+  `:initial_markings`), modeled after `Ecto.Schema.__schema__/1`.
