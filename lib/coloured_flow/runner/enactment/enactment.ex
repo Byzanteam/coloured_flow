@@ -119,23 +119,21 @@ defmodule ColouredFlow.Runner.Enactment do
 
     state = struct(__MODULE__, options)
 
-    if Storage.crash_threshold_exceeded?(state.enactment_id) do
-      exception = Exceptions.RestartLoop.exception(enactment_id: state.enactment_id)
-
-      :ok = Storage.exception_occurs(state.enactment_id, :restart_loop, exception)
-
-      emit_event(:exception, state, %{
-        exception_reason: :restart_loop,
-        exception: exception
-      })
-
-      :ignore
-    else
-      {:ok, state, {:continue, :populate_state}}
-    end
+    {:ok, state, {:continue, :ensure_runnable}}
   end
 
   @impl GenServer
+  def handle_continue(:ensure_runnable, %__MODULE__{} = state) do
+    case Storage.ensure_runnable(state.enactment_id) do
+      :ok ->
+        {:noreply, state, {:continue, :populate_state}}
+
+      {:error, reason} ->
+        emit_event(:exception, state, %{exception_reason: reason})
+        {:stop, {:shutdown, reason}, state}
+    end
+  end
+
   def handle_continue(:populate_state, %__MODULE__{} = state) do
     snapshot = load_or_recover_snapshot(state)
 
@@ -213,13 +211,7 @@ defmodule ColouredFlow.Runner.Enactment do
       :error ->
         initial_snapshot(state)
 
-      {:error, {:snapshot_corrupt, cause}} ->
-        exception =
-          Exceptions.SnapshotCorrupt.exception(
-            enactment_id: state.enactment_id,
-            cause: cause
-          )
-
+      {:error, %Exceptions.SnapshotCorrupt{} = exception} ->
         :ok = Storage.exception_occurs(state.enactment_id, :snapshot_corrupt, exception)
 
         emit_event(:exception, state, %{
@@ -306,12 +298,12 @@ defmodule ColouredFlow.Runner.Enactment do
         :ok =
           Storage.exception_occurs(
             state.enactment_id,
-            :termination_criteria_evaluation,
+            :invalid_termination_criteria,
             exception
           )
 
         emit_event(:exception, state, %{
-          exception_reason: :termination_criteria_evaluation,
+          exception_reason: :invalid_termination_criteria,
           exception: exception
         })
 
@@ -616,8 +608,8 @@ defmodule ColouredFlow.Runner.Enactment do
   end
 
   def terminate(reason, state) do
-    exception = Exceptions.AbnormalExit.exception(reason: reason)
-    :ok = Storage.exception_occurs(state.enactment_id, :crash, exception)
+    exception = Exceptions.AbnormalExit.from_exit_reason(state.enactment_id, reason)
+    :ok = Storage.exception_occurs(state.enactment_id, :abnormal_exit, exception)
     emit_event(:stop, state, %{reason: reason})
   end
 

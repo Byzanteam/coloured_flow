@@ -8,6 +8,8 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
   alias ColouredFlow.Runner.Exceptions
   alias ColouredFlow.Runner.Storage
 
+  import Ecto.Query, only: [from: 2]
+
   describe "snapshot_corrupt self-heal" do
     setup :setup_flow
     setup :setup_enactment
@@ -15,7 +17,7 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
     @describetag cpnet: :simple_sequence
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
-    test "writes a non-fatal :snapshot_corrupt log and replays from initial markings",
+    test "writes an :exception log and replays from initial markings",
          %{enactment: enactment} do
       insert_corrupt_snapshot!(enactment.id, version: 1)
 
@@ -26,7 +28,7 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
       logs = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
 
       assert Enum.any?(logs, fn log ->
-               log.state === :running and
+               log.kind === :exception and
                  match?(%{reason: :snapshot_corrupt}, log.exception)
              end)
 
@@ -59,31 +61,34 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
     @describetag cpnet: :simple_sequence
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
-    test "init aborts via :ignore once crash threshold is exceeded",
+    test "init shuts down once crash threshold is exceeded and flips state to :exception",
          %{enactment: enactment} do
       for _i <- 1..3 do
         :ok =
           Storage.exception_occurs(
             enactment.id,
-            :crash,
-            Exceptions.AbnormalExit.exception(reason: :boom)
+            :abnormal_exit,
+            Exceptions.AbnormalExit.from_exit_reason(enactment.id, :boom)
           )
       end
 
-      # `start_supervised` records `:ignore` as `{:ok, :undefined}`.
-      assert {:ok, :undefined} =
-               start_supervised(
-                 {EnactmentServer, [enactment_id: enactment.id]},
-                 id: enactment.id
-               )
+      ref =
+        Process.monitor(
+          start_supervised!(
+            {EnactmentServer, [enactment_id: enactment.id]},
+            id: enactment.id
+          )
+        )
+
+      receive do
+        {:DOWN, ^ref, :process, _pid, {:shutdown, :crash_threshold_exceeded}} -> :ok
+        {:DOWN, ^ref, :process, _pid, reason} -> flunk("unexpected exit: #{inspect(reason)}")
+      after
+        500 -> flunk("enactment server did not stop")
+      end
 
       schema = Repo.get(Schemas.Enactment, enactment.id)
       assert schema.state === :exception
-
-      [%{exception: %{reason: :restart_loop}}] =
-        Schemas.EnactmentLog
-        |> Repo.all(enactment_id: enactment.id)
-        |> Enum.filter(&(&1.state === :exception))
     end
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
@@ -91,8 +96,8 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
       :ok =
         Storage.exception_occurs(
           enactment.id,
-          :crash,
-          Exceptions.AbnormalExit.exception(reason: :boom)
+          :abnormal_exit,
+          Exceptions.AbnormalExit.from_exit_reason(enactment.id, :boom)
         )
 
       [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
@@ -100,16 +105,60 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
       assert is_pid(enactment_server)
       :ok = wait_enactment_requests_handled!(enactment_server)
     end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "retry_enactment resets the streak so init succeeds",
+         %{enactment: enactment} do
+      for _i <- 1..3 do
+        :ok =
+          Storage.exception_occurs(
+            enactment.id,
+            :abnormal_exit,
+            Exceptions.AbnormalExit.from_exit_reason(enactment.id, :boom)
+          )
+      end
+
+      assert {:error, :crash_threshold_exceeded} =
+               Storage.ensure_runnable(enactment.id)
+
+      :ok = Storage.retry_enactment(enactment.id, [])
+
+      assert :ok === Storage.ensure_runnable(enactment.id)
+
+      [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
+      :ok = wait_enactment_requests_handled!(enactment_server)
+    end
+
+    @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
+    test "init shuts down when state is already :exception", %{enactment: enactment} do
+      query = from(e in Schemas.Enactment, where: e.id == ^enactment.id)
+      Repo.update_all(query, set: [state: :exception])
+
+      ref =
+        Process.monitor(
+          start_supervised!(
+            {EnactmentServer, [enactment_id: enactment.id]},
+            id: enactment.id
+          )
+        )
+
+      receive do
+        {:DOWN, ^ref, :process, _pid, {:shutdown, :already_in_exception}} -> :ok
+        {:DOWN, ^ref, :process, _pid, reason} -> flunk("unexpected exit: #{inspect(reason)}")
+      after
+        500 -> flunk("enactment server did not stop")
+      end
+    end
   end
 
-  describe "abnormal terminate logs :crash" do
+  describe "abnormal terminate logs :abnormal_exit" do
     setup :setup_flow
     setup :setup_enactment
 
     @describetag cpnet: :simple_sequence
 
     @tag initial_markings: [%Marking{place: "input", tokens: ~MS[1]}]
-    test "non-shutdown stop triggers a :crash log row", %{enactment: enactment} do
+    test "non-shutdown stop triggers an :exception log row", %{enactment: enactment} do
       [enactment_server: enactment_server] = start_enactment(%{enactment: enactment})
       :ok = wait_enactment_requests_handled!(enactment_server)
 
@@ -122,10 +171,10 @@ defmodule ColouredFlow.Runner.Enactment.ErrorHandlingTest do
         500 -> ExUnit.Assertions.flunk("enactment server did not stop")
       end
 
-      [crash_log] = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
+      [log] = Repo.all(Schemas.EnactmentLog, enactment_id: enactment.id)
 
-      assert crash_log.state === :running
-      assert crash_log.exception.reason === :crash
+      assert log.kind === :exception
+      assert log.exception.reason === :abnormal_exit
     end
   end
 

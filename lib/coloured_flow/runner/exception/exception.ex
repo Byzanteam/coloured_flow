@@ -2,45 +2,25 @@ defmodule ColouredFlow.Runner.Exception do
   @moduledoc """
   The enactment may record exceptional events.
 
-  Each event becomes a row in `enactment_logs`. The `reason` discriminates the
-  cause; the `state` column on the same row indicates whether the event is fatal
-  (state=`:exception`) or non-fatal (state=`:running`, used for recovery and crash
-  records the runner consumes during boot).
+  Each event becomes a row in `enactment_logs` with `kind = :exception`, written
+  through `ColouredFlow.Runner.Storage.exception_occurs/3`. Writing an exception
+  log row does **not** flip `enactments.state`; the state column is updated only
+  by `ensure_runnable/1` (when the circuit breaker trips), `retry_enactment/2`,
+  and `terminate_enactment/4`.
 
   ## Reasons
 
-  | reason                             | row state    | description                                                                            |
-  | ---------------------------------- | ------------ | -------------------------------------------------------------------------------------- |
-  | `:termination_criteria_evaluation` | `:exception` | The termination-criteria expression failed to compile or returned a non-boolean value. |
-  | `:restart_loop`                    | `:exception` | 3 consecutive `:crash` events. `init/1` aborts via `:ignore`.                          |
-  | `:snapshot_corrupt`                | `:running`   | The persisted snapshot could not be decoded. Self-heal: replay from initial markings.  |
-  | `:crash`                           | `:running`   | An abnormal `terminate/2` exit. Counted toward the consecutive-crash circuit breaker.  |
+  | reason                          | description                                                                               |
+  | ------------------------------- | ----------------------------------------------------------------------------------------- |
+  | `:invalid_termination_criteria` | The termination-criteria expression failed to compile or returned a non-boolean value.    |
+  | `:snapshot_corrupt`             | The persisted snapshot could not be decoded. Self-heal: replay from initial markings.     |
+  | `:abnormal_exit`                | An abnormal `terminate/2` exit. Counted toward the consecutive-exception circuit breaker. |
   """
 
-  fatal_reasons = ~w[
-    termination_criteria_evaluation
-    restart_loop
-  ]a
+  reasons = ~w[invalid_termination_criteria snapshot_corrupt abnormal_exit]a
 
-  non_fatal_reasons = ~w[
-    snapshot_corrupt
-    crash
-  ]a
-
-  reasons = fatal_reasons ++ non_fatal_reasons
-
-  @type fatal_reason() :: unquote(ColouredFlow.Types.make_sum_type(fatal_reasons))
-  @type non_fatal_reason() :: unquote(ColouredFlow.Types.make_sum_type(non_fatal_reasons))
   @type reason() :: unquote(ColouredFlow.Types.make_sum_type(reasons))
 
   @spec __reasons__() :: [reason()]
   def __reasons__, do: unquote(reasons)
-
-  @doc "Reasons that flip `enactments.state` to `:exception`."
-  @spec __fatal_reasons__() :: [fatal_reason()]
-  def __fatal_reasons__, do: unquote(fatal_reasons)
-
-  @doc "Reasons that record a log row without changing `enactments.state`."
-  @spec __non_fatal_reasons__() :: [non_fatal_reason()]
-  def __non_fatal_reasons__, do: unquote(non_fatal_reasons)
 end

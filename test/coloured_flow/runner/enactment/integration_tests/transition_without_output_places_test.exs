@@ -78,7 +78,7 @@ defmodule ColouredFlow.Runner.Enactment.IntegrationTests.TransitionWithoutOutput
       wait_enactment_to_stop!(enactment_server)
 
       assert %Schemas.EnactmentLog{
-               state: :terminated,
+               kind: :terminated,
                termination: %Schemas.EnactmentLog.Termination{
                  type: :implicit,
                  message: nil
