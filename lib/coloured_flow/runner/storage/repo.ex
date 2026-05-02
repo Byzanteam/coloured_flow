@@ -2,12 +2,16 @@ defmodule ColouredFlow.Runner.Storage.Repo do
   @moduledoc false
 
   @repo_functions [
+    aggregate: 2,
     all: 1,
+    get: 2,
     get!: 2,
-    get_by!: 2,
     get_by: 2,
+    get_by!: 2,
+    insert: 1,
     insert!: 2,
     insert_all: 3,
+    one: 1,
     one!: 1,
     transaction: 1,
     update!: 1,

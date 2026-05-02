@@ -1,6 +1,11 @@
 defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
   @moduledoc """
   The schema for the enactment log in the coloured_flow runner.
+
+  Each row is one lifecycle event. The `state` column captures whether the
+  enactment is `:running`, `:terminated`, or `:exception` after the event. The
+  `:running` state is reused for non-fatal records like snapshot self-heal and
+  crash markers consumed by the consecutive-crash circuit breaker.
   """
 
   use ColouredFlow.Runner.Storage.Schemas.Schema
@@ -67,7 +72,24 @@ defmodule ColouredFlow.Runner.Storage.Schemas.EnactmentLog do
   def build_exception(enactment, reason, exception) do
     %__MODULE__{enactment_id: enactment.id}
     |> Ecto.Changeset.change(state: :exception)
-    |> Ecto.Changeset.put_embed(:exception, %__MODULE__.Exception{
+    |> put_exception_embed(reason, exception)
+  end
+
+  @doc """
+  Build a non-fatal log row that records an exceptional event without changing the
+  enactment state. Used for `:snapshot_corrupt` self-heals and `:crash` markers
+  consumed by the consecutive-crash circuit breaker.
+  """
+  @spec build_recovery(Enactment.t(), ColouredFlow.Runner.Exception.reason(), Exception.t()) ::
+          Ecto.Changeset.t(t())
+  def build_recovery(enactment, reason, exception) do
+    %__MODULE__{enactment_id: enactment.id}
+    |> Ecto.Changeset.change(state: :running)
+    |> put_exception_embed(reason, exception)
+  end
+
+  defp put_exception_embed(changeset, reason, exception) do
+    Ecto.Changeset.put_embed(changeset, :exception, %__MODULE__.Exception{
       reason: reason,
       type: inspect(exception.__struct__),
       message: Exception.message(exception),
