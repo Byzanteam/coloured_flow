@@ -8,21 +8,21 @@ defmodule ColouredFlow.DSL.FunctionTest do
       defmodule SingleLineFun do
         use ColouredFlow.DSL
 
-        name("SingleLineFun")
+        name "SingleLineFun"
 
         colset int() :: integer()
         colset bool() :: boolean()
 
-        function(is_even(x) :: bool(), do: Integer.mod(x, 2) === 0)
+        function is_even(x) :: bool(), do: Integer.mod(x, 2) === 0
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -40,7 +40,7 @@ defmodule ColouredFlow.DSL.FunctionTest do
       defmodule MultiLineFun do
         use ColouredFlow.DSL
 
-        name("MultiLineFun")
+        name "MultiLineFun"
 
         colset int() :: integer()
 
@@ -50,12 +50,12 @@ defmodule ColouredFlow.DSL.FunctionTest do
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -73,7 +73,7 @@ defmodule ColouredFlow.DSL.FunctionTest do
       defmodule NestedTupleFun do
         use ColouredFlow.DSL
 
-        name("NestedTupleFun")
+        name "NestedTupleFun"
 
         colset int() :: integer()
         colset bool() :: boolean()
@@ -86,12 +86,12 @@ defmodule ColouredFlow.DSL.FunctionTest do
         var x :: int()
         var b :: bool()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -108,7 +108,7 @@ defmodule ColouredFlow.DSL.FunctionTest do
         defmodule UnusedArg do
           use ColouredFlow.DSL
 
-          name("UnusedArg")
+          name "UnusedArg"
 
           colset int() :: integer()
 
@@ -118,12 +118,12 @@ defmodule ColouredFlow.DSL.FunctionTest do
 
           var x :: int()
 
-          place(:input, :int)
-          place(:output, :int)
+          place :input, :int
+          place :output, :int
 
           transition :t do
-            input(:input, bind({1, x}))
-            output(:output, {1, x})
+            input :input, bind({1, x})
+            output :output, {1, x}
           end
         end
       end

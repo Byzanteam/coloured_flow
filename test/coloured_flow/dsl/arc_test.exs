@@ -8,18 +8,18 @@ defmodule ColouredFlow.DSL.ArcTest do
       defmodule InputBare do
         use ColouredFlow.DSL
 
-        name("InputBare")
+        name "InputBare"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -39,18 +39,18 @@ defmodule ColouredFlow.DSL.ArcTest do
       defmodule InputLabel do
         use ColouredFlow.DSL
 
-        name("InputLabel")
+        name "InputLabel"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}), label: "in")
-          output(:output, {1, x}, label: "out")
+          input :input, bind({1, x}), label: "in"
+          output :output, {1, x}, label: "out"
         end
       end
 
@@ -67,14 +67,14 @@ defmodule ColouredFlow.DSL.ArcTest do
       defmodule InputBlock do
         use ColouredFlow.DSL
 
-        name("InputBlock")
+        name "InputBlock"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
           input :input, label: "in" do

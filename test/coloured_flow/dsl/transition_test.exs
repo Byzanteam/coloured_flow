@@ -9,20 +9,20 @@ defmodule ColouredFlow.DSL.TransitionTest do
       defmodule FullTransition do
         use ColouredFlow.DSL
 
-        name("FullTransition")
+        name "FullTransition"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :pass_through do
-          guard(x > 0)
+          guard x > 0
 
-          input(:input, bind({1, x}), label: "in")
-          output(:output, {1, x * 2}, label: "out")
+          input :input, bind({1, x}), label: "in"
+          output :output, {1, x * 2}, label: "out"
 
           action do
             :ok
@@ -51,11 +51,11 @@ defmodule ColouredFlow.DSL.TransitionTest do
         defmodule GuardOutside do
           use ColouredFlow.DSL
 
-          name("GuardOutside")
+          name "GuardOutside"
 
           colset int() :: integer()
 
-          guard(true)
+          guard true
         end
       end
     end
@@ -110,14 +110,14 @@ defmodule ColouredFlow.DSL.TransitionTest do
       defmodule ColouredFlow.DSL.TransitionTest.DuplicateGuard do
         use ColouredFlow.DSL
 
-        name("DuplicateGuard")
+        name "DuplicateGuard"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
           guard x > 0
@@ -143,14 +143,14 @@ defmodule ColouredFlow.DSL.TransitionTest do
       defmodule ColouredFlow.DSL.TransitionTest.DuplicateAction do
         use ColouredFlow.DSL
 
-        name("DuplicateAction")
+        name "DuplicateAction"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
           input :input, bind({1, x})

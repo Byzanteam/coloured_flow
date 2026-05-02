@@ -9,18 +9,18 @@ defmodule ColouredFlow.DSL.TerminationTest do
       defmodule TerminationFlow do
         use ColouredFlow.DSL
 
-        name("TerminationFlow")
+        name "TerminationFlow"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
 
         termination do
@@ -42,7 +42,7 @@ defmodule ColouredFlow.DSL.TerminationTest do
         defmodule MarkingsOutside do
           use ColouredFlow.DSL
 
-          name("MarkingsOutside")
+          name "MarkingsOutside"
 
           colset int() :: integer()
 
@@ -58,18 +58,18 @@ defmodule ColouredFlow.DSL.TerminationTest do
       defmodule ColouredFlow.DSL.TerminationTest.DuplicateOnMarkings do
         use ColouredFlow.DSL
 
-        name("DuplicateOnMarkings")
+        name "DuplicateOnMarkings"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
 
         termination do

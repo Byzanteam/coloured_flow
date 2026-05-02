@@ -15,12 +15,12 @@ defmodule ColouredFlow.DSL.CpnetExamplesTest do
 
     var x :: int()
 
-    place(:input, :int)
-    place(:output, :int)
+    place :input, :int
+    place :output, :int
 
     transition :pass_through do
-      input(:input, bind({1, x}), label: "in")
-      output(:output, {1, x}, label: "out")
+      input :input, bind({1, x}), label: "in"
+      output :output, {1, x}, label: "out"
     end
   end
 
@@ -31,24 +31,24 @@ defmodule ColouredFlow.DSL.CpnetExamplesTest do
 
     var x :: int()
 
-    place(:input, :int)
-    place(:place, :int)
-    place(:output_1, :int)
-    place(:output_2, :int)
+    place :input, :int
+    place :place, :int
+    place :output_1, :int
+    place :output_2, :int
 
     transition :pass_through do
-      input(:input, bind({1, x}))
-      output(:place, {1, x})
+      input :input, bind({1, x})
+      output :place, {1, x}
     end
 
     transition :deferred_choice_1 do
-      input(:place, bind({1, x}))
-      output(:output_1, {1, x})
+      input :place, bind({1, x})
+      output :output_1, {1, x}
     end
 
     transition :deferred_choice_2 do
-      input(:place, bind({1, x}))
-      output(:output_2, {1, x})
+      input :place, bind({1, x})
+      output :output_2, {1, x}
     end
   end
 
@@ -59,26 +59,26 @@ defmodule ColouredFlow.DSL.CpnetExamplesTest do
 
     var x :: int()
 
-    place(:input, :int)
-    place(:place_1, :int)
-    place(:place_2, :int)
-    place(:output_1, :int)
-    place(:output_2, :int)
+    place :input, :int
+    place :place_1, :int
+    place :place_2, :int
+    place :output_1, :int
+    place :output_2, :int
 
     transition :parallel_split do
-      input(:input, bind({1, x}))
-      output(:place_1, {1, x})
-      output(:place_2, {1, x})
+      input :input, bind({1, x})
+      output :place_1, {1, x}
+      output :place_2, {1, x}
     end
 
     transition :pass_through_1 do
-      input(:place_1, bind({1, x}))
-      output(:output_1, {1, x})
+      input :place_1, bind({1, x})
+      output :output_1, {1, x}
     end
 
     transition :pass_through_2 do
-      input(:place_2, bind({1, x}))
-      output(:output_2, {1, x})
+      input :place_2, bind({1, x})
+      output :output_2, {1, x}
     end
   end
 
@@ -89,17 +89,17 @@ defmodule ColouredFlow.DSL.CpnetExamplesTest do
 
     var x :: int()
 
-    place(:input1, :int)
-    place(:input2, :int)
-    place(:input3, :int)
-    place(:output, :int)
+    place :input1, :int
+    place :input2, :int
+    place :input3, :int
+    place :output, :int
 
     transition :and_join do
-      input(:input1, bind({1, x}), label: "input1")
-      input(:input2, bind({1, x}), label: "input2")
-      input(:input3, bind({1, x}), label: "input3")
+      input :input1, bind({1, x}), label: "input1"
+      input :input2, bind({1, x}), label: "input2"
+      input :input3, bind({1, x}), label: "input3"
 
-      output(:output, {1, x}, label: "output")
+      output :output, {1, x}, label: "output"
     end
   end
 
@@ -110,23 +110,23 @@ defmodule ColouredFlow.DSL.CpnetExamplesTest do
 
     var x :: int()
 
-    place(:input, :int)
-    place(:merge, :int)
-    place(:output, :int)
+    place :input, :int
+    place :merge, :int
+    place :output, :int
 
     transition :branch_1 do
-      input(:input, bind({1, x}))
-      output(:merge, {1, x})
+      input :input, bind({1, x})
+      output :merge, {1, x}
     end
 
     transition :branch_2 do
-      input(:input, bind({1, x}))
-      output(:merge, {1, x})
+      input :input, bind({1, x})
+      output :merge, {1, x}
     end
 
     transition :thread_merge do
-      input(:merge, bind({2, 1}))
-      output(:output, {1, 1})
+      input :merge, bind({2, 1})
+      output :output, {1, 1}
     end
   end
 
@@ -144,51 +144,51 @@ defmodule ColouredFlow.DSL.CpnetExamplesTest do
     var data :: data()
     var success :: bool()
 
-    place(:packets_to_send, :no_data)
-    place(:a, :no_data)
-    place(:b, :no_data)
-    place(:data_recevied, :data)
-    place(:next_rec, :no)
-    place(:c, :no)
-    place(:d, :no)
-    place(:next_send, :no)
+    place :packets_to_send, :no_data
+    place :a, :no_data
+    place :b, :no_data
+    place :data_recevied, :data
+    place :next_rec, :no
+    place :c, :no
+    place :d, :no
+    place :next_send, :no
 
     transition :send_packet do
-      input(:packets_to_send, bind({1, {n, d}}))
-      input(:next_send, bind({1, {1, n}}))
+      input :packets_to_send, bind({1, {n, d}})
+      input :next_send, bind({1, {1, n}})
 
-      output(:packets_to_send, {1, {n, d}})
-      output(:a, {1, {n, d}})
-      output(:next_send, {1, {1, n}})
+      output :packets_to_send, {1, {n, d}}
+      output :a, {1, {n, d}}
+      output :next_send, {1, {1, n}}
     end
 
     transition :transmit_packet do
-      input(:a, bind({1, {n, d}}))
+      input :a, bind({1, {n, d}})
 
-      output(:b, if(success, do: {1, {n, d}}, else: {0, {n, d}}))
+      output :b, if(success, do: {1, {n, d}}, else: {0, {n, d}})
     end
 
     transition :receive_packet do
-      input(:b, bind({1, {n, d}}))
-      input(:data_recevied, bind({1, data}))
-      input(:next_rec, bind({1, k}))
+      input :b, bind({1, {n, d}})
+      input :data_recevied, bind({1, data})
+      input :next_rec, bind({1, k})
 
-      output(:data_recevied, if(n == k, do: {1, data <> d}, else: {1, data}))
-      output(:c, if(n == k, do: {1, k + 1}, else: {1, k}))
-      output(:next_rec, if(n == k, do: {1, k + 1}, else: {1, k}))
+      output :data_recevied, if(n == k, do: {1, data <> d}, else: {1, data})
+      output :c, if(n == k, do: {1, k + 1}, else: {1, k})
+      output :next_rec, if(n == k, do: {1, k + 1}, else: {1, k})
     end
 
     transition :transmit_ack do
-      input(:c, bind({1, n}))
+      input :c, bind({1, n})
 
-      output(:d, if(success, do: {1, n}, else: {0, n}))
+      output :d, if(success, do: {1, n}, else: {0, n})
     end
 
     transition :receive_ack do
-      input(:next_send, bind({1, k}))
-      input(:d, bind({1, n}))
+      input :next_send, bind({1, k})
+      input :d, bind({1, n})
 
-      output(:next_send, {1, n})
+      output :next_send, {1, n}
     end
   end
 

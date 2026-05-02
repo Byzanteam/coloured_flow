@@ -11,19 +11,19 @@ defmodule ColouredFlow.DSLTest do
       defmodule SimpleSequenceDSL do
         use ColouredFlow.DSL
 
-        name("Simple Sequence")
-        version("1.0.0")
+        name "Simple Sequence"
+        version "1.0.0"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :pass_through do
-          input(:input, bind({1, x}), label: "in")
-          output(:output, {1, x}, label: "out")
+          input :input, bind({1, x}), label: "in"
+          output :output, {1, x}, label: "out"
         end
       end
 
@@ -43,18 +43,18 @@ defmodule ColouredFlow.DSLTest do
       defmodule NoInitialMarkings do
         use ColouredFlow.DSL
 
-        name("NoInitialMarkings")
+        name "NoInitialMarkings"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -65,20 +65,20 @@ defmodule ColouredFlow.DSLTest do
       defmodule WithInitialMarkings do
         use ColouredFlow.DSL
 
-        name("WithInitialMarkings")
+        name "WithInitialMarkings"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
-        initial_marking(:input, ~MS[1 2 3])
+        initial_marking :input, ~MS[1 2 3]
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -93,21 +93,21 @@ defmodule ColouredFlow.DSLTest do
       defmodule MultipleInitialMarkings do
         use ColouredFlow.DSL
 
-        name("MultipleInitialMarkings")
+        name "MultipleInitialMarkings"
 
         colset int() :: integer()
 
         var x :: int()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
-        initial_marking(:input, ~MS[1 2])
-        initial_marking(:output, ~MS[3])
+        initial_marking :input, ~MS[1 2]
+        initial_marking :output, ~MS[3]
 
         transition :t do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 

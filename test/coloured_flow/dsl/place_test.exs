@@ -8,18 +8,18 @@ defmodule ColouredFlow.DSL.PlaceTest do
       defmodule TwoPlaces do
         use ColouredFlow.DSL
 
-        name("TwoPlaces")
+        name "TwoPlaces"
 
         colset int() :: integer()
 
-        place(:input, :int)
-        place(:output, :int)
+        place :input, :int
+        place :output, :int
 
         var x :: int()
 
         transition :pass do
-          input(:input, bind({1, x}))
-          output(:output, {1, x})
+          input :input, bind({1, x})
+          output :output, {1, x}
         end
       end
 
@@ -38,18 +38,18 @@ defmodule ColouredFlow.DSL.PlaceTest do
         defmodule DuplicatePlaces do
           use ColouredFlow.DSL
 
-          name("DuplicatePlaces")
+          name "DuplicatePlaces"
 
           colset int() :: integer()
 
-          place(:input, :int)
-          place(:input, :int)
+          place :input, :int
+          place :input, :int
 
           var x :: int()
 
           transition :t do
-            input(:input, bind({1, x}))
-            output(:input, {1, x})
+            input :input, bind({1, x})
+            output :input, {1, x}
           end
         end
       end
@@ -60,16 +60,16 @@ defmodule ColouredFlow.DSL.PlaceTest do
         defmodule UnknownColset do
           use ColouredFlow.DSL
 
-          name("UnknownColset")
+          name "UnknownColset"
 
           colset int() :: integer()
 
-          place(:input, :ghost)
+          place :input, :ghost
 
           var x :: int()
 
           transition :t do
-            input(:input, bind({1, x}))
+            input :input, bind({1, x})
           end
         end
       end
