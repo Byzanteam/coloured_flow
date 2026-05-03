@@ -63,7 +63,7 @@ defmodule ColouredFlow.Runner.Enactment.LifecycleHooksDispatchTest do
     %{cpnet: cpnet}
   end
 
-  describe "lifecycle dispatch (bare module hooks)" do
+  describe "lifecycle dispatch (hooks options carry test_pid only)" do
     setup :setup_flow
     setup :setup_enactment
 

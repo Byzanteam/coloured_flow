@@ -383,20 +383,43 @@ defmodule ColouredFlow.DSL.Builder do
   #   * `event`   — `LifecycleHooks.workitem_completed_event()` map carrying
   #     `:enactment_id`, `:markings`, `:workitem`, `:occurrence`, `:binding`.
   #   * `options` — keyword list registered alongside the hook module.
-  #   * each free CPN variable (`:s`, `:x`, …) — plucked from `event.binding`.
+  #   * each CPN variable bound by the transition's incoming arcs (`:s`,
+  #     `:x`, …) — plucked from `event.binding`. Body-local pattern-match
+  #     names are NOT injected, so writing `pid = options[:pid]` (or any
+  #     local) inside `action do ... end` is safe.
   #
-  # The wrapper unpacks `event.binding` via `Keyword.fetch!/2` for each declared
-  # free var and runs the body inside a `Task.Supervisor.start_child/2` call
-  # (or unsupervised `Task.start/1` when no `:task_supervisor` was provided to
+  # The wrapper unpacks `event.binding` via `Keyword.fetch!/2` for each
+  # transition-bound var (using a `_`-prefixed alias when the body does not
+  # reference the var, to suppress unused-variable warnings) and runs the
+  # body inside a `Task.Supervisor.start_child/2` call (or unsupervised
+  # `Task.start/1` when no `:task_supervisor` was provided to
   # `use ColouredFlow.DSL`) so the runner never blocks on user side effects.
-  defp compile_transition_action({transition_name, body, cpn_vars}, task_supervisor) do
+  defp compile_transition_action(
+         {transition_name, body, incoming_vars},
+         task_supervisor
+       ) do
+    # `incoming_vars` is the ground-truth set of CPN variables this
+    # transition's incoming arcs bind — we always fetch each one from
+    # `event.binding` and immediately discard the binding via `_ = var`
+    # so a body that only references a subset of the bound vars does
+    # not trip `--warnings-as-errors`. Body-local pattern-match names
+    # (`pid = options[:pid]`, etc.) are NOT in this list and are never
+    # touched.
     var_assignments =
-      Enum.map(cpn_vars, fn var ->
+      Enum.flat_map(incoming_vars, fn var ->
         var_ast = Macro.var(var, nil)
 
-        quote do
-          unquote(var_ast) = Keyword.fetch!(var!(event).binding, unquote(var))
-        end
+        [
+          quote do
+            unquote(var_ast) = Keyword.fetch!(var!(event).binding, unquote(var))
+          end,
+          quote do
+            # Discard expression so a body that doesn't reference the var
+            # doesn't trip `--warnings-as-errors`. The underscore prefix
+            # satisfies the project's unused-variable naming convention.
+            _used = unquote(var_ast)
+          end
+        ]
       end)
 
     task_call = wrap_in_task(body, task_supervisor)

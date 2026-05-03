@@ -24,13 +24,7 @@ defmodule ColouredFlow.DSL.LifecycleHooksE2ETest do
       output :output, {1, x}
 
       action do
-        # NOTE: bind in two steps. The action macro's free-var analysis treats
-        # an inline `if pid = options[...] do ... end` as a CPN var (`:pid`)
-        # and tries to fetch it from `event.binding`, which crashes the Task
-        # silently. A separate assignment statement avoids that.
-        pid = options[:test_pid]
-
-        if pid do
+        if pid = options[:test_pid] do
           send(pid, {:action_fired, x, event.enactment_id, event.workitem.id, options})
         end
       end

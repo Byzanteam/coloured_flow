@@ -17,10 +17,6 @@ defmodule ColouredFlow.DSL.Transition do
 
   @scope_attr :__cf_transition_scope__
 
-  # Magic bindings made available inside an `action do ... end` body, in
-  # addition to any free CPN variables resolved from the transition's binding.
-  @action_magic_bindings [:event, :options]
-
   @doc """
   Declare a transition. The block accepts `guard/1`, `action/1`, `input/2,3` and
   `output/2,3`.
@@ -118,19 +114,12 @@ defmodule ColouredFlow.DSL.Transition do
     caller_line = __CALLER__.line
     expr_ast = ExpressionHelper.block_to_ast(expression)
     code = ExpressionHelper.ast_to_code(expr_ast)
-
-    raw_free = ExpressionHelper.free_vars(expr_ast)
-    cpn_vars = raw_free -- @action_magic_bindings
     escaped_ast = Macro.escape(expr_ast)
 
     quote do
       ColouredFlow.DSL.Transition.__set_action__!(
         __MODULE__,
-        %{
-          code: unquote(code),
-          body: unquote(escaped_ast),
-          cpn_vars: unquote(cpn_vars)
-        },
+        %{code: unquote(code), body: unquote(escaped_ast)},
         unquote(caller_file),
         unquote(caller_line)
       )
@@ -183,11 +172,22 @@ defmodule ColouredFlow.DSL.Transition do
     Module.put_attribute(module, :cf_transitions, transition)
 
     case scope.action do
-      %{body: body, cpn_vars: cpn_vars} ->
+      %{body: body} ->
+        # Ground truth: the variables that this transition's incoming arcs
+        # actually bind. The injection set comes from this list (not from
+        # body free-var inference), so locally-introduced names
+        # (`pid = options[:test_pid]`, match-pattern temporaries inside
+        # the body) never get `Keyword.fetch!`-ed out of `event.binding`.
+        incoming_vars =
+          arcs
+          |> Stream.filter(&match?(%Arc{orientation: :p_to_t}, &1))
+          |> Stream.flat_map(& &1.expression.vars)
+          |> Enum.uniq()
+
         Module.put_attribute(
           module,
           :cf_transition_actions,
-          {scope.name, body, cpn_vars}
+          {scope.name, body, incoming_vars}
         )
 
       _other ->
