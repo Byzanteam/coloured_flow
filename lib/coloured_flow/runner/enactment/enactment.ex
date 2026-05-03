@@ -42,8 +42,8 @@ defmodule ColouredFlow.Runner.Enactment do
 
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
+  alias ColouredFlow.Runner.Enactment.LifecycleHooks
   alias ColouredFlow.Runner.Enactment.Lifespan
-  alias ColouredFlow.Runner.Enactment.Listener
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -86,30 +86,36 @@ defmodule ColouredFlow.Runner.Enactment do
         "The idle duration after which the GenServer hibernates; " <>
           "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
 
-    field :listener, Listener.t(),
+    field :lifecycle_hooks, LifecycleHooks.t(),
       enforce: false,
       default: nil,
       doc:
-        "Optional `ColouredFlow.Runner.Enactment.Listener` (a module, " <>
-          "`{module, extras}` tuple, or `nil`) receiving lifecycle " <>
-          "callbacks for this enactment instance."
+        "Optional `ColouredFlow.Runner.Enactment.LifecycleHooks` (normalised to " <>
+          "`{module, keyword}` or `nil`) receiving lifecycle callbacks for this " <>
+          "enactment instance."
   end
 
   @type option() ::
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
-          | {:listener, Listener.t()}
+          | {:lifecycle_hooks, LifecycleHooks.t()}
 
   @type options() :: [option()]
 
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(options) do
     enactment_id = Keyword.fetch!(options, :enactment_id)
-    # Forward `$callers` from the calling process so collaborating processes
-    # (e.g., Ecto.Adapters.SQL.Sandbox-aware tests) can be tracked. See
-    # `ExUnit.Callbacks.start_supervised/2` for the recommended pattern.
-    options = Keyword.put_new(options, :"$callers", Process.get(:"$callers", []))
+
+    # Validate `:lifecycle_hooks` *before* spawning so an `ArgumentError`
+    # surfaces in the caller process instead of as a GenServer init crash.
+    options =
+      options
+      |> Keyword.update(:lifecycle_hooks, nil, &LifecycleHooks.validate!/1)
+      # Forward `$callers` from the calling process so collaborating processes
+      # (e.g., Ecto.Adapters.SQL.Sandbox-aware tests) can be tracked. See
+      # `ExUnit.Callbacks.start_supervised/2` for the recommended pattern.
+      |> Keyword.put_new(:"$callers", Process.get(:"$callers", []))
 
     GenServer.start_link(
       __MODULE__,
@@ -645,6 +651,7 @@ defmodule ColouredFlow.Runner.Enactment do
   def terminate(reason, state) do
     exception = Exceptions.AbnormalExit.from_exit_reason(state.enactment_id, reason)
     :ok = Storage.exception_occurs(state.enactment_id, :abnormal_exit, exception)
+    dispatch_lifecycle(:exception, state, %{exception_reason: :abnormal_exit})
     emit_event(:stop, state, %{reason: reason})
   end
 
@@ -723,65 +730,116 @@ defmodule ColouredFlow.Runner.Enactment do
 
   defp dispatch_post_calibration(_other, _state, _options), do: :ok
 
-  # Map the runner's internal events to the per-enactment Listener
+  # Map the runner's internal events to the per-enactment LifecycleHooks
   # callbacks. Telemetry keeps emitting in addition.
   @spec dispatch_lifecycle(atom(), state(), map()) :: :ok
-  defp dispatch_lifecycle(_event, %__MODULE__{listener: nil}, _metadata), do: :ok
+  defp dispatch_lifecycle(_event, %__MODULE__{lifecycle_hooks: nil}, _metadata), do: :ok
 
-  defp dispatch_lifecycle(:start, %__MODULE__{listener: listener} = state, _meta) do
-    Listener.safe_invoke(listener, :on_enactment_start, [build_ctx(state)])
+  defp dispatch_lifecycle(:start, %__MODULE__{lifecycle_hooks: hooks} = state, _meta) do
+    event = %{enactment_id: state.enactment_id, markings: markings_snapshot(state)}
+    LifecycleHooks.safe_invoke(hooks, :on_enactment_start, [event])
   end
 
-  defp dispatch_lifecycle(:terminate, %__MODULE__{listener: listener} = state, %{
+  defp dispatch_lifecycle(:terminate, %__MODULE__{lifecycle_hooks: hooks} = state, %{
          termination_type: type
        }) do
-    Listener.safe_invoke(listener, :on_enactment_terminate, [build_ctx(state), type])
+    event = %{
+      enactment_id: state.enactment_id,
+      markings: markings_snapshot(state),
+      reason: type
+    }
+
+    LifecycleHooks.safe_invoke(hooks, :on_enactment_terminate, [event])
   end
 
-  defp dispatch_lifecycle(:exception, %__MODULE__{listener: listener} = state, %{
+  defp dispatch_lifecycle(:exception, %__MODULE__{lifecycle_hooks: hooks} = state, %{
          exception_reason: reason
        }) do
-    Listener.safe_invoke(listener, :on_enactment_exception, [build_ctx(state), reason])
+    event = %{
+      enactment_id: state.enactment_id,
+      markings: markings_snapshot(state),
+      reason: reason
+    }
+
+    LifecycleHooks.safe_invoke(hooks, :on_enactment_exception, [event])
   end
 
-  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{listener: listener} = state, %{
+  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
          workitems: workitems
        })
        when is_list(workitems) do
-    ctx = build_ctx(state)
-    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_enabled, [ctx, &1]))
-  end
+    markings = markings_snapshot(state)
 
-  defp dispatch_lifecycle(:start_workitems, %__MODULE__{listener: listener} = state, %{
-         workitems: workitems
-       })
-       when is_list(workitems) do
-    ctx = build_ctx(state)
-    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_started, [ctx, &1]))
-  end
+    Enum.each(workitems, fn workitem ->
+      event = %{
+        enactment_id: state.enactment_id,
+        markings: markings,
+        workitem: workitem,
+        binding: workitem.binding_element.binding
+      }
 
-  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{listener: listener} = state, %{
-         workitem_occurrences: workitem_occurrences
-       })
-       when is_list(workitem_occurrences) do
-    ctx = build_ctx(state)
-
-    Enum.each(workitem_occurrences, fn {workitem, occurrence} ->
-      Listener.safe_invoke(listener, :on_workitem_completed, [ctx, workitem, occurrence])
+      LifecycleHooks.safe_invoke(hooks, :on_workitem_enabled, [event])
     end)
   end
 
-  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{listener: listener} = state, %{
+  defp dispatch_lifecycle(:start_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
          workitems: workitems
        })
        when is_list(workitems) do
-    ctx = build_ctx(state)
-    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_withdrawn, [ctx, &1]))
+    markings = markings_snapshot(state)
+
+    Enum.each(workitems, fn workitem ->
+      event = %{
+        enactment_id: state.enactment_id,
+        markings: markings,
+        workitem: workitem,
+        binding: workitem.binding_element.binding
+      }
+
+      LifecycleHooks.safe_invoke(hooks, :on_workitem_started, [event])
+    end)
+  end
+
+  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
+         workitem_occurrences: workitem_occurrences
+       })
+       when is_list(workitem_occurrences) do
+    markings = markings_snapshot(state)
+
+    Enum.each(workitem_occurrences, fn {workitem, occurrence} ->
+      event = %{
+        enactment_id: state.enactment_id,
+        markings: markings,
+        workitem: workitem,
+        occurrence: occurrence,
+        binding: workitem.binding_element.binding
+      }
+
+      LifecycleHooks.safe_invoke(hooks, :on_workitem_completed, [event])
+    end)
+  end
+
+  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    markings = markings_snapshot(state)
+
+    Enum.each(workitems, fn workitem ->
+      event = %{
+        enactment_id: state.enactment_id,
+        markings: markings,
+        workitem: workitem,
+        binding: workitem.binding_element.binding
+      }
+
+      LifecycleHooks.safe_invoke(hooks, :on_workitem_withdrawn, [event])
+    end)
   end
 
   defp dispatch_lifecycle(_event, _state, _metadata), do: :ok
 
-  defp build_ctx(%__MODULE__{} = state) do
-    Listener.build_ctx(state.enactment_id, state.markings)
+  defp markings_snapshot(%__MODULE__{markings: markings}) do
+    Map.new(markings, fn {place, %Marking{tokens: tokens}} -> {place, tokens} end)
   end
 end

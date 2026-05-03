@@ -9,7 +9,6 @@ defmodule ColouredFlow.DSL do
 
   @doc false
   defmacro __using__(opts) do
-    storage = Keyword.get(opts, :storage)
     task_supervisor = Keyword.get(opts, :task_supervisor)
 
     quote do
@@ -59,9 +58,7 @@ defmodule ColouredFlow.DSL do
         only: [
           on_enactment_start: 1,
           on_enactment_terminate: 1,
-          on_enactment_terminate: 2,
-          on_enactment_exception: 1,
-          on_enactment_exception: 2
+          on_enactment_exception: 1
         ]
 
       import ColouredFlow.MultiSet, only: [sigil_MS: 2, multi_set_coefficient: 2]
@@ -77,7 +74,6 @@ defmodule ColouredFlow.DSL do
       Module.register_attribute(__MODULE__, :cf_termination_criteria, accumulate: true)
       Module.register_attribute(__MODULE__, :cf_name, accumulate: false)
       Module.register_attribute(__MODULE__, :cf_version, accumulate: false)
-      Module.register_attribute(__MODULE__, :cf_storage, accumulate: false)
       Module.register_attribute(__MODULE__, :cf_task_supervisor, accumulate: false)
 
       # Per-declaration metadata: accumulates `{name, file, line}` triples so
@@ -96,7 +92,6 @@ defmodule ColouredFlow.DSL do
       # Enactment-level lifecycle hook bodies (`{kind, body_ast}`).
       Module.register_attribute(__MODULE__, :cf_lifecycle_hooks, accumulate: true)
 
-      @cf_storage unquote(storage)
       @cf_task_supervisor unquote(task_supervisor)
 
       @before_compile ColouredFlow.DSL.Builder

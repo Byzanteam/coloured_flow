@@ -1,83 +1,67 @@
 defmodule ColouredFlow.DSL.Lifecycle do
   @moduledoc """
-  `on_enactment_start/1`, `on_enactment_terminate/{1,2}`, and
-  `on_enactment_exception/{1,2}` macros.
+  `on_enactment_start/1`, `on_enactment_terminate/1`, and
+  `on_enactment_exception/1` macros.
 
   Each macro registers a clause that the workflow module's
-  `ColouredFlow.Runner.Enactment.Listener` callback will execute. Bodies are
+  `ColouredFlow.Runner.Enactment.LifecycleHooks` callback will execute. Bodies are
   wrapped in a task by `ColouredFlow.DSL.Builder` (using the `:task_supervisor`
   option passed to `use ColouredFlow.DSL`, falling back to an unsupervised
   `Task.start/1`) so the runner never blocks on user-defined side effects.
 
   Each hook may appear at most once per workflow. A second declaration raises a
   `CompileError` pointing to the offending macro call.
+
+  Inside every hook body, the magic bindings `event` and `options` are available.
+  `event` is the typed event map documented on each
+  `ColouredFlow.Runner.Enactment.LifecycleHooks` callback (e.g.,
+  `event.enactment_id`, `event.markings`, `event.reason`); `options` is the
+  keyword list registered alongside the hook module via the `{module, options}`
+  tuple form (or `[]` when registered as a bare module).
   """
 
   @doc """
   Runs once when the enactment GenServer finishes booting (after snapshot recovery
-  and initial calibration). The body has access to the magic variable `ctx` — a
-  map carrying `:enactment_id` and the current `:markings`.
+  and initial calibration). Inside the body, `event.enactment_id` and
+  `event.markings` are available.
 
   ## Examples
 
       on_enactment_start do
-        Logger.info("enactment started: " <> ctx.enactment_id)
+        Logger.info("enactment started: " <> event.enactment_id)
       end
   """
   defmacro on_enactment_start(do: body) do
     push_hook!(:on_enactment_start, body, __CALLER__)
   end
 
-  defmacro on_enactment_start(body) do
-    push_hook!(:on_enactment_start, normalise(body), __CALLER__)
-  end
-
   @doc """
-  Runs when the enactment terminates normally (`:implicit`, `:explicit`, or
-  `:force`). The body has access to `ctx` and the magic variable `reason`, bound
-  to the termination type.
+  Runs when the enactment terminates normally. Inside the body, `event.reason` is
+  one of `:implicit`, `:explicit`, `:force`.
 
   ## Examples
 
       on_enactment_terminate do
-        Logger.info("done: " <> inspect(reason))
-      end
-
-      on_enactment_terminate reason do
-        Telemetry.execute([:my_app, :workflow, :ended], %{}, %{reason: reason})
+        Logger.info("done: " <> inspect(event.reason))
       end
   """
   defmacro on_enactment_terminate(do: body) do
     push_hook!(:on_enactment_terminate, body, __CALLER__)
   end
 
-  defmacro on_enactment_terminate(body) do
-    push_hook!(:on_enactment_terminate, normalise(body), __CALLER__)
-  end
-
-  defmacro on_enactment_terminate(_var, do: body) do
-    push_hook!(:on_enactment_terminate, body, __CALLER__)
-  end
-
   @doc """
-  Runs when the runner records an exception against the enactment. Body has access
-  to `ctx` and the magic variable `reason`.
+  Runs when the runner records an exception against the enactment. Inside the
+  body, `event.reason` carries the failure mode (e.g., `:abnormal_exit`,
+  `:snapshot_corrupt`, `:invalid_termination_criteria`,
+  `:crash_threshold_exceeded`, `:terminated`, `:already_in_exception`).
 
   ## Examples
 
-      on_enactment_exception reason do
-        Logger.error("workflow blew up: " <> inspect(reason))
+      on_enactment_exception do
+        Logger.error("workflow blew up: " <> inspect(event.reason))
       end
   """
   defmacro on_enactment_exception(do: body) do
-    push_hook!(:on_enactment_exception, body, __CALLER__)
-  end
-
-  defmacro on_enactment_exception(body) do
-    push_hook!(:on_enactment_exception, normalise(body), __CALLER__)
-  end
-
-  defmacro on_enactment_exception(_var, do: body) do
     push_hook!(:on_enactment_exception, body, __CALLER__)
   end
 
@@ -96,9 +80,6 @@ defmodule ColouredFlow.DSL.Lifecycle do
       )
     end
   end
-
-  defp normalise([{:do, body}]), do: body
-  defp normalise(body), do: body
 
   @doc false
   @spec __push_hook__!(module(), atom(), Macro.t(), String.t(), non_neg_integer()) :: :ok

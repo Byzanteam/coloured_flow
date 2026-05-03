@@ -54,8 +54,8 @@ defmodule ColouredFlow.DSL.LifecycleTest do
             :ok
           end
 
-          on_enactment_terminate reason do
-            send(self(), {:terminated, reason})
+          on_enactment_terminate do
+            send(self(), {:terminated, event.reason})
           end
         end
         """)

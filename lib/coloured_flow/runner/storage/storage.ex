@@ -26,6 +26,18 @@ defmodule ColouredFlow.Runner.Storage do
   @type enactment_id() :: Ecto.UUID.t()
   @type flow_id() :: Ecto.UUID.t()
 
+  @typedoc """
+  Reasons returned by `ensure_runnable/1` when the enactment cannot start.
+
+  | reason                      | meaning                                                                               |
+  | --------------------------- | ------------------------------------------------------------------------------------- |
+  | `:terminated`               | The enactment has already terminated.                                                 |
+  | `:already_in_exception`     | The enactment is already in `:exception` state and must be retried first.             |
+  | `:crash_threshold_exceeded` | The most recent three log rows are all exceptions; state was flipped to `:exception`. |
+  """
+  @type ensure_runnable_error() ::
+          :terminated | :already_in_exception | :crash_threshold_exceeded
+
   @doc """
   Get the flow of an enactment.
   """
@@ -73,8 +85,7 @@ defmodule ColouredFlow.Runner.Storage do
   | `:crash_threshold_exceeded` | The most recent three log rows are all exceptions; state was flipped to `:exception`. |
   """
   @doc group: :enactment
-  @callback ensure_runnable(enactment_id()) ::
-              :ok | {:error, :terminated | :already_in_exception | :crash_threshold_exceeded}
+  @callback ensure_runnable(enactment_id()) :: :ok | {:error, ensure_runnable_error()}
 
   @doc """
   Insert an enactment.
@@ -194,8 +205,7 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  @spec ensure_runnable(enactment_id()) ::
-          :ok | {:error, :terminated | :already_in_exception | :crash_threshold_exceeded}
+  @spec ensure_runnable(enactment_id()) :: :ok | {:error, ensure_runnable_error()}
   def ensure_runnable(enactment_id) do
     __storage__().ensure_runnable(enactment_id)
   end

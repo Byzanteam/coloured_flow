@@ -23,7 +23,7 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
   end
 
   @type start_option() ::
-          {:listener, ColouredFlow.Runner.Enactment.Listener.t()}
+          {:lifecycle_hooks, ColouredFlow.Runner.Enactment.LifecycleHooks.t()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
 
@@ -31,11 +31,12 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
   Start an enactment process under the dynamic supervisor.
 
   Accepts the same lifecycle options as
-  `ColouredFlow.Runner.Enactment.start_link/1`. Notably, `:listener` registers a
-  per-instance `ColouredFlow.Runner.Enactment.Listener` — either a bare module, a
-  `{module, extras}` tuple (extras is appended as the last positional argument to
-  every callback), or `nil`. When omitted, no listener is invoked and the
-  enactment behaves exactly as before.
+  `ColouredFlow.Runner.Enactment.start_link/1`. Notably, `:lifecycle_hooks`
+  registers a per-instance `ColouredFlow.Runner.Enactment.LifecycleHooks` module.
+  The accepted shapes are `module()`, `{module(), keyword()}`, or `nil`; a bare
+  module is normalised to `{module, []}` by `Enactment.start_link/1`. When
+  omitted, no hooks are invoked and the enactment behaves exactly as before. A
+  malformed value raises `ArgumentError` from `Enactment.start_link/1`.
   """
   @spec start_enactment(enactment_id(), [start_option()]) :: DynamicSupervisor.on_start_child()
   def start_enactment(enactment_id, options \\ []) when is_list(options) do

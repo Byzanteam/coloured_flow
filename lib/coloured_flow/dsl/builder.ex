@@ -31,7 +31,6 @@ defmodule ColouredFlow.DSL.Builder do
       {:ok, validated} ->
         name = Module.get_attribute(env.module, :cf_name)
         version = Module.get_attribute(env.module, :cf_version)
-        storage = Module.get_attribute(env.module, :cf_storage)
         task_supervisor = Module.get_attribute(env.module, :cf_task_supervisor)
         transition_actions = source_order_meta(env.module, :cf_transition_actions)
         lifecycle_hooks = source_order_meta(env.module, :cf_lifecycle_hooks)
@@ -43,7 +42,7 @@ defmodule ColouredFlow.DSL.Builder do
           Enum.map(lifecycle_hooks, &compile_lifecycle_hook(&1, task_supervisor))
 
         quote do
-          @behaviour ColouredFlow.Runner.Enactment.Listener
+          @behaviour ColouredFlow.Runner.Enactment.LifecycleHooks
 
           @doc """
           The `%ColouredFlow.Definition.ColouredPetriNet{}` materialised from the DSL
@@ -69,69 +68,57 @@ defmodule ColouredFlow.DSL.Builder do
           def __cpn__(:initial_markings), do: unquote(Macro.escape(initial_markings))
 
           @doc """
-          Insert a flow row under the workflow name (or raises if no `name` was declared)
-          using the storage configured via `use ColouredFlow.DSL, storage: ...`. Not
-          idempotent — every invocation inserts a fresh row.
-          """
-          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-          @spec setup_flow!() :: term()
-          def setup_flow! do
-            ColouredFlow.DSL.Builder.__assert_storage__!(__MODULE__, unquote(storage))
-            ColouredFlow.DSL.Storage.setup_flow!(unquote(storage), unquote(name), cpnet())
-          end
+          Insert an enactment row using `ColouredFlow.Runner.Storage.insert_enactment/1`.
+          The `flow_id` and `initial_markings` keys are filled in by this helper; pass
+          extra keys via `options` to merge into the storage params (e.g., `:id`).
 
-          @doc """
-          Insert an enactment for the given flow with the workflow's declared initial
-          markings (overridable via the second argument).
+          Not idempotent — every invocation inserts a fresh row. Callers needing dedup
+          must enforce it at application level.
+
+          The caller is responsible for inserting the underlying `Schemas.Flow` row (or
+          `InMemory` flow record) — this helper does *not* set up the flow.
           """
-          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-          @spec insert_enactment!(term()) :: term()
-          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-          @spec insert_enactment!(term(), [Marking.t()]) :: term()
-          def insert_enactment!(flow, initial_markings \\ __cpn__(:initial_markings)) do
-            ColouredFlow.DSL.Builder.__assert_storage__!(__MODULE__, unquote(storage))
-            ColouredFlow.DSL.Storage.insert_enactment!(unquote(storage), flow, initial_markings)
+          @spec insert_enactment(binary(), [Marking.t()], keyword()) ::
+                  {:ok, ColouredFlow.Runner.Storage.Schemas.Enactment.t()}
+          def insert_enactment(
+                flow_id,
+                initial_markings \\ __cpn__(:initial_markings),
+                options \\ []
+              )
+              when is_binary(flow_id) and is_list(initial_markings) and is_list(options) do
+            ColouredFlow.Runner.Storage.insert_enactment(
+              Map.merge(
+                %{flow_id: flow_id, initial_markings: initial_markings},
+                Map.new(options)
+              )
+            )
           end
 
           @doc """
           Start the enactment under `ColouredFlow.Runner.Enactment.Supervisor`, binding
-          this module as the per-instance `ColouredFlow.Runner.Enactment.Listener` unless
-          the caller overrides it via `opts[:listener]`.
+          this module as the per-instance `ColouredFlow.Runner.Enactment.LifecycleHooks`
+          unless the caller overrides it via `opts[:lifecycle_hooks]`.
 
-          The override accepts the same shape as the runtime listener field — a bare
-          module, a `{module, extras}` tuple (so callbacks receive per-instance context as
-          the last argument), or `nil` to disable the listener entirely for this
-          enactment.
-
-          Accepts either an enactment id (binary) or the handle returned by
-          `insert_enactment!/{1,2}` — a `Schemas.Enactment` struct on `Storage.Default` or
-          an `:enactment` record on `Storage.InMemory`.
+          The override accepts the same shape as the runtime hooks field — a bare module,
+          a `{module, keyword}` tuple (so callbacks receive per-instance options as the
+          second argument), or `nil` to disable hooks entirely for this enactment.
           """
-          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-          @spec start_enactment(binary() | term(), keyword()) ::
-                  DynamicSupervisor.on_start_child()
-          def start_enactment(enactment_or_id, opts \\ []) do
-            enactment_id = ColouredFlow.DSL.Builder.__enactment_id__!(enactment_or_id)
-            opts = Keyword.put_new(opts, :listener, __MODULE__)
+          @spec start_enactment(binary(), keyword()) :: DynamicSupervisor.on_start_child()
+          def start_enactment(enactment_id, opts \\ [])
+              when is_binary(enactment_id) and is_list(opts) do
+            opts = Keyword.put_new(opts, :lifecycle_hooks, __MODULE__)
             ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment_id, opts)
           end
 
           # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-          @spec __action_for__(String.t(), Keyword.t(), map(), term(), term()) :: any()
+          @spec __action_for__(String.t(), map(), keyword()) :: any()
           unquote_splicing(action_clauses)
-          defp __action_for__(_transition_name, _binding, _ctx, _workitem, _extras), do: :ok
+          defp __action_for__(_transition, _event, _options), do: :ok
 
           @doc false
-          @impl ColouredFlow.Runner.Enactment.Listener
-          def on_workitem_completed(ctx, workitem, _occurrence, extras) do
-            __action_for__(
-              workitem.binding_element.transition,
-              workitem.binding_element.binding,
-              ctx,
-              workitem,
-              extras
-            )
-
+          @impl ColouredFlow.Runner.Enactment.LifecycleHooks
+          def on_workitem_completed(event, options) do
+            __action_for__(event.workitem.binding_element.transition, event, options)
             :ok
           end
 
@@ -391,13 +378,14 @@ defmodule ColouredFlow.DSL.Builder do
   defp resolve_step(:unknown, descr, _colour_sets), do: descr
 
   # Compile a single transition's `action do ... end` body into a
-  # `__action_for__/5` clause. The body has access to:
+  # `__action_for__/3` clause. The body has access to:
   #
-  #   * `ctx`      — `ColouredFlow.Runner.Enactment.Listener.ctx()`
-  #   * `workitem` — the just-completed `%Workitem{}`
-  #   * each free CPN variable (`:s`, `:x`, …) — plucked from the binding
+  #   * `event`   — `LifecycleHooks.workitem_completed_event()` map carrying
+  #     `:enactment_id`, `:markings`, `:workitem`, `:occurrence`, `:binding`.
+  #   * `options` — keyword list registered alongside the hook module.
+  #   * each free CPN variable (`:s`, `:x`, …) — plucked from `event.binding`.
   #
-  # The wrapper unpacks the binding via `Keyword.fetch!/2` for each declared
+  # The wrapper unpacks `event.binding` via `Keyword.fetch!/2` for each declared
   # free var and runs the body inside a `Task.Supervisor.start_child/2` call
   # (or unsupervised `Task.start/1` when no `:task_supervisor` was provided to
   # `use ColouredFlow.DSL`) so the runner never blocks on user side effects.
@@ -407,24 +395,16 @@ defmodule ColouredFlow.DSL.Builder do
         var_ast = Macro.var(var, nil)
 
         quote do
-          unquote(var_ast) = Keyword.fetch!(var!(binding), unquote(var))
+          unquote(var_ast) = Keyword.fetch!(var!(event).binding, unquote(var))
         end
       end)
 
     task_call = wrap_in_task(body, task_supervisor)
 
     quote do
-      defp __action_for__(
-             unquote(transition_name),
-             var!(binding),
-             var!(ctx),
-             var!(workitem),
-             var!(extras)
-           ) do
-        _binding = var!(binding)
-        _ctx = var!(ctx)
-        _workitem = var!(workitem)
-        _extras = var!(extras)
+      defp __action_for__(unquote(transition_name), var!(event), var!(options)) do
+        _event = var!(event)
+        _options = var!(options)
         unquote_splicing(var_assignments)
         unquote(task_call)
       end
@@ -435,10 +415,10 @@ defmodule ColouredFlow.DSL.Builder do
     task_call = wrap_in_task(body, task_supervisor)
 
     quote do
-      @impl ColouredFlow.Runner.Enactment.Listener
-      def on_enactment_start(var!(ctx), var!(extras)) do
-        _ctx = var!(ctx)
-        _extras = var!(extras)
+      @impl ColouredFlow.Runner.Enactment.LifecycleHooks
+      def on_enactment_start(var!(event), var!(options)) do
+        _event = var!(event)
+        _options = var!(options)
         unquote(task_call)
         :ok
       end
@@ -449,11 +429,10 @@ defmodule ColouredFlow.DSL.Builder do
     task_call = wrap_in_task(body, task_supervisor)
 
     quote do
-      @impl ColouredFlow.Runner.Enactment.Listener
-      def on_enactment_terminate(var!(ctx), var!(reason), var!(extras)) do
-        _ctx = var!(ctx)
-        _reason = var!(reason)
-        _extras = var!(extras)
+      @impl ColouredFlow.Runner.Enactment.LifecycleHooks
+      def on_enactment_terminate(var!(event), var!(options)) do
+        _event = var!(event)
+        _options = var!(options)
         unquote(task_call)
         :ok
       end
@@ -464,11 +443,10 @@ defmodule ColouredFlow.DSL.Builder do
     task_call = wrap_in_task(body, task_supervisor)
 
     quote do
-      @impl ColouredFlow.Runner.Enactment.Listener
-      def on_enactment_exception(var!(ctx), var!(reason), var!(extras)) do
-        _ctx = var!(ctx)
-        _reason = var!(reason)
-        _extras = var!(extras)
+      @impl ColouredFlow.Runner.Enactment.LifecycleHooks
+      def on_enactment_exception(var!(event), var!(options)) do
+        _event = var!(event)
+        _options = var!(options)
         unquote(task_call)
         :ok
       end
@@ -485,46 +463,5 @@ defmodule ColouredFlow.DSL.Builder do
     quote do
       Task.Supervisor.start_child(unquote(task_supervisor), fn -> unquote(body) end)
     end
-  end
-
-  @doc false
-  @spec __assert_storage__!(module(), module() | nil) :: :ok
-  def __assert_storage__!(module, nil) do
-    raise ArgumentError, """
-    #{inspect(module)} requires a `:storage` option on `use ColouredFlow.DSL`.
-
-    Example:
-
-        use ColouredFlow.DSL,
-          storage: ColouredFlow.Runner.Storage.InMemory
-
-    """
-  end
-
-  def __assert_storage__!(_module, storage) when is_atom(storage), do: :ok
-
-  def __assert_storage__!(module, other) do
-    raise ArgumentError, """
-    #{inspect(module)} expected `:storage` to be a module atom, got: #{inspect(other)}.
-    """
-  end
-
-  @doc false
-  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec __enactment_id__!(term()) :: binary()
-  def __enactment_id__!(id) when is_binary(id), do: id
-
-  def __enactment_id__!(%{id: id}) when is_binary(id), do: id
-
-  def __enactment_id__!(handle)
-      when is_tuple(handle) and tuple_size(handle) > 1 and elem(handle, 0) == :enactment do
-    elem(handle, 1)
-  end
-
-  def __enactment_id__!(other) do
-    raise ArgumentError, """
-    start_enactment/2 expects either an enactment id (binary), a `Schemas.Enactment` struct,
-    or an `:enactment` record. Got: #{inspect(other)}
-    """
   end
 end
