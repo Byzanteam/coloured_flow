@@ -290,15 +290,23 @@ than once in a transition is a compile-time error.
 
 ### `action/1`
 
-Expression evaluated when the transition fires. Optional. Use it to
-provide bindings for outgoing arcs that reference variables not bound by
-any incoming arc. Declaring `action` more than once in a transition is a
-compile-time error.
+Side-effect body evaluated by `on_workitem_completed/2` after the
+transition fires. Optional. The body compiles to a clause of the
+auto-generated `__action_for__/3` dispatcher and runs inside a `Task`
+(supervised by the configured `:task_supervisor`, or unsupervised
+`Task.start/1` when none was provided). Inside the body the magic
+bindings `event` (the workitem-completed event map) and `options` (the
+keyword list registered with the hook module via the
+`{module, options}` tuple form) are in scope, alongside every CPN
+variable bound by the transition's incoming arcs. Declaring `action`
+more than once in a transition is a compile-time error.
 
-    action :ok
     action do
-      log("fired")
-      :ok
+      Phoenix.PubSub.broadcast(
+        MyApp.PubSub,
+        options[:topic] || "fires",
+        {:fired, event.workitem.binding_element.transition, x}
+      )
     end
 
 ### `input/2` and `input/3`
