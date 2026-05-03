@@ -77,32 +77,10 @@ defmodule ColouredFlow.Runner.Storage do
               :ok | {:error, :terminated | :already_in_exception | :crash_threshold_exceeded}
 
   @doc """
-  Idempotent flow upsert keyed by `name`.
-
-  Returns the existing flow when one with the same name is already stored,
-  otherwise inserts a fresh row using the supplied definition. The shape of the
-  returned value is storage-specific (an Ecto schema for `Storage.Default`, an
-  Erlang record for `Storage.InMemory`). Callers needing only the id should
-  pattern-match accordingly.
-  """
-  @doc group: :flow
-  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @callback setup_flow!(name :: String.t(), ColouredPetriNet.t()) :: term()
-
-  @doc """
   Insert an enactment.
   """
   @doc group: :enactment
   @callback insert_enactment(params :: map()) :: {:ok, Schemas.Enactment.t()}
-
-  @doc """
-  Convenience for inserting an enactment from a flow handle (whatever
-  `setup_flow!/2` returned) plus an initial-markings list. The shape of the
-  returned value is storage-specific.
-  """
-  @doc group: :enactment
-  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @callback insert_enactment!(flow :: term(), [Marking.t()]) :: term()
 
   @doc """
   The enactment is terminated, and the corresponding enactment will be stopped.
@@ -223,23 +201,9 @@ defmodule ColouredFlow.Runner.Storage do
   end
 
   @doc false
-  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec setup_flow!(name :: String.t(), ColouredPetriNet.t()) :: term()
-  def setup_flow!(name, %ColouredPetriNet{} = definition) when is_binary(name) do
-    __storage__().setup_flow!(name, definition)
-  end
-
-  @doc false
   @spec insert_enactment(params :: map()) :: {:ok, Schemas.Enactment.t()}
   def insert_enactment(params) do
     __storage__().insert_enactment(params)
-  end
-
-  @doc false
-  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
-  @spec insert_enactment!(flow :: term(), [Marking.t()]) :: term()
-  def insert_enactment!(flow, initial_markings) when is_list(initial_markings) do
-    __storage__().insert_enactment!(flow, initial_markings)
   end
 
   @doc false

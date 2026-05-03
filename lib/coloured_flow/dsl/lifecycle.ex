@@ -4,10 +4,10 @@ defmodule ColouredFlow.DSL.Lifecycle do
   `on_enactment_exception/{1,2}` macros.
 
   Each macro registers a clause that the workflow module's
-  `ColouredFlow.Runner.ActionHandler` callback will execute. Bodies are wrapped in
-  a task by `ColouredFlow.DSL.Builder` (using the `:task_supervisor` option passed
-  to `use ColouredFlow.DSL`, falling back to an unsupervised `Task.start/1`) so
-  the runner never blocks on user-defined side effects.
+  `ColouredFlow.Runner.Enactment.Listener` callback will execute. Bodies are
+  wrapped in a task by `ColouredFlow.DSL.Builder` (using the `:task_supervisor`
+  option passed to `use ColouredFlow.DSL`, falling back to an unsupervised
+  `Task.start/1`) so the runner never blocks on user-defined side effects.
 
   Each hook may appear at most once per workflow. A second declaration raises a
   `CompileError` pointing to the offending macro call.

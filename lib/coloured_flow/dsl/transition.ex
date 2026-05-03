@@ -19,7 +19,7 @@ defmodule ColouredFlow.DSL.Transition do
 
   # Magic bindings made available inside an `action do ... end` body, in
   # addition to any free CPN variables resolved from the transition's binding.
-  @action_magic_bindings [:ctx, :workitem]
+  @action_magic_bindings [:ctx, :workitem, :extras]
 
   @doc """
   Declare a transition. The block accepts `guard/1`, `action/1`, `input/2,3` and

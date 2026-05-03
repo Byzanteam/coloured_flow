@@ -85,7 +85,7 @@ defmodule ColouredFlow.DSL.LifecycleTest do
         end
       end
 
-      assert function_exported?(SingleStart, :on_enactment_start, 1)
+      assert function_exported?(SingleStart, :on_enactment_start, 2)
     end
   end
 end

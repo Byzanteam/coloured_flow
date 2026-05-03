@@ -40,10 +40,10 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
 
-  alias ColouredFlow.Runner.ActionHandler
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
   alias ColouredFlow.Runner.Enactment.Lifespan
+  alias ColouredFlow.Runner.Enactment.Listener
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -86,11 +86,12 @@ defmodule ColouredFlow.Runner.Enactment do
         "The idle duration after which the GenServer hibernates; " <>
           "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
 
-    field :action_handler, module() | nil,
+    field :listener, Listener.t(),
       enforce: false,
       default: nil,
       doc:
-        "Optional `ColouredFlow.Runner.ActionHandler` module receiving lifecycle " <>
+        "Optional `ColouredFlow.Runner.Enactment.Listener` (a module, " <>
+          "`{module, extras}` tuple, or `nil`) receiving lifecycle " <>
           "callbacks for this enactment instance."
   end
 
@@ -98,7 +99,7 @@ defmodule ColouredFlow.Runner.Enactment do
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
-          | {:action_handler, module() | nil}
+          | {:listener, Listener.t()}
 
   @type options() :: [option()]
 
@@ -722,65 +723,65 @@ defmodule ColouredFlow.Runner.Enactment do
 
   defp dispatch_post_calibration(_other, _state, _options), do: :ok
 
-  # Map the runner's internal events to the per-enactment ActionHandler
+  # Map the runner's internal events to the per-enactment Listener
   # callbacks. Telemetry keeps emitting in addition.
   @spec dispatch_lifecycle(atom(), state(), map()) :: :ok
-  defp dispatch_lifecycle(_event, %__MODULE__{action_handler: nil}, _metadata), do: :ok
+  defp dispatch_lifecycle(_event, %__MODULE__{listener: nil}, _metadata), do: :ok
 
-  defp dispatch_lifecycle(:start, %__MODULE__{action_handler: handler} = state, _meta) do
-    ActionHandler.safe_invoke(handler, :on_enactment_start, [build_ctx(state)])
+  defp dispatch_lifecycle(:start, %__MODULE__{listener: listener} = state, _meta) do
+    Listener.safe_invoke(listener, :on_enactment_start, [build_ctx(state)])
   end
 
-  defp dispatch_lifecycle(:terminate, %__MODULE__{action_handler: handler} = state, %{
+  defp dispatch_lifecycle(:terminate, %__MODULE__{listener: listener} = state, %{
          termination_type: type
        }) do
-    ActionHandler.safe_invoke(handler, :on_enactment_terminate, [build_ctx(state), type])
+    Listener.safe_invoke(listener, :on_enactment_terminate, [build_ctx(state), type])
   end
 
-  defp dispatch_lifecycle(:exception, %__MODULE__{action_handler: handler} = state, %{
+  defp dispatch_lifecycle(:exception, %__MODULE__{listener: listener} = state, %{
          exception_reason: reason
        }) do
-    ActionHandler.safe_invoke(handler, :on_enactment_exception, [build_ctx(state), reason])
+    Listener.safe_invoke(listener, :on_enactment_exception, [build_ctx(state), reason])
   end
 
-  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{action_handler: handler} = state, %{
+  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{listener: listener} = state, %{
          workitems: workitems
        })
        when is_list(workitems) do
     ctx = build_ctx(state)
-    Enum.each(workitems, &ActionHandler.safe_invoke(handler, :on_workitem_enabled, [ctx, &1]))
+    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_enabled, [ctx, &1]))
   end
 
-  defp dispatch_lifecycle(:start_workitems, %__MODULE__{action_handler: handler} = state, %{
+  defp dispatch_lifecycle(:start_workitems, %__MODULE__{listener: listener} = state, %{
          workitems: workitems
        })
        when is_list(workitems) do
     ctx = build_ctx(state)
-    Enum.each(workitems, &ActionHandler.safe_invoke(handler, :on_workitem_started, [ctx, &1]))
+    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_started, [ctx, &1]))
   end
 
-  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{action_handler: handler} = state, %{
+  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{listener: listener} = state, %{
          workitem_occurrences: workitem_occurrences
        })
        when is_list(workitem_occurrences) do
     ctx = build_ctx(state)
 
     Enum.each(workitem_occurrences, fn {workitem, occurrence} ->
-      ActionHandler.safe_invoke(handler, :on_workitem_completed, [ctx, workitem, occurrence])
+      Listener.safe_invoke(listener, :on_workitem_completed, [ctx, workitem, occurrence])
     end)
   end
 
-  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{action_handler: handler} = state, %{
+  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{listener: listener} = state, %{
          workitems: workitems
        })
        when is_list(workitems) do
     ctx = build_ctx(state)
-    Enum.each(workitems, &ActionHandler.safe_invoke(handler, :on_workitem_withdrawn, [ctx, &1]))
+    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_withdrawn, [ctx, &1]))
   end
 
   defp dispatch_lifecycle(_event, _state, _metadata), do: :ok
 
   defp build_ctx(%__MODULE__{} = state) do
-    ActionHandler.build_ctx(state.enactment_id, state.markings)
+    Listener.build_ctx(state.enactment_id, state.markings)
   end
 end

@@ -6,7 +6,6 @@ defmodule ColouredFlow.Runner.Storage.Repo do
     get!: 2,
     get_by!: 2,
     get_by: 2,
-    insert: 2,
     insert!: 2,
     insert_all: 3,
     one!: 1,

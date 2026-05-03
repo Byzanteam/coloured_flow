@@ -23,7 +23,7 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
   end
 
   @type start_option() ::
-          {:action_handler, module() | nil}
+          {:listener, ColouredFlow.Runner.Enactment.Listener.t()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
 
@@ -31,10 +31,10 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
   Start an enactment process under the dynamic supervisor.
 
   Accepts the same lifecycle options as
-  `ColouredFlow.Runner.Enactment.start_link/1`. Notably, `:action_handler`
-  registers a per-instance `ColouredFlow.Runner.ActionHandler` that receives
-  lifecycle callbacks (workitem state changes, enactment
-  start/terminate/exception). When omitted, no handler is invoked and the
+  `ColouredFlow.Runner.Enactment.start_link/1`. Notably, `:listener` registers a
+  per-instance `ColouredFlow.Runner.Enactment.Listener` — either a bare module, a
+  `{module, extras}` tuple (extras is appended as the last positional argument to
+  every callback), or `nil`. When omitted, no listener is invoked and the
   enactment behaves exactly as before.
   """
   @spec start_enactment(enactment_id(), [start_option()]) :: DynamicSupervisor.on_start_child()

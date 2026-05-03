@@ -8,9 +8,6 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
   alias ColouredFlow.Runner.Enactment.Workitem
-  alias ColouredFlow.Runner.Storage
-
-  @behaviour Storage
 
   require Logger
 
@@ -23,7 +20,6 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
                  record_name: :flow,
                  enforce: true do
     field :id, Ecto.UUID.t()
-    field :name, String.t() | nil, default: nil, enforce: false
     field :definition, ColouredPetriNet.t()
   end
 
@@ -68,7 +64,6 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
     insert_new(:flow, flow)
   end
 
-  @impl Storage
   @spec insert_enactment!(flow(), initial_markings :: [Marking.t()]) :: enactment()
   def insert_enactment!(flow, initial_markings) when is_record(flow, :flow) do
     enactment =
@@ -116,24 +111,9 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
     {:reply, :ok, state}
   end
 
-  # Atomic lookup-or-insert keyed on `name`. Run inside the GenServer so the
-  # ETS check and write happen with no other writer in between.
-  def handle_call({:setup_flow, name, definition}, _from, state) do
-    case :ets.match_object(table(:flow), flow(name: name, _: :_)) do
-      [existing | _rest] ->
-        {:reply, existing, state}
+  alias ColouredFlow.Runner.Storage
 
-      [] ->
-        flow = flow(id: Ecto.UUID.generate(), name: name, definition: definition)
-        true = :ets.insert_new(Keyword.fetch!(state, :flow), flow)
-        {:reply, flow, state}
-    end
-  end
-
-  @impl Storage
-  def setup_flow!(name, %ColouredPetriNet{} = definition) when is_binary(name) do
-    GenServer.call(__MODULE__, {:setup_flow, name, definition})
-  end
+  @behaviour Storage
 
   @impl Storage
   def get_flow_by_enactment(enactment_id) do

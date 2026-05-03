@@ -60,16 +60,16 @@ A module that uses `ColouredFlow.DSL` exposes:
     MyWorkflow.__cpn__(:initial_markings)   :: [%ColouredFlow.Enactment.Marking{}]
 
     # Storage / runner conveniences (only useful when `:storage` is configured)
-    MyWorkflow.setup_flow!()                :: term()  # idempotent insert
+    MyWorkflow.setup_flow!()                :: term()  # inserts each call
     MyWorkflow.insert_enactment!(flow)      :: term()
     MyWorkflow.insert_enactment!(flow, [%Marking{}]) :: term()
     MyWorkflow.start_enactment(eid, opts)   :: DynamicSupervisor.on_start_child()
 
-    # ColouredFlow.Runner.ActionHandler callbacks (auto-injected, default noop)
-    MyWorkflow.on_workitem_completed(ctx, wi, occurrence) :: :ok
-    MyWorkflow.on_enactment_start(ctx)             :: :ok
-    MyWorkflow.on_enactment_terminate(ctx, reason) :: :ok
-    MyWorkflow.on_enactment_exception(ctx, reason) :: :ok
+    # ColouredFlow.Runner.Enactment.Listener callbacks (auto-injected, default noop)
+    MyWorkflow.on_workitem_completed(ctx, wi, occurrence, extras) :: :ok
+    MyWorkflow.on_enactment_start(ctx, extras)             :: :ok
+    MyWorkflow.on_enactment_terminate(ctx, reason, extras) :: :ok
+    MyWorkflow.on_enactment_exception(ctx, reason, extras) :: :ok
 
 `cpnet/0` is the **main API**: it returns the static CPN — colour sets,
 variables, places, transitions, arcs, and termination criteria — that
@@ -81,13 +81,19 @@ the corresponding piece of workflow metadata. `:initial_markings`
 returns the list of `%Marking{}` declared via `initial_marking/2`.
 
 `setup_flow!/0`, `insert_enactment!/{1,2}` and `start_enactment/{1,2}`
-are convenience wrappers over `ColouredFlow.Runner.Storage` and
-`ColouredFlow.Runner.Enactment.Supervisor`. `setup_flow!` is idempotent
-— it returns the existing flow when one was already inserted under the
-same name. `start_enactment` automatically registers the workflow module
-as the per-instance `ColouredFlow.Runner.ActionHandler`, so any `action`
-or `on_enactment_*` block compiled into the module fires when the runner
-crosses the matching lifecycle point.
+are convenience wrappers over `ColouredFlow.DSL.Storage` (a thin compile-
+time-fixed adapter) and `ColouredFlow.Runner.Enactment.Supervisor`. They
+are *not* idempotent — every call to `setup_flow!` and
+`insert_enactment!` inserts a fresh row, so application code must
+deduplicate at boot if it needs that. `start_enactment` automatically
+registers the workflow module as the per-instance
+`ColouredFlow.Runner.Enactment.Listener`, so any `action` or
+`on_enactment_*` block compiled into the module fires when the runner
+crosses the matching lifecycle point. To inject per-instance
+configuration, pass `listener: {__MODULE__, extras}` as an option — the
+`extras` value is appended to every callback invocation as the last
+positional argument and exposed inside DSL blocks as the magic binding
+`extras`.
 
 These functions only work when the host module passes `:storage` to
 `use ColouredFlow.DSL` (e.g. `storage: ColouredFlow.Runner.Storage.InMemory`).
@@ -115,7 +121,7 @@ use ColouredFlow.DSL,
 
 ## Action handler dispatch
 
-`ColouredFlow.Runner.ActionHandler` is the structured per-instance
+`ColouredFlow.Runner.Enactment.Listener` is the structured per-instance
 counterpart to `:telemetry`. The runner still emits all telemetry
 events; the handler is invoked on top of that — and is the natural
 home for *workflow-specific* side effects (PubSub broadcasts, state
@@ -136,7 +142,7 @@ should fail at definition time, not runtime.
 
 `on_enactment_start/1`, `on_enactment_terminate/1` and
 `on_enactment_exception/1` lifecycle macros (in
-`ColouredFlow.DSL.Lifecycle`) compile to the matching ActionHandler
+`ColouredFlow.DSL.Lifecycle`) compile to the matching Listener
 callbacks. Each may appear at most once per workflow; a duplicate
 declaration is a compile-time error.
 
