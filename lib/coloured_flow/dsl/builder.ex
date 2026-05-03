@@ -391,7 +391,7 @@ defmodule ColouredFlow.DSL.Builder do
   defp resolve_step(:unknown, descr, _colour_sets), do: descr
 
   # Compile a single transition's `action do ... end` body into a
-  # `__action_for__/4` clause. The body has access to:
+  # `__action_for__/5` clause. The body has access to:
   #
   #   * `ctx`      — `ColouredFlow.Runner.Enactment.Listener.ctx()`
   #   * `workitem` — the just-completed `%Workitem{}`

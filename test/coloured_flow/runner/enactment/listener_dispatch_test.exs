@@ -95,6 +95,24 @@ defmodule ColouredFlow.Runner.Enactment.ListenerDispatchTest do
     end
   end
 
+  describe "malformed listener" do
+    setup :setup_flow
+    setup :setup_enactment
+
+    @tag initial_markings: []
+    test "non-atom non-tuple value is silently ignored", %{enactment: enactment} do
+      pid =
+        start_supervised!(
+          {ColouredFlow.Runner.Enactment, enactment_id: enactment.id, listener: "garbage"},
+          id: enactment.id
+        )
+
+      [wi] = get_enactment_workitems(pid)
+      assert wi.state == :enabled
+      refute_received {:on_enactment_start, _, _}
+    end
+  end
+
   describe "lifecycle dispatch ({module, extras} listener)" do
     setup :setup_flow
     setup :setup_enactment

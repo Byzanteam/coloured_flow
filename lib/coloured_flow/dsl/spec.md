@@ -99,9 +99,12 @@ configuration, pass `listener: {__MODULE__, extras}` as an option — the
 positional argument and exposed inside DSL blocks as the magic binding
 `extras`.
 
-These functions only work when the host module passes `:storage` to
-`use ColouredFlow.DSL` (e.g. `storage: ColouredFlow.Runner.Storage.InMemory`).
-Without it, calling them raises a clear `ArgumentError`.
+`setup_flow!/0` and `insert_enactment!/{1,2}` only work when the host
+module passes `:storage` to `use ColouredFlow.DSL` (e.g.
+`storage: ColouredFlow.Runner.Storage.InMemory`); without it, calling
+them raises an `ArgumentError`. `start_enactment/{1,2}` is independent
+of `:storage` — it only needs an enactment id (or a handle returned by
+`insert_enactment!/{1,2}`) and the supervisor.
 
 ## Per-workflow options
 
@@ -357,5 +360,7 @@ populates `action.outputs` from arc/guard analysis), and runs
   - function names are unique and result descrs are fully resolved,
   - termination criteria reference only `markings`.
 
-Any failure raises a `CompileError` pointing to the offending macro
-call.
+Any failure raises a `CompileError`. Duplicate-name and missing-colour-set
+violations point back to the originating declaration via
+`{file, line}` metadata captured at macro expansion; other validator
+errors fall back to the `defmodule` callsite.

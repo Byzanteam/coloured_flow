@@ -132,6 +132,11 @@ defmodule ColouredFlow.Runner.Enactment.Listener do
     do_invoke(module, callback, args ++ [nil])
   end
 
+  # Malformed listener value (PID, string, mis-shaped tuple, …). The runner
+  # promises a misbehaving listener never destabilises the enactment, so
+  # silently drop the call rather than letting `FunctionClauseError` bubble.
+  def safe_invoke(_other, _callback, _args), do: :ok
+
   defp do_invoke(module, callback, full_args) do
     if function_exported?(module, callback, length(full_args)) do
       try do
