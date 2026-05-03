@@ -59,10 +59,12 @@ A module that uses `ColouredFlow.DSL` exposes:
     MyWorkflow.__cpn__(:version)            :: String.t() | nil
     MyWorkflow.__cpn__(:initial_markings)   :: [%ColouredFlow.Enactment.Marking{}]
 
-    # Storage / runner conveniences (only useful when `:storage` is configured)
+    # Storage conveniences (only useful when `:storage` is configured)
     MyWorkflow.setup_flow!()                :: term()  # inserts each call
     MyWorkflow.insert_enactment!(flow)      :: term()
     MyWorkflow.insert_enactment!(flow, [%Marking{}]) :: term()
+
+    # Runner convenience (no `:storage` required)
     MyWorkflow.start_enactment(eid, opts)   :: DynamicSupervisor.on_start_child()
 
     # ColouredFlow.Runner.Enactment.Listener callbacks

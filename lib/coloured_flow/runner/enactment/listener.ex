@@ -21,6 +21,10 @@ defmodule ColouredFlow.Runner.Enactment.Listener do
     Task.Supervisor name, …) into otherwise-static callback code.
   - `nil` — no listener bound, lifecycle dispatch is a no-op.
 
+  Any other value (a PID, string, mis-shaped tuple, …) is silently ignored by
+  `safe_invoke/3`; the runner promises a misbehaving listener never destabilises
+  the enactment.
+
   All callbacks are optional; the runner only invokes those a listener exports at
   the right arity. Callbacks run inline in the enactment GenServer process, so
   listeners must return quickly. Side effects that may block belong inside a

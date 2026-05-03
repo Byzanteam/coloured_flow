@@ -107,9 +107,11 @@ defmodule ColouredFlow.Runner.Enactment.ListenerDispatchTest do
           id: enactment.id
         )
 
+      # Enactment must reach a stable state (workitem produced) without
+      # crashing despite the bogus listener value.
       [wi] = get_enactment_workitems(pid)
       assert wi.state == :enabled
-      refute_received {:on_enactment_start, _, _}
+      refute_received {:on_enactment_start, _ctx, _extras}
     end
   end
 
