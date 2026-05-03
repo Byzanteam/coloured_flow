@@ -22,9 +22,24 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  @spec start_enactment(enactment_id()) :: DynamicSupervisor.on_start_child()
-  def start_enactment(enactment_id) do
-    enactment_spec = {Enactment, enactment_id: enactment_id}
+  @type start_option() ::
+          {:action_handler, module() | nil}
+          | {:timeout, timeout()}
+          | {:hibernate_after, timeout()}
+
+  @doc """
+  Start an enactment process under the dynamic supervisor.
+
+  Accepts the same lifecycle options as
+  `ColouredFlow.Runner.Enactment.start_link/1`. Notably, `:action_handler`
+  registers a per-instance `ColouredFlow.Runner.ActionHandler` that receives
+  lifecycle callbacks (workitem state changes, enactment
+  start/terminate/exception). When omitted, no handler is invoked and the
+  enactment behaves exactly as before.
+  """
+  @spec start_enactment(enactment_id(), [start_option()]) :: DynamicSupervisor.on_start_child()
+  def start_enactment(enactment_id, options \\ []) when is_list(options) do
+    enactment_spec = {Enactment, Keyword.put(options, :enactment_id, enactment_id)}
 
     case DynamicSupervisor.start_child(__MODULE__, enactment_spec) do
       {:ok, _pid} = ok -> ok

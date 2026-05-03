@@ -40,6 +40,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
 
+  alias ColouredFlow.Runner.ActionHandler
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
   alias ColouredFlow.Runner.Enactment.Lifespan
@@ -84,12 +85,20 @@ defmodule ColouredFlow.Runner.Enactment do
       doc:
         "The idle duration after which the GenServer hibernates; " <>
           "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
+
+    field :action_handler, module() | nil,
+      enforce: false,
+      default: nil,
+      doc:
+        "Optional `ColouredFlow.Runner.ActionHandler` module receiving lifecycle " <>
+          "callbacks for this enactment instance."
   end
 
   @type option() ::
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
+          | {:action_handler, module() | nil}
 
   @type options() :: [option()]
 
@@ -255,6 +264,8 @@ defmodule ColouredFlow.Runner.Enactment do
             :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
         end)
 
+        dispatch_lifecycle(:withdraw_workitems, state, %{workitems: workitems})
+
         {:ok, workitems, %{workitems: workitems}}
       end
     )
@@ -266,6 +277,8 @@ defmodule ColouredFlow.Runner.Enactment do
         %{binding_elements: calibration.to_produce},
         fn ->
           workitems = Storage.produce_workitems(state.enactment_id, calibration.to_produce)
+
+          dispatch_lifecycle(:produce_workitems, state, %{workitems: workitems})
 
           {:ok, to_map(workitems), %{workitems: workitems}}
         end
@@ -334,6 +347,8 @@ defmodule ColouredFlow.Runner.Enactment do
       with {:ok, {started_workitems, new_state}} <- start_workitems(state, workitem_ids) do
         :ok = Storage.start_workitems(started_workitems, action: :start)
 
+        dispatch_lifecycle(:start_workitems, new_state, %{workitems: started_workitems})
+
         {:ok, {started_workitems, new_state}, %{workitems: started_workitems}}
       end
     end)
@@ -377,6 +392,10 @@ defmodule ColouredFlow.Runner.Enactment do
             )
 
           completed_workitems = Enum.map(workitem_occurrences, &elem(&1, 0))
+
+          dispatch_lifecycle(:complete_workitems, new_state, %{
+            workitem_occurrences: workitem_occurrences
+          })
 
           {
             :ok,
@@ -662,11 +681,76 @@ defmodule ColouredFlow.Runner.Enactment do
 
   defp emit_event(event, %__MODULE__{} = state, metadata \\ %{}) when is_map(metadata) do
     base_metadata = %{enactment_id: state.enactment_id, enactment_state: state}
+    full_metadata = Enum.into(base_metadata, metadata)
 
     Telemetry.execute(
       [:coloured_flow, :runner, :enactment, event],
       %{},
-      Enum.into(base_metadata, metadata)
+      full_metadata
     )
+
+    dispatch_lifecycle(event, state, full_metadata)
+  end
+
+  # Map the runner's internal events to the per-enactment ActionHandler
+  # callbacks. Telemetry keeps emitting in addition.
+  @spec dispatch_lifecycle(atom(), state(), map()) :: :ok
+  defp dispatch_lifecycle(_event, %__MODULE__{action_handler: nil}, _metadata), do: :ok
+
+  defp dispatch_lifecycle(:start, %__MODULE__{action_handler: handler} = state, _meta) do
+    ActionHandler.safe_invoke(handler, :on_enactment_start, [build_ctx(state)])
+  end
+
+  defp dispatch_lifecycle(:terminate, %__MODULE__{action_handler: handler} = state, %{
+         termination_type: type
+       }) do
+    ActionHandler.safe_invoke(handler, :on_enactment_terminate, [build_ctx(state), type])
+  end
+
+  defp dispatch_lifecycle(:exception, %__MODULE__{action_handler: handler} = state, %{
+         exception_reason: reason
+       }) do
+    ActionHandler.safe_invoke(handler, :on_enactment_exception, [build_ctx(state), reason])
+  end
+
+  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{action_handler: handler} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    ctx = build_ctx(state)
+    Enum.each(workitems, &ActionHandler.safe_invoke(handler, :on_workitem_enabled, [ctx, &1]))
+  end
+
+  defp dispatch_lifecycle(:start_workitems, %__MODULE__{action_handler: handler} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    ctx = build_ctx(state)
+    Enum.each(workitems, &ActionHandler.safe_invoke(handler, :on_workitem_started, [ctx, &1]))
+  end
+
+  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{action_handler: handler} = state, %{
+         workitem_occurrences: workitem_occurrences
+       })
+       when is_list(workitem_occurrences) do
+    ctx = build_ctx(state)
+
+    Enum.each(workitem_occurrences, fn {workitem, occurrence} ->
+      ActionHandler.safe_invoke(handler, :on_workitem_completed, [ctx, workitem, occurrence])
+    end)
+  end
+
+  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{action_handler: handler} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    ctx = build_ctx(state)
+    Enum.each(workitems, &ActionHandler.safe_invoke(handler, :on_workitem_withdrawn, [ctx, &1]))
+  end
+
+  defp dispatch_lifecycle(_event, _state, _metadata), do: :ok
+
+  defp build_ctx(%__MODULE__{} = state) do
+    ActionHandler.build_ctx(state.enactment_id, state.markings)
   end
 end
