@@ -1,6 +1,6 @@
 defmodule ColouredFlow.DSL.Function do
   @moduledoc """
-  `function/2` and `function/3` macros. See `ColouredFlow.DSL` for context.
+  `function/1` and `function/2` macros. See `ColouredFlow.DSL` for context.
   """
 
   alias ColouredFlow.DSL.ExpressionHelper

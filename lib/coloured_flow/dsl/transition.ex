@@ -17,6 +17,10 @@ defmodule ColouredFlow.DSL.Transition do
 
   @scope_attr :__cf_transition_scope__
 
+  # Magic bindings made available inside an `action do ... end` body, in
+  # addition to any free CPN variables resolved from the transition's binding.
+  @action_magic_bindings [:ctx, :workitem, :extras]
+
   @doc """
   Declare a transition. The block accepts `guard/1`, `action/1`, `input/2,3` and
   `output/2,3`.
@@ -115,10 +119,18 @@ defmodule ColouredFlow.DSL.Transition do
     expr_ast = ExpressionHelper.block_to_ast(expression)
     code = ExpressionHelper.ast_to_code(expr_ast)
 
+    raw_free = ExpressionHelper.free_vars(expr_ast)
+    cpn_vars = raw_free -- @action_magic_bindings
+    escaped_ast = Macro.escape(expr_ast)
+
     quote do
       ColouredFlow.DSL.Transition.__set_action__!(
         __MODULE__,
-        unquote(code),
+        %{
+          code: unquote(code),
+          body: unquote(escaped_ast),
+          cpn_vars: unquote(cpn_vars)
+        },
         unquote(caller_file),
         unquote(caller_line)
       )
@@ -170,6 +182,18 @@ defmodule ColouredFlow.DSL.Transition do
 
     Module.put_attribute(module, :cf_transitions, transition)
 
+    case scope.action do
+      %{body: body, cpn_vars: cpn_vars} ->
+        Module.put_attribute(
+          module,
+          :cf_transition_actions,
+          {scope.name, body, cpn_vars}
+        )
+
+      _other ->
+        :ok
+    end
+
     Enum.each(arcs, fn arc ->
       Module.put_attribute(module, :cf_arcs, arc)
     end)
@@ -219,8 +243,8 @@ defmodule ColouredFlow.DSL.Transition do
   end
 
   @doc false
-  @spec __set_action__!(module(), String.t(), String.t(), non_neg_integer()) :: :ok
-  def __set_action__!(module, code, file, line) do
+  @spec __set_action__!(module(), map(), String.t(), non_neg_integer()) :: :ok
+  def __set_action__!(module, %{} = action, file, line) do
     case Module.get_attribute(module, @scope_attr) do
       nil ->
         raise CompileError,
@@ -229,7 +253,7 @@ defmodule ColouredFlow.DSL.Transition do
           line: line
 
       %{action: nil} = scope ->
-        Module.put_attribute(module, @scope_attr, %{scope | action: code})
+        Module.put_attribute(module, @scope_attr, %{scope | action: action})
 
       %{action: _existing} ->
         raise CompileError,
@@ -243,7 +267,7 @@ defmodule ColouredFlow.DSL.Transition do
 
   defp build_action(nil), do: %Action{payload: nil, outputs: []}
 
-  defp build_action(code) when is_binary(code) do
+  defp build_action(%{code: code}) when is_binary(code) do
     %Action{payload: code, outputs: []}
   end
 

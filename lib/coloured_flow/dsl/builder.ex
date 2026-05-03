@@ -16,6 +16,7 @@ defmodule ColouredFlow.DSL.Builder do
   alias ColouredFlow.Validators.Exceptions.UniqueNameViolationError
 
   @doc false
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defmacro __before_compile__(env) do
     cpnet = build_cpnet(env.module)
     cpnet = resolve_function_results(cpnet)
@@ -30,8 +31,20 @@ defmodule ColouredFlow.DSL.Builder do
       {:ok, validated} ->
         name = Module.get_attribute(env.module, :cf_name)
         version = Module.get_attribute(env.module, :cf_version)
+        storage = Module.get_attribute(env.module, :cf_storage)
+        task_supervisor = Module.get_attribute(env.module, :cf_task_supervisor)
+        transition_actions = source_order_meta(env.module, :cf_transition_actions)
+        lifecycle_hooks = source_order_meta(env.module, :cf_lifecycle_hooks)
+
+        action_clauses =
+          Enum.map(transition_actions, &compile_transition_action(&1, task_supervisor))
+
+        lifecycle_clauses =
+          Enum.map(lifecycle_hooks, &compile_lifecycle_hook(&1, task_supervisor))
 
         quote do
+          @behaviour ColouredFlow.Runner.Enactment.Listener
+
           @doc """
           The `%ColouredFlow.Definition.ColouredPetriNet{}` materialised from the DSL
           declarations in this module.
@@ -54,6 +67,75 @@ defmodule ColouredFlow.DSL.Builder do
           def __cpn__(:name), do: unquote(name)
           def __cpn__(:version), do: unquote(version)
           def __cpn__(:initial_markings), do: unquote(Macro.escape(initial_markings))
+
+          @doc """
+          Insert a flow row under the workflow name (or raises if no `name` was declared)
+          using the storage configured via `use ColouredFlow.DSL, storage: ...`. Not
+          idempotent — every invocation inserts a fresh row.
+          """
+          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+          @spec setup_flow!() :: term()
+          def setup_flow! do
+            ColouredFlow.DSL.Builder.__assert_storage__!(__MODULE__, unquote(storage))
+            ColouredFlow.DSL.Storage.setup_flow!(unquote(storage), unquote(name), cpnet())
+          end
+
+          @doc """
+          Insert an enactment for the given flow with the workflow's declared initial
+          markings (overridable via the second argument).
+          """
+          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+          @spec insert_enactment!(term()) :: term()
+          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+          @spec insert_enactment!(term(), [Marking.t()]) :: term()
+          def insert_enactment!(flow, initial_markings \\ __cpn__(:initial_markings)) do
+            ColouredFlow.DSL.Builder.__assert_storage__!(__MODULE__, unquote(storage))
+            ColouredFlow.DSL.Storage.insert_enactment!(unquote(storage), flow, initial_markings)
+          end
+
+          @doc """
+          Start the enactment under `ColouredFlow.Runner.Enactment.Supervisor`, binding
+          this module as the per-instance `ColouredFlow.Runner.Enactment.Listener` unless
+          the caller overrides it via `opts[:listener]`.
+
+          The override accepts the same shape as the runtime listener field — a bare
+          module, a `{module, extras}` tuple (so callbacks receive per-instance context as
+          the last argument), or `nil` to disable the listener entirely for this
+          enactment.
+
+          Accepts either an enactment id (binary) or the handle returned by
+          `insert_enactment!/{1,2}` — a `Schemas.Enactment` struct on `Storage.Default` or
+          an `:enactment` record on `Storage.InMemory`.
+          """
+          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+          @spec start_enactment(binary() | term(), keyword()) ::
+                  DynamicSupervisor.on_start_child()
+          def start_enactment(enactment_or_id, opts \\ []) do
+            enactment_id = ColouredFlow.DSL.Builder.__enactment_id__!(enactment_or_id)
+            opts = Keyword.put_new(opts, :listener, __MODULE__)
+            ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment_id, opts)
+          end
+
+          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+          @spec __action_for__(String.t(), Keyword.t(), map(), term(), term()) :: any()
+          unquote_splicing(action_clauses)
+          defp __action_for__(_transition_name, _binding, _ctx, _workitem, _extras), do: :ok
+
+          @doc false
+          @impl ColouredFlow.Runner.Enactment.Listener
+          def on_workitem_completed(ctx, workitem, _occurrence, extras) do
+            __action_for__(
+              workitem.binding_element.transition,
+              workitem.binding_element.binding,
+              ctx,
+              workitem,
+              extras
+            )
+
+            :ok
+          end
+
+          unquote_splicing(lifecycle_clauses)
         end
 
       {:error, exception} ->
@@ -307,4 +389,142 @@ defmodule ColouredFlow.DSL.Builder do
   end
 
   defp resolve_step(:unknown, descr, _colour_sets), do: descr
+
+  # Compile a single transition's `action do ... end` body into a
+  # `__action_for__/5` clause. The body has access to:
+  #
+  #   * `ctx`      — `ColouredFlow.Runner.Enactment.Listener.ctx()`
+  #   * `workitem` — the just-completed `%Workitem{}`
+  #   * each free CPN variable (`:s`, `:x`, …) — plucked from the binding
+  #
+  # The wrapper unpacks the binding via `Keyword.fetch!/2` for each declared
+  # free var and runs the body inside a `Task.Supervisor.start_child/2` call
+  # (or unsupervised `Task.start/1` when no `:task_supervisor` was provided to
+  # `use ColouredFlow.DSL`) so the runner never blocks on user side effects.
+  defp compile_transition_action({transition_name, body, cpn_vars}, task_supervisor) do
+    var_assignments =
+      Enum.map(cpn_vars, fn var ->
+        var_ast = Macro.var(var, nil)
+
+        quote do
+          unquote(var_ast) = Keyword.fetch!(var!(binding), unquote(var))
+        end
+      end)
+
+    task_call = wrap_in_task(body, task_supervisor)
+
+    quote do
+      defp __action_for__(
+             unquote(transition_name),
+             var!(binding),
+             var!(ctx),
+             var!(workitem),
+             var!(extras)
+           ) do
+        _binding = var!(binding)
+        _ctx = var!(ctx)
+        _workitem = var!(workitem)
+        _extras = var!(extras)
+        unquote_splicing(var_assignments)
+        unquote(task_call)
+      end
+    end
+  end
+
+  defp compile_lifecycle_hook({:on_enactment_start, body}, task_supervisor) do
+    task_call = wrap_in_task(body, task_supervisor)
+
+    quote do
+      @impl ColouredFlow.Runner.Enactment.Listener
+      def on_enactment_start(var!(ctx), var!(extras)) do
+        _ctx = var!(ctx)
+        _extras = var!(extras)
+        unquote(task_call)
+        :ok
+      end
+    end
+  end
+
+  defp compile_lifecycle_hook({:on_enactment_terminate, body}, task_supervisor) do
+    task_call = wrap_in_task(body, task_supervisor)
+
+    quote do
+      @impl ColouredFlow.Runner.Enactment.Listener
+      def on_enactment_terminate(var!(ctx), var!(reason), var!(extras)) do
+        _ctx = var!(ctx)
+        _reason = var!(reason)
+        _extras = var!(extras)
+        unquote(task_call)
+        :ok
+      end
+    end
+  end
+
+  defp compile_lifecycle_hook({:on_enactment_exception, body}, task_supervisor) do
+    task_call = wrap_in_task(body, task_supervisor)
+
+    quote do
+      @impl ColouredFlow.Runner.Enactment.Listener
+      def on_enactment_exception(var!(ctx), var!(reason), var!(extras)) do
+        _ctx = var!(ctx)
+        _reason = var!(reason)
+        _extras = var!(extras)
+        unquote(task_call)
+        :ok
+      end
+    end
+  end
+
+  defp wrap_in_task(body, nil) do
+    quote do
+      Task.start(fn -> unquote(body) end)
+    end
+  end
+
+  defp wrap_in_task(body, task_supervisor) do
+    quote do
+      Task.Supervisor.start_child(unquote(task_supervisor), fn -> unquote(body) end)
+    end
+  end
+
+  @doc false
+  @spec __assert_storage__!(module(), module() | nil) :: :ok
+  def __assert_storage__!(module, nil) do
+    raise ArgumentError, """
+    #{inspect(module)} requires a `:storage` option on `use ColouredFlow.DSL`.
+
+    Example:
+
+        use ColouredFlow.DSL,
+          storage: ColouredFlow.Runner.Storage.InMemory
+
+    """
+  end
+
+  def __assert_storage__!(_module, storage) when is_atom(storage), do: :ok
+
+  def __assert_storage__!(module, other) do
+    raise ArgumentError, """
+    #{inspect(module)} expected `:storage` to be a module atom, got: #{inspect(other)}.
+    """
+  end
+
+  @doc false
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @spec __enactment_id__!(term()) :: binary()
+  def __enactment_id__!(id) when is_binary(id), do: id
+
+  def __enactment_id__!(%{id: id}) when is_binary(id), do: id
+
+  def __enactment_id__!(handle)
+      when is_tuple(handle) and tuple_size(handle) > 1 and elem(handle, 0) == :enactment do
+    elem(handle, 1)
+  end
+
+  def __enactment_id__!(other) do
+    raise ArgumentError, """
+    start_enactment/2 expects either an enactment id (binary), a `Schemas.Enactment` struct,
+    or an `:enactment` record. Got: #{inspect(other)}
+    """
+  end
 end

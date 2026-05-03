@@ -43,6 +43,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
   alias ColouredFlow.Runner.Enactment.Lifespan
+  alias ColouredFlow.Runner.Enactment.Listener
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem
@@ -84,12 +85,21 @@ defmodule ColouredFlow.Runner.Enactment do
       doc:
         "The idle duration after which the GenServer hibernates; " <>
           "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
+
+    field :listener, Listener.t(),
+      enforce: false,
+      default: nil,
+      doc:
+        "Optional `ColouredFlow.Runner.Enactment.Listener` (a module, " <>
+          "`{module, extras}` tuple, or `nil`) receiving lifecycle " <>
+          "callbacks for this enactment instance."
   end
 
   @type option() ::
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
+          | {:listener, Listener.t()}
 
   @type options() :: [option()]
 
@@ -130,6 +140,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
       {:error, reason} ->
         emit_event(:exception, state, %{exception_reason: reason})
+        dispatch_lifecycle(:exception, state, %{exception_reason: reason})
         {:stop, {:shutdown, reason}, state}
     end
   end
@@ -163,6 +174,11 @@ defmodule ColouredFlow.Runner.Enactment do
     calibration = WorkitemCalibration.initial_calibrate(state, runtime_cpnet)
     state = apply_calibration(calibration)
 
+    # `:start` lives here, after initial calibration, so the handler's
+    # `ctx.markings` already reflects produced/withdrawn workitems and
+    # any catchup-applied occurrences from the snapshot.
+    dispatch_lifecycle(:start, state, %{})
+
     # try to terminate at the start
     case check_termination(state, runtime_cpnet.definition) do
       {:stop, reason} -> {:stop, {:shutdown, reason}, state}
@@ -177,6 +193,8 @@ defmodule ColouredFlow.Runner.Enactment do
       when is_list(options) do
     calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
+
+    dispatch_post_calibration(transition, state, options)
 
     if transition in [:complete, :complete_e] do
       # try to terminate when the transition is `:complete` or `:complete_e`.
@@ -219,6 +237,8 @@ defmodule ColouredFlow.Runner.Enactment do
           exception: exception
         })
 
+        dispatch_lifecycle(:exception, state, %{exception_reason: :snapshot_corrupt})
+
         initial_snapshot(state)
     end
   end
@@ -234,30 +254,31 @@ defmodule ColouredFlow.Runner.Enactment do
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
     # We don't need to ensure `withdraw_workitems` and `produce_workitems` are atomic,
     # because the gen_server will restart if the process crashes.
-    with_span(
-      :withdraw_workitems,
-      state,
-      %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
-      fn ->
-        # the workitems from calibration.to_withdraw are not in `withdrawn` state
-        grouped_wokitems =
-          Enum.group_by(calibration.to_withdraw, & &1.state, fn %Workitem{} = workitem ->
-            %{workitem | state: :withdrawn}
+    {:ok, withdrawn_workitems} =
+      with_span(
+        :withdraw_workitems,
+        state,
+        %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
+        fn ->
+          # the workitems from calibration.to_withdraw are not in `withdrawn` state
+          grouped_wokitems =
+            Enum.group_by(calibration.to_withdraw, & &1.state, fn %Workitem{} = workitem ->
+              %{workitem | state: :withdrawn}
+            end)
+
+          workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
+
+          Enum.each(grouped_wokitems, fn
+            {:enabled, workitems} ->
+              :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
+
+            {:started, workitems} ->
+              :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
           end)
 
-        workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
-
-        Enum.each(grouped_wokitems, fn
-          {:enabled, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
-
-          {:started, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
-        end)
-
-        {:ok, workitems, %{workitems: workitems}}
-      end
-    )
+          {:ok, workitems, %{workitems: workitems}}
+        end
+      )
 
     {:ok, produced_workitems} =
       with_span(
@@ -271,7 +292,17 @@ defmodule ColouredFlow.Runner.Enactment do
         end
       )
 
-    %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
+    new_state = %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
+
+    # Defer handler dispatch to here so `ctx.markings` reflects the
+    # post-calibration state. Withdrawn workitems carry the consumed
+    # tokens via `binding_element.to_consume`, so the handler can still
+    # introspect what was discarded.
+    dispatch_lifecycle(:withdraw_workitems, new_state, %{workitems: withdrawn_workitems})
+
+    dispatch_lifecycle(:produce_workitems, new_state, %{workitems: Map.values(produced_workitems)})
+
+    new_state
   end
 
   # `:explicit` takes priority over `:implicit`
@@ -291,6 +322,7 @@ defmodule ColouredFlow.Runner.Enactment do
         :ok = Storage.terminate_enactment(state.enactment_id, type, markings, [])
 
         emit_event(:terminate, state, %{termination_type: type})
+        dispatch_lifecycle(:terminate, state, %{termination_type: type})
 
         {:stop, "Terminated as #{type} criteria were met."}
 
@@ -306,6 +338,8 @@ defmodule ColouredFlow.Runner.Enactment do
           exception_reason: :invalid_termination_criteria,
           exception: exception
         })
+
+        dispatch_lifecycle(:exception, state, %{exception_reason: :invalid_termination_criteria})
 
         {:stop, "Terminated due to an exception in evaluating termination criteria."}
     end
@@ -323,6 +357,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
     message = Keyword.get(options, :message)
     emit_event(:terminate, state, %{termination_type: :force, termination_message: message})
+    dispatch_lifecycle(:terminate, state, %{termination_type: :force})
 
     {:stop, {:shutdown, "Terminated manually"}, :ok, state}
   end
@@ -662,11 +697,91 @@ defmodule ColouredFlow.Runner.Enactment do
 
   defp emit_event(event, %__MODULE__{} = state, metadata \\ %{}) when is_map(metadata) do
     base_metadata = %{enactment_id: state.enactment_id, enactment_state: state}
+    full_metadata = Enum.into(base_metadata, metadata)
 
     Telemetry.execute(
       [:coloured_flow, :runner, :enactment, event],
       %{},
-      Enum.into(base_metadata, metadata)
+      full_metadata
     )
+  end
+
+  # Run after `apply_calibration/1` so handlers see the post-firing markings.
+  # `:start` and `:complete*` dispatches happen here because they are the
+  # transitions that mutate `state.markings`.
+  @spec dispatch_post_calibration(atom(), state(), keyword()) :: :ok
+  defp dispatch_post_calibration(:start, %__MODULE__{} = state, options) do
+    workitems = Keyword.get(options, :workitems, [])
+    dispatch_lifecycle(:start_workitems, state, %{workitems: workitems})
+  end
+
+  defp dispatch_post_calibration(transition, %__MODULE__{} = state, options)
+       when transition in [:complete, :complete_e] do
+    workitem_occurrences = Keyword.get(options, :workitem_occurrences, [])
+    dispatch_lifecycle(:complete_workitems, state, %{workitem_occurrences: workitem_occurrences})
+  end
+
+  defp dispatch_post_calibration(_other, _state, _options), do: :ok
+
+  # Map the runner's internal events to the per-enactment Listener
+  # callbacks. Telemetry keeps emitting in addition.
+  @spec dispatch_lifecycle(atom(), state(), map()) :: :ok
+  defp dispatch_lifecycle(_event, %__MODULE__{listener: nil}, _metadata), do: :ok
+
+  defp dispatch_lifecycle(:start, %__MODULE__{listener: listener} = state, _meta) do
+    Listener.safe_invoke(listener, :on_enactment_start, [build_ctx(state)])
+  end
+
+  defp dispatch_lifecycle(:terminate, %__MODULE__{listener: listener} = state, %{
+         termination_type: type
+       }) do
+    Listener.safe_invoke(listener, :on_enactment_terminate, [build_ctx(state), type])
+  end
+
+  defp dispatch_lifecycle(:exception, %__MODULE__{listener: listener} = state, %{
+         exception_reason: reason
+       }) do
+    Listener.safe_invoke(listener, :on_enactment_exception, [build_ctx(state), reason])
+  end
+
+  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{listener: listener} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    ctx = build_ctx(state)
+    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_enabled, [ctx, &1]))
+  end
+
+  defp dispatch_lifecycle(:start_workitems, %__MODULE__{listener: listener} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    ctx = build_ctx(state)
+    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_started, [ctx, &1]))
+  end
+
+  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{listener: listener} = state, %{
+         workitem_occurrences: workitem_occurrences
+       })
+       when is_list(workitem_occurrences) do
+    ctx = build_ctx(state)
+
+    Enum.each(workitem_occurrences, fn {workitem, occurrence} ->
+      Listener.safe_invoke(listener, :on_workitem_completed, [ctx, workitem, occurrence])
+    end)
+  end
+
+  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{listener: listener} = state, %{
+         workitems: workitems
+       })
+       when is_list(workitems) do
+    ctx = build_ctx(state)
+    Enum.each(workitems, &Listener.safe_invoke(listener, :on_workitem_withdrawn, [ctx, &1]))
+  end
+
+  defp dispatch_lifecycle(_event, _state, _metadata), do: :ok
+
+  defp build_ctx(%__MODULE__{} = state) do
+    Listener.build_ctx(state.enactment_id, state.markings)
   end
 end
