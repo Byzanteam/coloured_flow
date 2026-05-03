@@ -166,7 +166,13 @@ defmodule ColouredFlow.Runner.Storage.Default do
       nil ->
         %Schemas.Flow{}
         |> Ecto.Changeset.cast(%{name: name, definition: definition}, [:name, :definition])
-        |> Repo.insert!([])
+        |> Ecto.Changeset.unique_constraint(:name, name: :flows_name_index)
+        |> Repo.insert([])
+        |> case do
+          {:ok, flow} -> flow
+          # Concurrent caller raced us to the insert — re-fetch and return.
+          {:error, %Ecto.Changeset{}} -> Repo.get_by!(Schemas.Flow, name: name)
+        end
     end
   end
 

@@ -116,23 +116,23 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
     {:reply, :ok, state}
   end
 
-  @impl Storage
-  def setup_flow!(name, %ColouredPetriNet{} = definition) when is_binary(name) do
-    case lookup_flow_by_name(name) do
-      {:ok, flow} ->
-        flow
+  # Atomic lookup-or-insert keyed on `name`. Run inside the GenServer so the
+  # ETS check and write happen with no other writer in between.
+  def handle_call({:setup_flow, name, definition}, _from, state) do
+    case :ets.match_object(table(:flow), flow(name: name, _: :_)) do
+      [existing | _rest] ->
+        {:reply, existing, state}
 
-      :error ->
+      [] ->
         flow = flow(id: Ecto.UUID.generate(), name: name, definition: definition)
-        insert_new(:flow, flow)
+        true = :ets.insert_new(Keyword.fetch!(state, :flow), flow)
+        {:reply, flow, state}
     end
   end
 
-  defp lookup_flow_by_name(name) do
-    case :ets.match_object(table(:flow), flow(name: name, _: :_)) do
-      [match | _rest] -> {:ok, match}
-      [] -> :error
-    end
+  @impl Storage
+  def setup_flow!(name, %ColouredPetriNet{} = definition) when is_binary(name) do
+    GenServer.call(__MODULE__, {:setup_flow, name, definition})
   end
 
   @impl Storage

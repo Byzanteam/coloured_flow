@@ -37,7 +37,12 @@ defmodule ColouredFlow.DSL.ActionHandlerE2ETest do
 
     on_enactment_start do
       pid = :persistent_term.get({ColouredFlow.DSL.ActionHandlerE2ETest, :pid}, nil)
-      if pid, do: send(pid, {:enactment_start, ctx.enactment_id})
+      if pid, do: send(pid, {:enactment_start, ctx.enactment_id, map_size(ctx.markings)})
+    end
+
+    on_enactment_terminate reason do
+      pid = :persistent_term.get({ColouredFlow.DSL.ActionHandlerE2ETest, :pid}, nil)
+      if pid, do: send(pid, {:enactment_terminate, ctx.enactment_id, reason})
     end
   end
 
@@ -62,8 +67,9 @@ defmodule ColouredFlow.DSL.ActionHandlerE2ETest do
           id: enactment.id
         )
 
-      assert_receive {:enactment_start, eid}, 500
+      assert_receive {:enactment_start, eid, marking_size}, 500
       assert eid == enactment.id
+      assert marking_size >= 1
 
       [wi] = get_enactment_workitems(pid)
       started = start_workitem(wi, pid)

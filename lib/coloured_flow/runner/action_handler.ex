@@ -49,7 +49,6 @@ defmodule ColouredFlow.Runner.ActionHandler do
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @callback on_workitem_completed(ctx(), Workitem.t(:completed), Occurrence.t()) :: :ok
   @callback on_workitem_withdrawn(ctx(), Workitem.t()) :: :ok
-  @callback on_workitem_reoffered(ctx(), Workitem.t(:enabled)) :: :ok
 
   @optional_callbacks on_enactment_start: 1,
                       on_enactment_terminate: 2,
@@ -57,8 +56,7 @@ defmodule ColouredFlow.Runner.ActionHandler do
                       on_workitem_enabled: 2,
                       on_workitem_started: 2,
                       on_workitem_completed: 3,
-                      on_workitem_withdrawn: 2,
-                      on_workitem_reoffered: 2
+                      on_workitem_withdrawn: 2
 
   @doc false
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType

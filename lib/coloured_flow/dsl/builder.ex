@@ -104,10 +104,16 @@ defmodule ColouredFlow.DSL.Builder do
           Start the enactment under `ColouredFlow.Runner.Enactment.Supervisor`, binding
           this module as the per-instance `ColouredFlow.Runner.ActionHandler` unless the
           caller overrides it.
+
+          Accepts either an enactment id (binary) or the handle returned by
+          `insert_enactment!/{1,2}` — a `Schemas.Enactment` struct on `Storage.Default` or
+          an `:enactment` record on `Storage.InMemory`.
           """
-          @spec start_enactment(binary(), keyword()) ::
+          # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+          @spec start_enactment(binary() | term(), keyword()) ::
                   DynamicSupervisor.on_start_child()
-          def start_enactment(enactment_id, opts \\ []) when is_binary(enactment_id) do
+          def start_enactment(enactment_or_id, opts \\ []) do
+            enactment_id = ColouredFlow.DSL.Builder.__enactment_id__!(enactment_or_id)
             opts = Keyword.put_new(opts, :action_handler, __MODULE__)
             ColouredFlow.Runner.Enactment.Supervisor.start_enactment(enactment_id, opts)
           end
@@ -495,6 +501,25 @@ defmodule ColouredFlow.DSL.Builder do
 
   def __setup_flow__!(module, storage, name) when is_atom(storage) and is_binary(name) do
     storage.setup_flow!(name, module.cpnet())
+  end
+
+  @doc false
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
+  @spec __enactment_id__!(term()) :: binary()
+  def __enactment_id__!(id) when is_binary(id), do: id
+
+  def __enactment_id__!(%{id: id}) when is_binary(id), do: id
+
+  def __enactment_id__!(handle)
+      when is_tuple(handle) and tuple_size(handle) > 1 and elem(handle, 0) == :enactment do
+    elem(handle, 1)
+  end
+
+  def __enactment_id__!(other) do
+    raise ArgumentError, """
+    start_enactment/2 expects either an enactment id (binary), a `Schemas.Enactment` struct,
+    or an `:enactment` record. Got: #{inspect(other)}
+    """
   end
 
   @doc false
