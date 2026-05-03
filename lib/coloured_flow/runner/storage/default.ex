@@ -157,6 +157,32 @@ defmodule ColouredFlow.Runner.Storage.Default do
   end
 
   @impl ColouredFlow.Runner.Storage
+  def setup_flow!(name, %ColouredFlow.Definition.ColouredPetriNet{} = definition)
+      when is_binary(name) do
+    case Repo.get_by(Schemas.Flow, name: name) do
+      %Schemas.Flow{} = flow ->
+        flow
+
+      nil ->
+        %Schemas.Flow{}
+        |> Ecto.Changeset.cast(%{name: name, definition: definition}, [:name, :definition])
+        |> Repo.insert!([])
+    end
+  end
+
+  @impl ColouredFlow.Runner.Storage
+  def insert_enactment!(%Schemas.Flow{id: flow_id}, initial_markings)
+      when is_list(initial_markings) do
+    {:ok, enactment} =
+      insert_enactment(%{
+        flow_id: flow_id,
+        initial_markings: initial_markings
+      })
+
+    enactment
+  end
+
+  @impl ColouredFlow.Runner.Storage
   def insert_enactment(params) do
     Ecto.Multi.new()
     |> Ecto.Multi.put(:params, params)

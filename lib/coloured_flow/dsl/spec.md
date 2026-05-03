@@ -59,6 +59,18 @@ A module that uses `ColouredFlow.DSL` exposes:
     MyWorkflow.__cpn__(:version)            :: String.t() | nil
     MyWorkflow.__cpn__(:initial_markings)   :: [%ColouredFlow.Enactment.Marking{}]
 
+    # Storage / runner conveniences (only useful when `:storage` is configured)
+    MyWorkflow.setup_flow!()                :: term()  # idempotent insert
+    MyWorkflow.insert_enactment!(flow)      :: term()
+    MyWorkflow.insert_enactment!(flow, [%Marking{}]) :: term()
+    MyWorkflow.start_enactment(eid, opts)   :: DynamicSupervisor.on_start_child()
+
+    # ColouredFlow.Runner.ActionHandler callbacks (auto-injected, default noop)
+    MyWorkflow.on_workitem_completed(ctx, wi, occurrence) :: :ok
+    MyWorkflow.on_enactment_start(ctx)             :: :ok
+    MyWorkflow.on_enactment_terminate(ctx, reason) :: :ok
+    MyWorkflow.on_enactment_exception(ctx, reason) :: :ok
+
 `cpnet/0` is the **main API**: it returns the static CPN — colour sets,
 variables, places, transitions, arcs, and termination criteria — that
 the runner reuses across every enactment of the workflow.
@@ -66,13 +78,67 @@ the runner reuses across every enactment of the workflow.
 `__cpn__/1` is a **reflection helper** for declaration metadata
 (modeled after `Ecto.Schema.__schema__/1`). Pass an atom key to read
 the corresponding piece of workflow metadata. `:initial_markings`
-returns the list of `%Marking{}` declared via `initial_marking/2`;
-this is enactment-seed data, deliberately *not* folded into `cpnet/0`.
-Pass it to `Storage.insert_enactment/1` (or your own runner glue) when
-starting an enactment.
+returns the list of `%Marking{}` declared via `initial_marking/2`.
 
-Higher-level integration — spawning enactments, persisting flows,
-visualisation — is left to the existing `ColouredFlow.Runner.*` API.
+`setup_flow!/0`, `insert_enactment!/{1,2}` and `start_enactment/{1,2}`
+are convenience wrappers over `ColouredFlow.Runner.Storage` and
+`ColouredFlow.Runner.Enactment.Supervisor`. `setup_flow!` is idempotent
+— it returns the existing flow when one was already inserted under the
+same name. `start_enactment` automatically registers the workflow module
+as the per-instance `ColouredFlow.Runner.ActionHandler`, so any `action`
+or `on_enactment_*` block compiled into the module fires when the runner
+crosses the matching lifecycle point.
+
+These functions only work when the host module passes `:storage` to
+`use ColouredFlow.DSL` (e.g. `storage: ColouredFlow.Runner.Storage.InMemory`).
+Without it, calling them raises a clear `ArgumentError`.
+
+## Per-workflow options
+
+`use ColouredFlow.DSL` accepts:
+
+  - `:storage` — the storage module that backs `setup_flow!` /
+    `insert_enactment!`. Either `ColouredFlow.Runner.Storage.Default`
+    (Ecto) or `ColouredFlow.Runner.Storage.InMemory`. When omitted, the
+    storage helpers raise; the rest of the DSL still compiles.
+  - `:task_supervisor` — a `Task.Supervisor` registered name that wraps
+    every `action do ... end` and `on_enactment_*` body. When omitted,
+    bodies fall back to an unsupervised `Task.start/1` — fine for
+    examples, but production code should provide a supervisor so blown
+    tasks are reported and shut down with the app tree.
+
+```elixir
+use ColouredFlow.DSL,
+  storage: ColouredFlow.Runner.Storage.Default,
+  task_supervisor: MyApp.WorkflowTaskSup
+```
+
+## Action handler dispatch
+
+`ColouredFlow.Runner.ActionHandler` is the structured per-instance
+counterpart to `:telemetry`. The runner still emits all telemetry
+events; the handler is invoked on top of that — and is the natural
+home for *workflow-specific* side effects (PubSub broadcasts, state
+machines driving downstream services, etc.). Each `action do ... end`
+inside a `transition` block compiles to a `__action_for__/4` clause
+that the auto-generated `on_workitem_completed/3` callback dispatches
+on the transition name. Inside the body, the following bindings are
+available:
+
+  - the transition's bound CPN variables (e.g. `s`, `x`)
+  - `ctx` — `%{enactment_id: binary(), markings: %{place => MultiSet.t()}}`
+  - `workitem` — the just-completed `%ColouredFlow.Runner.Enactment.Workitem{}`
+
+Bodies are executed inside the configured `Task.Supervisor` so the
+runner never blocks on user side effects, and any exception raised by
+the handler is caught and discarded. Anything that needs to fail loudly
+should fail at definition time, not runtime.
+
+`on_enactment_start/1`, `on_enactment_terminate/1` and
+`on_enactment_exception/1` lifecycle macros (in
+`ColouredFlow.DSL.Lifecycle`) compile to the matching ActionHandler
+callbacks. Each may appear at most once per workflow; a duplicate
+declaration is a compile-time error.
 
 ## Universal expression rule
 

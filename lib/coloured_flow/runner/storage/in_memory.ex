@@ -8,6 +8,9 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage
+
+  @behaviour Storage
 
   require Logger
 
@@ -20,6 +23,7 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
                  record_name: :flow,
                  enforce: true do
     field :id, Ecto.UUID.t()
+    field :name, String.t() | nil, default: nil, enforce: false
     field :definition, ColouredPetriNet.t()
   end
 
@@ -64,6 +68,7 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
     insert_new(:flow, flow)
   end
 
+  @impl Storage
   @spec insert_enactment!(flow(), initial_markings :: [Marking.t()]) :: enactment()
   def insert_enactment!(flow, initial_markings) when is_record(flow, :flow) do
     enactment =
@@ -111,9 +116,24 @@ defmodule ColouredFlow.Runner.Storage.InMemory do
     {:reply, :ok, state}
   end
 
-  alias ColouredFlow.Runner.Storage
+  @impl Storage
+  def setup_flow!(name, %ColouredPetriNet{} = definition) when is_binary(name) do
+    case lookup_flow_by_name(name) do
+      {:ok, flow} ->
+        flow
 
-  @behaviour Storage
+      :error ->
+        flow = flow(id: Ecto.UUID.generate(), name: name, definition: definition)
+        insert_new(:flow, flow)
+    end
+  end
+
+  defp lookup_flow_by_name(name) do
+    case :ets.match_object(table(:flow), flow(name: name, _: :_)) do
+      [match | _rest] -> {:ok, match}
+      [] -> :error
+    end
+  end
 
   @impl Storage
   def get_flow_by_enactment(enactment_id) do

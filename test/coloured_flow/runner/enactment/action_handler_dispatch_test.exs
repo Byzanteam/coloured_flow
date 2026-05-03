@@ -1,4 +1,5 @@
 defmodule ColouredFlow.Runner.Enactment.ActionHandlerDispatchTest do
+  # credo:disable-for-this-file Credo.Check.Readability.Specs
   use ColouredFlow.RepoCase, async: true
   use ColouredFlow.RunnerHelpers
 

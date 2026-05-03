@@ -41,10 +41,12 @@ defmodule ColouredFlow.Runner.ActionHandler do
 
   @callback on_enactment_start(ctx()) :: :ok
   @callback on_enactment_terminate(ctx(), terminate_reason()) :: :ok
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @callback on_enactment_exception(ctx(), reason :: term()) :: :ok
 
   @callback on_workitem_enabled(ctx(), Workitem.t(:enabled)) :: :ok
   @callback on_workitem_started(ctx(), Workitem.t(:started)) :: :ok
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @callback on_workitem_completed(ctx(), Workitem.t(:completed), Occurrence.t()) :: :ok
   @callback on_workitem_withdrawn(ctx(), Workitem.t()) :: :ok
   @callback on_workitem_reoffered(ctx(), Workitem.t(:enabled)) :: :ok
@@ -59,6 +61,7 @@ defmodule ColouredFlow.Runner.ActionHandler do
                       on_workitem_reoffered: 2
 
   @doc false
+  # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @spec safe_invoke(module() | nil, atom(), [term()]) :: :ok
   def safe_invoke(nil, _callback, _args), do: :ok
 

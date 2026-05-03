@@ -8,7 +8,10 @@ defmodule ColouredFlow.DSL do
   alias ColouredFlow.Definition.Variable
 
   @doc false
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
+    storage = Keyword.get(opts, :storage)
+    task_supervisor = Keyword.get(opts, :task_supervisor)
+
     quote do
       import ColouredFlow.DSL,
         only: [
@@ -52,6 +55,15 @@ defmodule ColouredFlow.DSL do
           on_markings: 1
         ]
 
+      import ColouredFlow.DSL.Lifecycle,
+        only: [
+          on_enactment_start: 1,
+          on_enactment_terminate: 1,
+          on_enactment_terminate: 2,
+          on_enactment_exception: 1,
+          on_enactment_exception: 2
+        ]
+
       import ColouredFlow.MultiSet, only: [sigil_MS: 2, multi_set_coefficient: 2]
 
       Module.register_attribute(__MODULE__, :cf_colour_sets, accumulate: true)
@@ -65,6 +77,8 @@ defmodule ColouredFlow.DSL do
       Module.register_attribute(__MODULE__, :cf_termination_criteria, accumulate: true)
       Module.register_attribute(__MODULE__, :cf_name, accumulate: false)
       Module.register_attribute(__MODULE__, :cf_version, accumulate: false)
+      Module.register_attribute(__MODULE__, :cf_storage, accumulate: false)
+      Module.register_attribute(__MODULE__, :cf_task_supervisor, accumulate: false)
 
       # Per-declaration metadata: accumulates `{name, file, line}` triples so
       # `Builder` can map validator-driven errors back to the offending callsite.
@@ -74,6 +88,16 @@ defmodule ColouredFlow.DSL do
       Module.register_attribute(__MODULE__, :cf_functions_meta, accumulate: true)
       Module.register_attribute(__MODULE__, :cf_places_meta, accumulate: true)
       Module.register_attribute(__MODULE__, :cf_transitions_meta, accumulate: true)
+
+      # Per-transition action body AST collected by `transition do ... end` —
+      # each entry is `{transition_name, body_ast, free_vars}`.
+      Module.register_attribute(__MODULE__, :cf_transition_actions, accumulate: true)
+
+      # Enactment-level lifecycle hook bodies (`{kind, body_ast}`).
+      Module.register_attribute(__MODULE__, :cf_lifecycle_hooks, accumulate: true)
+
+      @cf_storage unquote(storage)
+      @cf_task_supervisor unquote(task_supervisor)
 
       @before_compile ColouredFlow.DSL.Builder
     end
