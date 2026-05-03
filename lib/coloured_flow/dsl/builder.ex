@@ -503,6 +503,12 @@ defmodule ColouredFlow.DSL.Builder do
 
   def __assert_storage__!(_module, storage) when is_atom(storage), do: :ok
 
+  def __assert_storage__!(module, other) do
+    raise ArgumentError, """
+    #{inspect(module)} expected `:storage` to be a module atom, got: #{inspect(other)}.
+    """
+  end
+
   @doc false
   # credo:disable-for-next-line JetCredo.Checks.ExplicitAnyType
   @spec __enactment_id__!(term()) :: binary()

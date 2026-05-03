@@ -65,11 +65,15 @@ A module that uses `ColouredFlow.DSL` exposes:
     MyWorkflow.insert_enactment!(flow, [%Marking{}]) :: term()
     MyWorkflow.start_enactment(eid, opts)   :: DynamicSupervisor.on_start_child()
 
-    # ColouredFlow.Runner.Enactment.Listener callbacks (auto-injected, default noop)
+    # ColouredFlow.Runner.Enactment.Listener callbacks
+    # `on_workitem_completed/4` is always emitted (it dispatches the per-transition
+    # `action do ... end` bodies). The `on_enactment_*` callbacks are emitted
+    # only when the matching DSL hook (`on_enactment_start`,
+    # `on_enactment_terminate`, `on_enactment_exception`) is declared.
     MyWorkflow.on_workitem_completed(ctx, wi, occurrence, extras) :: :ok
-    MyWorkflow.on_enactment_start(ctx, extras)             :: :ok
-    MyWorkflow.on_enactment_terminate(ctx, reason, extras) :: :ok
-    MyWorkflow.on_enactment_exception(ctx, reason, extras) :: :ok
+    MyWorkflow.on_enactment_start(ctx, extras)             :: :ok  # if declared
+    MyWorkflow.on_enactment_terminate(ctx, reason, extras) :: :ok  # if declared
+    MyWorkflow.on_enactment_exception(ctx, reason, extras) :: :ok  # if declared
 
 `cpnet/0` is the **main API**: it returns the static CPN — colour sets,
 variables, places, transitions, arcs, and termination criteria — that
@@ -142,11 +146,12 @@ runner never blocks on user side effects, and any exception raised by
 the listener is caught and discarded. Anything that needs to fail loudly
 should fail at definition time, not runtime.
 
-`on_enactment_start/1`, `on_enactment_terminate/{1,2}` and
-`on_enactment_exception/{1,2}` lifecycle macros (in
-`ColouredFlow.DSL.Lifecycle`) compile to the matching Listener
-callbacks (which all carry `extras` as their last positional argument
-and expose it as a magic binding inside the macro body). Each may appear
+DSL macros `on_enactment_start/1`, `on_enactment_terminate/{1,2}` and
+`on_enactment_exception/{1,2}` (in `ColouredFlow.DSL.Lifecycle`) compile
+to the matching Listener callbacks `on_enactment_start/2`,
+`on_enactment_terminate/3`, and `on_enactment_exception/3` — each
+callback ends with the `extras` positional argument, which is also
+exposed as a magic binding inside the macro body. Each macro may appear
 at most once per workflow; a duplicate declaration is a compile-time
 error.
 
