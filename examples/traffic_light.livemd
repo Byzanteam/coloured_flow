@@ -147,7 +147,8 @@ defmodule TrafficLight do
         {"#{color}_#{dir}", Kino.Frame.new(placeholder: false)}
       end
 
-    grid = Kino.Layout.grid([EW, NS] ++ Keyword.values(lights), columns: 2)
+    headers = [Kino.Text.new("EW"), Kino.Text.new("NS")]
+    grid = Kino.Layout.grid(headers ++ Keyword.values(lights), columns: 2)
 
     {grid, lights}
   end
@@ -210,12 +211,6 @@ Kino.inspect("Runner supervisor started: #{inspect(supervisor_pid)}")
 
 :ok
 ```
-
-## Action runner
-
-Every transition's `action do ... end` body runs inside a `Task` spawned under
-the workflow's `Task.Supervisor`. The supervisor below owns that single child;
-the runner keeps no separate per-direction process.
 
 ```elixir
 defmodule TrafficLight.Supervisor do

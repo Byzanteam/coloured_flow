@@ -292,7 +292,8 @@ defmodule TrafficLight do
         {"#{color}_#{dir}", Kino.Frame.new(placeholder: false)}
       end
 
-    grid = Kino.Layout.grid([EW, NS] ++ Keyword.values(lights), columns: 2)
+    headers = [Kino.Text.new("EW"), Kino.Text.new("NS")]
+    grid = Kino.Layout.grid(headers ++ Keyword.values(lights), columns: 2)
 
     {grid, lights}
   end
