@@ -42,6 +42,8 @@ defmodule ColouredFlow.Runner.Enactment do
 
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
+  alias ColouredFlow.Runner.Enactment.LifecycleHooks
+  alias ColouredFlow.Runner.Enactment.LifecycleHooks.Dispatcher
   alias ColouredFlow.Runner.Enactment.Lifespan
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
@@ -84,22 +86,37 @@ defmodule ColouredFlow.Runner.Enactment do
       doc:
         "The idle duration after which the GenServer hibernates; " <>
           "see `ColouredFlow.Runner.Enactment.Lifespan` for details."
+
+    field :lifecycle_hooks, LifecycleHooks.t(),
+      enforce: false,
+      default: nil,
+      doc:
+        "Optional `ColouredFlow.Runner.Enactment.LifecycleHooks` (normalised to " <>
+          "`{module, keyword}` or `nil`) receiving lifecycle callbacks for this " <>
+          "enactment instance."
   end
 
   @type option() ::
           {:enactment_id, enactment_id()}
           | {:timeout, timeout()}
           | {:hibernate_after, timeout()}
+          | {:lifecycle_hooks, LifecycleHooks.t()}
 
   @type options() :: [option()]
 
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(options) do
     enactment_id = Keyword.fetch!(options, :enactment_id)
-    # Forward `$callers` from the calling process so collaborating processes
-    # (e.g., Ecto.Adapters.SQL.Sandbox-aware tests) can be tracked. See
-    # `ExUnit.Callbacks.start_supervised/2` for the recommended pattern.
-    options = Keyword.put_new(options, :"$callers", Process.get(:"$callers", []))
+
+    # Validate `:lifecycle_hooks` *before* spawning so an `ArgumentError`
+    # surfaces in the caller process instead of as a GenServer init crash.
+    options =
+      options
+      |> Keyword.update(:lifecycle_hooks, nil, &LifecycleHooks.validate!/1)
+      # Forward `$callers` from the calling process so collaborating processes
+      # (e.g., Ecto.Adapters.SQL.Sandbox-aware tests) can be tracked. See
+      # `ExUnit.Callbacks.start_supervised/2` for the recommended pattern.
+      |> Keyword.put_new(:"$callers", Process.get(:"$callers", []))
 
     GenServer.start_link(
       __MODULE__,
@@ -130,6 +147,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
       {:error, reason} ->
         emit_event(:exception, state, %{exception_reason: reason})
+        Dispatcher.dispatch(:exception, state, %{exception_reason: reason})
         {:stop, {:shutdown, reason}, state}
     end
   end
@@ -163,6 +181,11 @@ defmodule ColouredFlow.Runner.Enactment do
     calibration = WorkitemCalibration.initial_calibrate(state, runtime_cpnet)
     state = apply_calibration(calibration)
 
+    # `:start` lives here, after initial calibration, so the handler's
+    # `ctx.markings` already reflects produced/withdrawn workitems and
+    # any catchup-applied occurrences from the snapshot.
+    Dispatcher.dispatch(:start, state, %{})
+
     # try to terminate at the start
     case check_termination(state, runtime_cpnet.definition) do
       {:stop, reason} -> {:stop, {:shutdown, reason}, state}
@@ -177,6 +200,8 @@ defmodule ColouredFlow.Runner.Enactment do
       when is_list(options) do
     calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
+
+    Dispatcher.dispatch_post_calibration(transition, state, options)
 
     if transition in [:complete, :complete_e] do
       # try to terminate when the transition is `:complete` or `:complete_e`.
@@ -219,6 +244,8 @@ defmodule ColouredFlow.Runner.Enactment do
           exception: exception
         })
 
+        Dispatcher.dispatch(:exception, state, %{exception_reason: :snapshot_corrupt})
+
         initial_snapshot(state)
     end
   end
@@ -234,30 +261,31 @@ defmodule ColouredFlow.Runner.Enactment do
   defp apply_calibration(%WorkitemCalibration{state: %__MODULE__{} = state} = calibration) do
     # We don't need to ensure `withdraw_workitems` and `produce_workitems` are atomic,
     # because the gen_server will restart if the process crashes.
-    with_span(
-      :withdraw_workitems,
-      state,
-      %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
-      fn ->
-        # the workitems from calibration.to_withdraw are not in `withdrawn` state
-        grouped_wokitems =
-          Enum.group_by(calibration.to_withdraw, & &1.state, fn %Workitem{} = workitem ->
-            %{workitem | state: :withdrawn}
+    {:ok, withdrawn_workitems} =
+      with_span(
+        :withdraw_workitems,
+        state,
+        %{workitem_ids: Enum.map(calibration.to_withdraw, & &1.id)},
+        fn ->
+          # the workitems from calibration.to_withdraw are not in `withdrawn` state
+          grouped_wokitems =
+            Enum.group_by(calibration.to_withdraw, & &1.state, fn %Workitem{} = workitem ->
+              %{workitem | state: :withdrawn}
+            end)
+
+          workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
+
+          Enum.each(grouped_wokitems, fn
+            {:enabled, workitems} ->
+              :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
+
+            {:started, workitems} ->
+              :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
           end)
 
-        workitems = Enum.flat_map(grouped_wokitems, &elem(&1, 1))
-
-        Enum.each(grouped_wokitems, fn
-          {:enabled, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw)
-
-          {:started, workitems} ->
-            :ok = Storage.withdraw_workitems(workitems, action: :withdraw_s)
-        end)
-
-        {:ok, workitems, %{workitems: workitems}}
-      end
-    )
+          {:ok, workitems, %{workitems: workitems}}
+        end
+      )
 
     {:ok, produced_workitems} =
       with_span(
@@ -271,7 +299,19 @@ defmodule ColouredFlow.Runner.Enactment do
         end
       )
 
-    %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
+    new_state = %__MODULE__{state | workitems: Map.merge(state.workitems, produced_workitems)}
+
+    # Defer handler dispatch to here so `ctx.markings` reflects the
+    # post-calibration state. Withdrawn workitems carry the consumed
+    # tokens via `binding_element.to_consume`, so the handler can still
+    # introspect what was discarded.
+    Dispatcher.dispatch(:withdraw_workitems, new_state, %{workitems: withdrawn_workitems})
+
+    Dispatcher.dispatch(:produce_workitems, new_state, %{
+      workitems: Map.values(produced_workitems)
+    })
+
+    new_state
   end
 
   # `:explicit` takes priority over `:implicit`
@@ -291,6 +331,7 @@ defmodule ColouredFlow.Runner.Enactment do
         :ok = Storage.terminate_enactment(state.enactment_id, type, markings, [])
 
         emit_event(:terminate, state, %{termination_type: type})
+        Dispatcher.dispatch(:terminate, state, %{termination_type: type})
 
         {:stop, "Terminated as #{type} criteria were met."}
 
@@ -305,6 +346,10 @@ defmodule ColouredFlow.Runner.Enactment do
         emit_event(:exception, state, %{
           exception_reason: :invalid_termination_criteria,
           exception: exception
+        })
+
+        Dispatcher.dispatch(:exception, state, %{
+          exception_reason: :invalid_termination_criteria
         })
 
         {:stop, "Terminated due to an exception in evaluating termination criteria."}
@@ -323,6 +368,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
     message = Keyword.get(options, :message)
     emit_event(:terminate, state, %{termination_type: :force, termination_message: message})
+    Dispatcher.dispatch(:terminate, state, %{termination_type: :force})
 
     {:stop, {:shutdown, "Terminated manually"}, :ok, state}
   end
@@ -610,6 +656,7 @@ defmodule ColouredFlow.Runner.Enactment do
   def terminate(reason, state) do
     exception = Exceptions.AbnormalExit.from_exit_reason(state.enactment_id, reason)
     :ok = Storage.exception_occurs(state.enactment_id, :abnormal_exit, exception)
+    Dispatcher.dispatch(:exception, state, %{exception_reason: :abnormal_exit})
     emit_event(:stop, state, %{reason: reason})
   end
 
@@ -662,11 +709,12 @@ defmodule ColouredFlow.Runner.Enactment do
 
   defp emit_event(event, %__MODULE__{} = state, metadata \\ %{}) when is_map(metadata) do
     base_metadata = %{enactment_id: state.enactment_id, enactment_state: state}
+    full_metadata = Enum.into(base_metadata, metadata)
 
     Telemetry.execute(
       [:coloured_flow, :runner, :enactment, event],
       %{},
-      Enum.into(base_metadata, metadata)
+      full_metadata
     )
   end
 end

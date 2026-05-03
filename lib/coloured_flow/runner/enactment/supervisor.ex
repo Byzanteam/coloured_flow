@@ -22,9 +22,25 @@ defmodule ColouredFlow.Runner.Enactment.Supervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  @spec start_enactment(enactment_id()) :: DynamicSupervisor.on_start_child()
-  def start_enactment(enactment_id) do
-    enactment_spec = {Enactment, enactment_id: enactment_id}
+  @type start_option() ::
+          {:lifecycle_hooks, ColouredFlow.Runner.Enactment.LifecycleHooks.t()}
+          | {:timeout, timeout()}
+          | {:hibernate_after, timeout()}
+
+  @doc """
+  Start an enactment process under the dynamic supervisor.
+
+  Accepts the same lifecycle options as
+  `ColouredFlow.Runner.Enactment.start_link/1`. Notably, `:lifecycle_hooks`
+  registers a per-instance `ColouredFlow.Runner.Enactment.LifecycleHooks` module.
+  The accepted shapes are `module()`, `{module(), keyword()}`, or `nil`; a bare
+  module is normalised to `{module, []}` by `Enactment.start_link/1`. When
+  omitted, no hooks are invoked and the enactment behaves exactly as before. A
+  malformed value raises `ArgumentError` from `Enactment.start_link/1`.
+  """
+  @spec start_enactment(enactment_id(), [start_option()]) :: DynamicSupervisor.on_start_child()
+  def start_enactment(enactment_id, options \\ []) when is_list(options) do
+    enactment_spec = {Enactment, Keyword.put(options, :enactment_id, enactment_id)}
 
     case DynamicSupervisor.start_child(__MODULE__, enactment_spec) do
       {:ok, _pid} = ok -> ok
