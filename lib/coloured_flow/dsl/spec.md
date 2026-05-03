@@ -227,12 +227,12 @@ declared `colset`.
 
 Declare an initial marking for a place. Multiple `initial_marking/2`
 calls accumulate in declaration order and are exposed via
-`initial_markings/0` on the host module. The cpnet definition itself is
-not affected.
+`__cpn__(:initial_markings)` on the host module. The cpnet definition
+itself is not affected.
 
     initial_marking :input, ~MS[1 2 3]
 
-### `function/2` and `function/3`
+### `function/1` and `function/2`
 
 Declare a user-defined function (CPN procedure) usable in arc, guard,
 action, and termination expressions. Arguments listed in the head must
