@@ -9,32 +9,32 @@ defmodule ColouredFlow.Runner.Enactment.LifecycleHooksDispatchTest do
     @behaviour LifecycleHooks
 
     def on_enactment_start(event, options) do
-      send_to_pid({:on_enactment_start, event, options})
+      if pid = options[:test_pid], do: send(pid, {:on_enactment_start, event, options})
+      :ok
     end
 
     def on_enactment_terminate(event, options) do
-      send_to_pid({:on_enactment_terminate, event, options})
+      if pid = options[:test_pid], do: send(pid, {:on_enactment_terminate, event, options})
+      :ok
     end
 
     def on_enactment_exception(event, options) do
-      send_to_pid({:on_enactment_exception, event, options})
+      if pid = options[:test_pid], do: send(pid, {:on_enactment_exception, event, options})
+      :ok
     end
 
     def on_workitem_enabled(event, options) do
-      send_to_pid({:on_workitem_enabled, event, options})
+      if pid = options[:test_pid], do: send(pid, {:on_workitem_enabled, event, options})
+      :ok
     end
 
     def on_workitem_started(event, options) do
-      send_to_pid({:on_workitem_started, event, options})
+      if pid = options[:test_pid], do: send(pid, {:on_workitem_started, event, options})
+      :ok
     end
 
     def on_workitem_completed(event, options) do
-      send_to_pid({:on_workitem_completed, event, options})
-    end
-
-    defp send_to_pid(msg) do
-      pid = :persistent_term.get({__MODULE__, :test_pid}, nil)
-      if pid, do: send(pid, msg)
+      if pid = options[:test_pid], do: send(pid, {:on_workitem_completed, event, options})
       :ok
     end
   end
@@ -60,23 +60,24 @@ defmodule ColouredFlow.Runner.Enactment.LifecycleHooksDispatchTest do
         ]
       }
 
-    :persistent_term.put({TestListener, :test_pid}, self())
-    on_exit(fn -> :persistent_term.erase({TestListener, :test_pid}) end)
-
     %{cpnet: cpnet}
   end
 
   describe "lifecycle dispatch (bare module hooks)" do
     setup :setup_flow
     setup :setup_enactment
-    setup context, do: start_enactment(context, lifecycle_hooks: TestListener)
+
+    setup context,
+      do: start_enactment(context, lifecycle_hooks: {TestListener, [test_pid: self()]})
 
     @tag initial_markings: []
-    test "fires every callback with options = []",
+    test "fires every callback with options carrying the test pid",
          %{enactment_server: enactment_server} do
-      assert_receive {:on_enactment_start, %{enactment_id: _}, []}, 500
+      assert_receive {:on_enactment_start, %{enactment_id: _}, options}, 500
+      assert Keyword.fetch!(options, :test_pid) == self()
 
-      assert_receive {:on_workitem_enabled, %{enactment_id: _, workitem: wi, binding: []}, []},
+      assert_receive {:on_workitem_enabled, %{enactment_id: _, workitem: wi, binding: []},
+                      _options},
                      500
 
       assert wi.state == :enabled
@@ -84,7 +85,9 @@ defmodule ColouredFlow.Runner.Enactment.LifecycleHooksDispatchTest do
       [^wi] = get_enactment_workitems(enactment_server)
       started = start_workitem(wi, enactment_server)
 
-      assert_receive {:on_workitem_started, %{workitem: %{state: :started, id: id}}, []}, 500
+      assert_receive {:on_workitem_started, %{workitem: %{state: :started, id: id}}, _options},
+                     500
+
       assert id == started.id
 
       {:ok, _workitems} =
@@ -94,7 +97,7 @@ defmodule ColouredFlow.Runner.Enactment.LifecycleHooksDispatchTest do
                       %{
                         workitem: %{state: :completed, id: ^id},
                         occurrence: %ColouredFlow.Enactment.Occurrence{}
-                      }, []},
+                      }, _options},
                      500
     end
   end
@@ -121,33 +124,43 @@ defmodule ColouredFlow.Runner.Enactment.LifecycleHooksDispatchTest do
   describe "lifecycle dispatch ({module, options} hooks)" do
     setup :setup_flow
     setup :setup_enactment
-    setup context, do: start_enactment(context, lifecycle_hooks: {TestListener, tenant: "acme"})
+
+    setup context,
+      do:
+        start_enactment(context,
+          lifecycle_hooks: {TestListener, [test_pid: self(), tenant: "acme"]}
+        )
 
     @tag initial_markings: []
     test "passes options through to every callback",
          %{enactment_server: enactment_server} do
-      assert_receive {:on_enactment_start, %{enactment_id: _}, [tenant: "acme"]}, 500
+      assert_receive {:on_enactment_start, %{enactment_id: _}, options}, 500
+      assert options[:tenant] == "acme"
+      assert options[:test_pid] == self()
 
-      assert_receive {:on_workitem_enabled, %{workitem: _wi}, [tenant: "acme"]}, 500
+      assert_receive {:on_workitem_enabled, %{workitem: _wi}, options}, 500
+      assert options[:tenant] == "acme"
 
       [wi] = get_enactment_workitems(enactment_server)
       started = start_workitem(wi, enactment_server)
 
-      assert_receive {:on_workitem_started, %{workitem: _wi}, [tenant: "acme"]}, 500
+      assert_receive {:on_workitem_started, %{workitem: _wi}, options}, 500
+      assert options[:tenant] == "acme"
 
       {:ok, _workitems} =
         GenServer.call(enactment_server, {:complete_workitems, %{started.id => []}})
 
-      assert_receive {:on_workitem_completed, %{workitem: _wi, occurrence: _occ},
-                      [tenant: "acme"]},
-                     500
+      assert_receive {:on_workitem_completed, %{workitem: _wi, occurrence: _occ}, options}, 500
+      assert options[:tenant] == "acme"
     end
   end
 
   describe "abnormal exit dispatches :on_enactment_exception" do
     setup :setup_flow
     setup :setup_enactment
-    setup context, do: start_enactment(context, lifecycle_hooks: TestListener)
+
+    setup context,
+      do: start_enactment(context, lifecycle_hooks: {TestListener, [test_pid: self()]})
 
     @tag initial_markings: []
     test "non-normal stop -> on_enactment_exception with reason :abnormal_exit",

@@ -5,14 +5,6 @@ defmodule ColouredFlow.DSL.LifecycleHooksE2ETest do
   alias ColouredFlow.Runner.Storage.Repo
   alias ColouredFlow.Runner.Storage.Schemas
 
-  setup do
-    :persistent_term.put({__MODULE__, :pid}, self())
-    on_exit(fn -> :persistent_term.erase({__MODULE__, :pid}) end)
-    :ok
-  end
-
-  defp test_pid, do: :persistent_term.get({__MODULE__, :pid}, nil)
-
   defmodule Workflow do
     use ColouredFlow.DSL
 
@@ -32,7 +24,11 @@ defmodule ColouredFlow.DSL.LifecycleHooksE2ETest do
       output :output, {1, x}
 
       action do
-        pid = :persistent_term.get({ColouredFlow.DSL.LifecycleHooksE2ETest, :pid}, nil)
+        # NOTE: bind in two steps. The action macro's free-var analysis treats
+        # an inline `if pid = options[...] do ... end` as a CPN var (`:pid`)
+        # and tries to fetch it from `event.binding`, which crashes the Task
+        # silently. A separate assignment statement avoids that.
+        pid = options[:test_pid]
 
         if pid do
           send(pid, {:action_fired, x, event.enactment_id, event.workitem.id, options})
@@ -41,13 +37,15 @@ defmodule ColouredFlow.DSL.LifecycleHooksE2ETest do
     end
 
     on_enactment_start do
-      pid = :persistent_term.get({ColouredFlow.DSL.LifecycleHooksE2ETest, :pid}, nil)
-      if pid, do: send(pid, {:enactment_start, event.enactment_id, options})
+      if pid = options[:test_pid] do
+        send(pid, {:enactment_start, event.enactment_id, options})
+      end
     end
 
     on_enactment_terminate do
-      pid = :persistent_term.get({ColouredFlow.DSL.LifecycleHooksE2ETest, :pid}, nil)
-      if pid, do: send(pid, {:enactment_terminate, event.enactment_id, event.reason, options})
+      if pid = options[:test_pid] do
+        send(pid, {:enactment_terminate, event.enactment_id, event.reason, options})
+      end
     end
   end
 
@@ -69,42 +67,20 @@ defmodule ColouredFlow.DSL.LifecycleHooksE2ETest do
   end
 
   describe "start_enactment/2" do
-    test "registers the workflow module as the lifecycle_hooks (default options = [])" do
-      assert is_pid(test_pid())
-      flow = insert_flow!()
-      {:ok, enactment} = Workflow.insert_enactment(flow.id)
-
-      pid =
-        start_supervised!(
-          {ColouredFlow.Runner.Enactment, enactment_id: enactment.id, lifecycle_hooks: Workflow},
-          id: enactment.id
-        )
-
-      assert_receive {:enactment_start, eid, []}, 500
-      assert eid == enactment.id
-
-      [wi] = get_enactment_workitems(pid)
-      started = start_workitem(wi, pid)
-
-      {:ok, _completed} =
-        GenServer.call(pid, {:complete_workitems, %{started.id => []}})
-
-      assert_receive {:action_fired, 1, ^eid, _wid, []}, 500
-    end
-
-    test "passes options through {module, options} tuple" do
-      assert is_pid(test_pid())
+    test "registers the workflow module as the lifecycle_hooks (options carry test_pid)" do
       flow = insert_flow!()
       {:ok, enactment} = Workflow.insert_enactment(flow.id)
 
       pid =
         start_supervised!(
           {ColouredFlow.Runner.Enactment,
-           enactment_id: enactment.id, lifecycle_hooks: {Workflow, tenant: "acme"}},
+           enactment_id: enactment.id, lifecycle_hooks: {Workflow, [test_pid: self()]}},
           id: enactment.id
         )
 
-      assert_receive {:enactment_start, _eid, [tenant: "acme"]}, 500
+      assert_receive {:enactment_start, eid, options}, 500
+      assert eid == enactment.id
+      assert options[:test_pid] == self()
 
       [wi] = get_enactment_workitems(pid)
       started = start_workitem(wi, pid)
@@ -112,7 +88,35 @@ defmodule ColouredFlow.DSL.LifecycleHooksE2ETest do
       {:ok, _completed} =
         GenServer.call(pid, {:complete_workitems, %{started.id => []}})
 
-      assert_receive {:action_fired, 1, _eid, _wid, [tenant: "acme"]}, 500
+      assert_receive {:action_fired, 1, ^eid, _wid, action_options}, 500
+      assert action_options[:test_pid] == self()
+    end
+
+    test "passes options through {module, options} tuple" do
+      flow = insert_flow!()
+      {:ok, enactment} = Workflow.insert_enactment(flow.id)
+
+      pid =
+        start_supervised!(
+          {ColouredFlow.Runner.Enactment,
+           enactment_id: enactment.id,
+           lifecycle_hooks: {Workflow, [test_pid: self(), tenant: "acme"]}},
+          id: enactment.id
+        )
+
+      assert_receive {:enactment_start, _eid, options}, 500
+      assert options[:tenant] == "acme"
+      assert options[:test_pid] == self()
+
+      [wi] = get_enactment_workitems(pid)
+      started = start_workitem(wi, pid)
+
+      {:ok, _completed} =
+        GenServer.call(pid, {:complete_workitems, %{started.id => []}})
+
+      assert_receive {:action_fired, 1, _eid, _wid, action_options}, 500
+      assert action_options[:tenant] == "acme"
+      assert action_options[:test_pid] == self()
     end
   end
 end

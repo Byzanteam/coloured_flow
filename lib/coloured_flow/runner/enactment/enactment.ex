@@ -43,6 +43,7 @@ defmodule ColouredFlow.Runner.Enactment do
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.EnactmentTermination
   alias ColouredFlow.Runner.Enactment.LifecycleHooks
+  alias ColouredFlow.Runner.Enactment.LifecycleHooks.Dispatcher
   alias ColouredFlow.Runner.Enactment.Lifespan
   alias ColouredFlow.Runner.Enactment.Registry
   alias ColouredFlow.Runner.Enactment.Snapshot
@@ -146,7 +147,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
       {:error, reason} ->
         emit_event(:exception, state, %{exception_reason: reason})
-        dispatch_lifecycle(:exception, state, %{exception_reason: reason})
+        Dispatcher.dispatch(:exception, state, %{exception_reason: reason})
         {:stop, {:shutdown, reason}, state}
     end
   end
@@ -183,7 +184,7 @@ defmodule ColouredFlow.Runner.Enactment do
     # `:start` lives here, after initial calibration, so the handler's
     # `ctx.markings` already reflects produced/withdrawn workitems and
     # any catchup-applied occurrences from the snapshot.
-    dispatch_lifecycle(:start, state, %{})
+    Dispatcher.dispatch(:start, state, %{})
 
     # try to terminate at the start
     case check_termination(state, runtime_cpnet.definition) do
@@ -200,7 +201,7 @@ defmodule ColouredFlow.Runner.Enactment do
     calibration = WorkitemCalibration.calibrate(state, transition, options)
     state = apply_calibration(calibration)
 
-    dispatch_post_calibration(transition, state, options)
+    Dispatcher.dispatch_post_calibration(transition, state, options)
 
     if transition in [:complete, :complete_e] do
       # try to terminate when the transition is `:complete` or `:complete_e`.
@@ -243,7 +244,7 @@ defmodule ColouredFlow.Runner.Enactment do
           exception: exception
         })
 
-        dispatch_lifecycle(:exception, state, %{exception_reason: :snapshot_corrupt})
+        Dispatcher.dispatch(:exception, state, %{exception_reason: :snapshot_corrupt})
 
         initial_snapshot(state)
     end
@@ -304,9 +305,11 @@ defmodule ColouredFlow.Runner.Enactment do
     # post-calibration state. Withdrawn workitems carry the consumed
     # tokens via `binding_element.to_consume`, so the handler can still
     # introspect what was discarded.
-    dispatch_lifecycle(:withdraw_workitems, new_state, %{workitems: withdrawn_workitems})
+    Dispatcher.dispatch(:withdraw_workitems, new_state, %{workitems: withdrawn_workitems})
 
-    dispatch_lifecycle(:produce_workitems, new_state, %{workitems: Map.values(produced_workitems)})
+    Dispatcher.dispatch(:produce_workitems, new_state, %{
+      workitems: Map.values(produced_workitems)
+    })
 
     new_state
   end
@@ -328,7 +331,7 @@ defmodule ColouredFlow.Runner.Enactment do
         :ok = Storage.terminate_enactment(state.enactment_id, type, markings, [])
 
         emit_event(:terminate, state, %{termination_type: type})
-        dispatch_lifecycle(:terminate, state, %{termination_type: type})
+        Dispatcher.dispatch(:terminate, state, %{termination_type: type})
 
         {:stop, "Terminated as #{type} criteria were met."}
 
@@ -345,7 +348,9 @@ defmodule ColouredFlow.Runner.Enactment do
           exception: exception
         })
 
-        dispatch_lifecycle(:exception, state, %{exception_reason: :invalid_termination_criteria})
+        Dispatcher.dispatch(:exception, state, %{
+          exception_reason: :invalid_termination_criteria
+        })
 
         {:stop, "Terminated due to an exception in evaluating termination criteria."}
     end
@@ -363,7 +368,7 @@ defmodule ColouredFlow.Runner.Enactment do
 
     message = Keyword.get(options, :message)
     emit_event(:terminate, state, %{termination_type: :force, termination_message: message})
-    dispatch_lifecycle(:terminate, state, %{termination_type: :force})
+    Dispatcher.dispatch(:terminate, state, %{termination_type: :force})
 
     {:stop, {:shutdown, "Terminated manually"}, :ok, state}
   end
@@ -651,7 +656,7 @@ defmodule ColouredFlow.Runner.Enactment do
   def terminate(reason, state) do
     exception = Exceptions.AbnormalExit.from_exit_reason(state.enactment_id, reason)
     :ok = Storage.exception_occurs(state.enactment_id, :abnormal_exit, exception)
-    dispatch_lifecycle(:exception, state, %{exception_reason: :abnormal_exit})
+    Dispatcher.dispatch(:exception, state, %{exception_reason: :abnormal_exit})
     emit_event(:stop, state, %{reason: reason})
   end
 
@@ -711,135 +716,5 @@ defmodule ColouredFlow.Runner.Enactment do
       %{},
       full_metadata
     )
-  end
-
-  # Run after `apply_calibration/1` so handlers see the post-firing markings.
-  # `:start` and `:complete*` dispatches happen here because they are the
-  # transitions that mutate `state.markings`.
-  @spec dispatch_post_calibration(atom(), state(), keyword()) :: :ok
-  defp dispatch_post_calibration(:start, %__MODULE__{} = state, options) do
-    workitems = Keyword.get(options, :workitems, [])
-    dispatch_lifecycle(:start_workitems, state, %{workitems: workitems})
-  end
-
-  defp dispatch_post_calibration(transition, %__MODULE__{} = state, options)
-       when transition in [:complete, :complete_e] do
-    workitem_occurrences = Keyword.get(options, :workitem_occurrences, [])
-    dispatch_lifecycle(:complete_workitems, state, %{workitem_occurrences: workitem_occurrences})
-  end
-
-  defp dispatch_post_calibration(_other, _state, _options), do: :ok
-
-  # Map the runner's internal events to the per-enactment LifecycleHooks
-  # callbacks. Telemetry keeps emitting in addition.
-  @spec dispatch_lifecycle(atom(), state(), map()) :: :ok
-  defp dispatch_lifecycle(_event, %__MODULE__{lifecycle_hooks: nil}, _metadata), do: :ok
-
-  defp dispatch_lifecycle(:start, %__MODULE__{lifecycle_hooks: hooks} = state, _meta) do
-    event = %{enactment_id: state.enactment_id, markings: markings_snapshot(state)}
-    LifecycleHooks.safe_invoke(hooks, :on_enactment_start, [event])
-  end
-
-  defp dispatch_lifecycle(:terminate, %__MODULE__{lifecycle_hooks: hooks} = state, %{
-         termination_type: type
-       }) do
-    event = %{
-      enactment_id: state.enactment_id,
-      markings: markings_snapshot(state),
-      reason: type
-    }
-
-    LifecycleHooks.safe_invoke(hooks, :on_enactment_terminate, [event])
-  end
-
-  defp dispatch_lifecycle(:exception, %__MODULE__{lifecycle_hooks: hooks} = state, %{
-         exception_reason: reason
-       }) do
-    event = %{
-      enactment_id: state.enactment_id,
-      markings: markings_snapshot(state),
-      reason: reason
-    }
-
-    LifecycleHooks.safe_invoke(hooks, :on_enactment_exception, [event])
-  end
-
-  defp dispatch_lifecycle(:produce_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
-         workitems: workitems
-       })
-       when is_list(workitems) do
-    markings = markings_snapshot(state)
-
-    Enum.each(workitems, fn workitem ->
-      event = %{
-        enactment_id: state.enactment_id,
-        markings: markings,
-        workitem: workitem,
-        binding: workitem.binding_element.binding
-      }
-
-      LifecycleHooks.safe_invoke(hooks, :on_workitem_enabled, [event])
-    end)
-  end
-
-  defp dispatch_lifecycle(:start_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
-         workitems: workitems
-       })
-       when is_list(workitems) do
-    markings = markings_snapshot(state)
-
-    Enum.each(workitems, fn workitem ->
-      event = %{
-        enactment_id: state.enactment_id,
-        markings: markings,
-        workitem: workitem,
-        binding: workitem.binding_element.binding
-      }
-
-      LifecycleHooks.safe_invoke(hooks, :on_workitem_started, [event])
-    end)
-  end
-
-  defp dispatch_lifecycle(:complete_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
-         workitem_occurrences: workitem_occurrences
-       })
-       when is_list(workitem_occurrences) do
-    markings = markings_snapshot(state)
-
-    Enum.each(workitem_occurrences, fn {workitem, occurrence} ->
-      event = %{
-        enactment_id: state.enactment_id,
-        markings: markings,
-        workitem: workitem,
-        occurrence: occurrence,
-        binding: workitem.binding_element.binding
-      }
-
-      LifecycleHooks.safe_invoke(hooks, :on_workitem_completed, [event])
-    end)
-  end
-
-  defp dispatch_lifecycle(:withdraw_workitems, %__MODULE__{lifecycle_hooks: hooks} = state, %{
-         workitems: workitems
-       })
-       when is_list(workitems) do
-    markings = markings_snapshot(state)
-
-    Enum.each(workitems, fn workitem ->
-      event = %{
-        enactment_id: state.enactment_id,
-        markings: markings,
-        workitem: workitem,
-        binding: workitem.binding_element.binding
-      }
-
-      LifecycleHooks.safe_invoke(hooks, :on_workitem_withdrawn, [event])
-    end)
-  end
-
-  defp dispatch_lifecycle(_event, _state, _metadata), do: :ok
-
-  defp markings_snapshot(%__MODULE__{markings: markings}) do
-    Map.new(markings, fn {place, %Marking{tokens: tokens}} -> {place, tokens} end)
   end
 end
