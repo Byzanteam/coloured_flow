@@ -43,6 +43,17 @@ defmodule ColouredFlow.DSL.Storage do
     |> Repo.insert!([])
   end
 
+  def setup_flow!(other, _name, _cpnet) when is_atom(other) do
+    raise ArgumentError, """
+    ColouredFlow.DSL.Storage does not know how to insert flows under #{inspect(other)}.
+
+    Supported storage modules: #{inspect([InMemory, ColouredFlow.Runner.Storage.Default])}.
+
+    Use one of those (via `use ColouredFlow.DSL, storage: ...`) or implement
+    insertion at the application layer instead of relying on the DSL helper.
+    """
+  end
+
   @doc """
   Insert an enactment for the given flow + initial markings using the configured
   storage. Returns the storage's enactment handle.
@@ -62,5 +73,13 @@ defmodule ColouredFlow.DSL.Storage do
       })
 
     enactment
+  end
+
+  def insert_enactment!(other, _flow, _markings) when is_atom(other) do
+    raise ArgumentError, """
+    ColouredFlow.DSL.Storage does not know how to insert enactments under #{inspect(other)}.
+
+    Supported storage modules: #{inspect([InMemory, ColouredFlow.Runner.Storage.Default])}.
+    """
   end
 end

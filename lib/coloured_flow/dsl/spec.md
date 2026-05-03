@@ -119,32 +119,36 @@ use ColouredFlow.DSL,
   task_supervisor: MyApp.WorkflowTaskSup
 ```
 
-## Action handler dispatch
+## Listener dispatch
 
 `ColouredFlow.Runner.Enactment.Listener` is the structured per-instance
 counterpart to `:telemetry`. The runner still emits all telemetry
-events; the handler is invoked on top of that — and is the natural
+events; the listener is invoked on top of that — and is the natural
 home for *workflow-specific* side effects (PubSub broadcasts, state
 machines driving downstream services, etc.). Each `action do ... end`
-inside a `transition` block compiles to a `__action_for__/4` clause
-that the auto-generated `on_workitem_completed/3` callback dispatches
+inside a `transition` block compiles to a `__action_for__/5` clause
+that the auto-generated `on_workitem_completed/4` callback dispatches
 on the transition name. Inside the body, the following bindings are
 available:
 
   - the transition's bound CPN variables (e.g. `s`, `x`)
   - `ctx` — `%{enactment_id: binary(), markings: %{place => MultiSet.t()}}`
   - `workitem` — the just-completed `%ColouredFlow.Runner.Enactment.Workitem{}`
+  - `extras` — the second element of the `{module, extras}` listener tuple
+    (or `nil` when the listener is a bare module)
 
 Bodies are executed inside the configured `Task.Supervisor` so the
 runner never blocks on user side effects, and any exception raised by
-the handler is caught and discarded. Anything that needs to fail loudly
+the listener is caught and discarded. Anything that needs to fail loudly
 should fail at definition time, not runtime.
 
-`on_enactment_start/1`, `on_enactment_terminate/1` and
-`on_enactment_exception/1` lifecycle macros (in
+`on_enactment_start/1`, `on_enactment_terminate/{1,2}` and
+`on_enactment_exception/{1,2}` lifecycle macros (in
 `ColouredFlow.DSL.Lifecycle`) compile to the matching Listener
-callbacks. Each may appear at most once per workflow; a duplicate
-declaration is a compile-time error.
+callbacks (which all carry `extras` as their last positional argument
+and expose it as a magic binding inside the macro body). Each may appear
+at most once per workflow; a duplicate declaration is a compile-time
+error.
 
 ## Universal expression rule
 
