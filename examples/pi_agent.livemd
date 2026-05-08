@@ -332,6 +332,9 @@ defmodule PiAgent.A do
     input :ready, bind({1, s})
     input :dialog, bind({1, d})
 
+    # Echo the dialog back so the final conversation stays visible
+    # in the UI after :explicit termination fires on `:answer`.
+    output :dialog, {1, d}
     output :answer, {1, ans}
   end
 
@@ -511,6 +514,9 @@ defmodule PiAgent.B do
     input :ready, bind({1, s})
     input :dialog, bind({1, d})
 
+    # Echo the dialog back so the final conversation stays visible
+    # in the UI after :explicit termination fires on `:answer`.
+    output :dialog, {1, d}
     output :answer, {1, ans}
   end
 
@@ -805,6 +811,9 @@ defmodule PiAgent.C do
     input :ready, bind({1, s})
     input :dialog, bind({1, d})
 
+    # Echo the dialog back so the final conversation stays visible
+    # in the UI after :explicit termination fires on `:answer`.
+    output :dialog, {1, d}
     output :answer, {1, ans}
   end
 
