@@ -1,6 +1,9 @@
 defmodule ColouredFlow.Definition.PresentationTest do
   use ExUnit.Case, async: true
 
+  alias ColouredFlow.Definition.ColourSet
+  alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Presentation
 
   import ColouredFlow.CpnetBuilder
@@ -79,6 +82,33 @@ defmodule ColouredFlow.Definition.PresentationTest do
           send_packet --{1, {n, d}}--> packets_to_send
         """
       )
+    end
+
+    test "collapses multi-line composite types into single-line %% comments" do
+      # `Macro.to_string` returns multi-line output for map descrs. Mermaid's
+      # `%%` only comments a single line, so without collapsing, the parser
+      # bails with "Expecting NEWLINE/EOF, got NODE_STRING" on the trailing
+      # lines that escape the comment.
+      cpnet = %ColouredPetriNet{
+        colour_sets: [
+          %ColourSet{
+            name: :user,
+            type: {:map, %{name: {:binary, []}, age: {:integer, []}}}
+          }
+        ],
+        places: [%Place{name: "p", colour_set: :user}],
+        transitions: [],
+        arcs: [],
+        variables: [],
+        constants: [],
+        functions: []
+      }
+
+      mermaid = Presentation.to_mermaid(cpnet)
+      [colset_line] = Regex.run(~r/%% colset .+/, mermaid)
+
+      assert colset_line =~ "%% colset user() ::"
+      refute String.contains?(colset_line, "\n")
     end
   end
 
