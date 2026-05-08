@@ -84,16 +84,30 @@ defmodule ColouredFlow.Definition.PresentationTest do
       )
     end
 
-    test "collapses multi-line composite types into single-line %% comments" do
-      # `Macro.to_string` returns multi-line output for map descrs. Mermaid's
-      # `%%` only comments a single line, so without collapsing, the parser
-      # bails with "Expecting NEWLINE/EOF, got NODE_STRING" on the trailing
-      # lines that escape the comment.
+    test "prefixes every continuation line of multi-line composite descrs with %%" do
+      # `Macro.to_string` returns multi-line output for composite descrs.
+      # Mermaid's `%%` only comments a single line, so every continuation
+      # line must also start with `%%`; otherwise the parser bails with
+      # "Expecting NEWLINE/EOF, got NODE_STRING" on the lines that escape
+      # the comment block.
+      # Eight keys is enough for `Macro.to_string` to break the map across
+      # lines (heuristic kicks in past a width threshold).
       cpnet = %ColouredPetriNet{
         colour_sets: [
           %ColourSet{
             name: :user,
-            type: {:map, %{name: {:binary, []}, age: {:integer, []}}}
+            type:
+              {:map,
+               %{
+                 name: {:binary, []},
+                 age: {:integer, []},
+                 email: {:binary, []},
+                 active: {:boolean, []},
+                 role: {:binary, []},
+                 dept: {:binary, []},
+                 score: {:integer, []},
+                 country: {:binary, []}
+               }}
           }
         ],
         places: [%Place{name: "p", colour_set: :user}],
@@ -105,10 +119,15 @@ defmodule ColouredFlow.Definition.PresentationTest do
       }
 
       mermaid = Presentation.to_mermaid(cpnet)
-      [colset_line] = Regex.run(~r/%% colset .+/, mermaid)
 
-      assert colset_line =~ "%% colset user() ::"
-      refute String.contains?(colset_line, "\n")
+      colset_block =
+        mermaid
+        |> String.split("\n")
+        |> Enum.drop_while(&(not String.contains?(&1, "colset user")))
+        |> Enum.take_while(&(&1 |> String.trim() |> String.starts_with?("%%")))
+
+      assert length(colset_block) > 1, "expected multi-line colset output"
+      assert Enum.all?(colset_block, &(&1 |> String.trim() |> String.starts_with?("%%")))
     end
   end
 

@@ -51,13 +51,13 @@ defmodule ColouredFlow.Definition.Presentation do
 
     # `Macro.to_string` may return multi-line output for composite descrs
     # (maps, nested tuples). Mermaid's `%%` only comments a single line, so
-    # trailing lines escape the comment and break the parser. Collapse
-    # whitespace runs to a single space so the colset descr fits on one line.
+    # trailing lines would escape the comment and break the parser. Prefix
+    # every continuation line with `%%` so the whole descr stays commented.
     rendered =
       type
       |> Descr.to_quoted()
       |> Macro.to_string()
-      |> String.replace(~r/\s+/u, " ")
+      |> String.replace("\n", "\n  %% ")
 
     "%% colset #{compose_call(name)} :: #{rendered}"
   end
