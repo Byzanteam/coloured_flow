@@ -5,7 +5,7 @@
 ```elixir
 Mix.install(
   [
-    {:coloured_flow, path: "/Users/fahchen/Projects/coloured_flow"},
+    {:coloured_flow, github: "Byzanteam/coloured_flow"},
     {:kino, "~> 0.14.1"}
   ],
   config: [
