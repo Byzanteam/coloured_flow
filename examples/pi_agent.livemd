@@ -681,13 +681,16 @@ Kino.listen(deny_btn, fn _ -> PiAgent.B.deny(enactment_b) end)
     lifecycle_hooks: {PiAgent.B, [dialog_frame: dialog_b, events_frame: events_b]}
   )
 
-Kino.Layout.grid(
-  [
-    Kino.Layout.grid([dialog_b, events_b], columns: 2),
-    Kino.Layout.grid([approve_btn, deny_btn], columns: 2)
-  ],
-  boxed: true
-)
+left_b =
+  Kino.Layout.grid(
+    [
+      dialog_b,
+      Kino.Layout.grid([approve_btn, deny_btn], columns: 2)
+    ],
+    columns: 1
+  )
+
+Kino.Layout.grid([left_b, events_b], columns: 2, boxed: true)
 ```
 
 The agent will run `:ls` and `:read` automatically (both safe), then stop
@@ -1050,15 +1053,18 @@ Kino.listen(reject_plan_btn, fn _ -> PiAgent.C.reject(enactment_c) end)
     lifecycle_hooks: {PiAgent.C, [dialog_frame: dialog_c, events_frame: events_c]}
   )
 
-Kino.Layout.grid(
-  [
-    Kino.Layout.grid([dialog_c, events_c], columns: 2),
-    Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2),
-    manual_input,
-    steer_input
-  ],
-  boxed: true
-)
+left_c =
+  Kino.Layout.grid(
+    [
+      dialog_c,
+      Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2),
+      manual_input,
+      steer_input
+    ],
+    columns: 1
+  )
+
+Kino.Layout.grid([left_c, events_c], columns: 2, boxed: true)
 ```
 
 ### How to test the section
