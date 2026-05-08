@@ -22,12 +22,12 @@ Mix.install(
 calls tools (`read`, `grep`, `bash`, …), and keeps a session tree you can
 branch from. The execution loop has well-known shapes:
 
-- **think → tool → observe → repeat** — the ReAct cycle.
-- **safe vs. risky tool calls** — `read` runs unattended; `bash` waits on a
+* **think → tool → observe → repeat** — the ReAct cycle.
+* **safe vs. risky tool calls** — `read` runs unattended; `bash` waits on a
   human approval.
-- **multi-provider race** — the same prompt fans out to several vendors;
+* **multi-provider race** — the same prompt fans out to several vendors;
   fastest answer wins.
-- **steering** — the user injects a follow-up while the agent is mid-flight.
+* **steering** — the user injects a follow-up while the agent is mid-flight.
 
 Coloured Petri Nets express *exactly* these shapes natively: places hold
 state, transitions consume/produce tokens with guards, workitems sit in
@@ -37,11 +37,11 @@ last token state instead of re-running tool calls.
 
 We'll model Pi's loop in three passes:
 
-| | Adds | CPN feature |
-|---|---|---|
-| **A** | minimal ReAct cycle | deferred choice, free output bindings, self-driving via `action` |
-| **B** | risky-tool human gate | union colour set, workitem held in `:enabled` until human fires |
-| **C** | provider race + steering injection | concurrent enabled workitems, external-fed input place |
+|       | Adds                               | CPN feature                                                      |
+| ----- | ---------------------------------- | ---------------------------------------------------------------- |
+| **A** | minimal ReAct cycle                | deferred choice, free output bindings, self-driving via `action` |
+| **B** | risky-tool human gate              | union colour set, workitem held in `:enabled` until human fires  |
+| **C** | provider race + steering injection | concurrent enabled workitems, external-fed input place           |
 
 ## Mock LLM, mock tools, dialog renderer
 
@@ -50,7 +50,7 @@ workflow modules below. The mock LLM is a deterministic function of dialog
 length so the demo is reproducible. The dialog renderer is a pure markdown
 function passed into each enactment via `lifecycle_hooks` options.
 
-```elixir
+````elixir
 defmodule PiAgent.MockLLM do
   @moduledoc false
 
@@ -68,9 +68,9 @@ defmodule PiAgent.MockLLM do
   end
 
   # Provider-specific latency. Used by Section C to demo races.
-  def latency_ms(:anthropic), do: 80
-  def latency_ms(:openai), do: 130
-  def latency_ms(:google), do: 200
+  def latency_ms(:anthropic), do: 600
+  def latency_ms(:openai), do: 900
+  def latency_ms(:google), do: 1200
 end
 
 defmodule PiAgent.MockTool do
@@ -113,10 +113,17 @@ defmodule PiAgent.UI do
   defp state_label(markings) do
     cond do
       Map.has_key?(markings, "answer") -> "✅ done"
-      has_token?(markings, "pending_call_risky") -> "⏸ waiting for human approval"
+      risky_pending?(markings) -> "⏸ waiting for human approval"
       has_token?(markings, "pending_call") -> "⚙ tool running"
       has_token?(markings, "steering_queue") -> "📣 steering pending"
       true -> "💭 thinking"
+    end
+  end
+
+  defp risky_pending?(markings) do
+    case Map.get(markings, "pending_call") do
+      nil -> false
+      ms -> ms |> MultiSet.to_list() |> Enum.any?(&match?({:risky, _}, &1))
     end
   end
 
@@ -131,7 +138,7 @@ defmodule PiAgent.UI do
   defp format_msg({:assistant, c}), do: "**assistant** › #{c}"
   defp format_msg({:tool, c}), do: "```\n#{c}\n```"
 end
-```
+````
 
 ## Shared runtime: storage + supervisor
 
@@ -187,7 +194,6 @@ to one or the other.
 defmodule PiAgent.A do
   use ColouredFlow.DSL, task_supervisor: PiAgent.TaskSup
 
-  alias ColouredFlow.MultiSet
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
   alias ColouredFlow.Runner.Storage
 
@@ -228,6 +234,7 @@ defmodule PiAgent.A do
 
     action do
       tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
+      PiAgent.UI.render(options[:frame], event.markings)
       PiAgent.A.run_tool(event.enactment_id, tc)
     end
   end
@@ -278,9 +285,12 @@ defmodule PiAgent.A do
   end
 
   ## Driver — turns mock-LLM/mock-tool decisions into workitem firings.
+  # Sleeps simulate LLM/tool latency so the dialog frame visibly steps
+  # through each phase. Drop them in production.
 
   def think(enactment_id, markings) do
     dialog = PiAgent.UI.read_dialog(markings)
+    Process.sleep(700)
 
     case PiAgent.MockLLM.next_step(dialog) do
       {:tool, tc} -> drive(enactment_id, "think_tool", tc: tc)
@@ -289,11 +299,14 @@ defmodule PiAgent.A do
   end
 
   def run_tool(enactment_id, tc) do
-    Process.sleep(100)
+    Process.sleep(900)
     drive(enactment_id, "run_tool", tr: PiAgent.MockTool.run(tc))
   end
 
-  def merge(enactment_id), do: drive(enactment_id, "merge_result", [])
+  def merge(enactment_id) do
+    Process.sleep(400)
+    drive(enactment_id, "merge_result", [])
+  end
 
   def to_mermaid do
     cpnet()
@@ -317,7 +330,7 @@ defmodule PiAgent.A do
   end
 end
 
-PiAgent.A.to_mermaid()
+PiAgent.A.cpnet().__struct__
 ```
 
 ```elixir
@@ -345,8 +358,8 @@ Same loop — but the model now sometimes asks for a `:bash` call. We do
 `:think_tool` output flows into a **union-typed** `:pending_call` place,
 tagged `{:safe, op}` or `{:risky, op}`. Two consumers compete for it:
 
-- `:run_safe` matches `{:safe, op}` — driver auto-fires it.
-- `:run_risky` matches `{:risky, op}` — workitem stays in `:enabled` until
+* `:run_safe` matches `{:safe, op}` — driver auto-fires it.
+* `:run_risky` matches `{:risky, op}` — workitem stays in `:enabled` until
   a human clicks an approve button. The runner is happy to wait days.
 
 The crucial CPN trick is that **pattern-matching on a token's shape is
@@ -357,7 +370,6 @@ itself is the discriminator.
 defmodule PiAgent.B do
   use ColouredFlow.DSL, task_supervisor: PiAgent.TaskSup
 
-  alias ColouredFlow.MultiSet
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
   alias ColouredFlow.Runner.Storage
 
@@ -400,6 +412,7 @@ defmodule PiAgent.B do
 
     action do
       tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
+      PiAgent.UI.render(options[:frame], event.markings)
       PiAgent.B.dispatch_call(event.enactment_id, tc)
     end
   end
@@ -463,6 +476,7 @@ defmodule PiAgent.B do
 
   def think(enactment_id, markings) do
     dialog = PiAgent.UI.read_dialog(markings)
+    Process.sleep(700)
 
     case PiAgent.MockLLM.next_step(dialog) do
       {:tool, op} ->
@@ -477,7 +491,7 @@ defmodule PiAgent.B do
   # After :think_tool fires, route based on the tag — auto-run safe,
   # leave risky workitem dangling for human approval.
   def dispatch_call(enactment_id, {:safe, op}) do
-    Process.sleep(100)
+    Process.sleep(900)
     drive(enactment_id, "run_safe", tr: PiAgent.MockTool.run(op))
   end
 
@@ -489,7 +503,7 @@ defmodule PiAgent.B do
         :no_pending
 
       %{id: wid, binding_element: %{binding: binding}} ->
-        {:risky, op} = Keyword.fetch!(binding, :tc)
+        op = Keyword.fetch!(binding, :op)
         Process.sleep(100)
         {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
 
@@ -503,18 +517,30 @@ defmodule PiAgent.B do
     end
   end
 
+  # Compensation pattern: fire :run_risky with a synthetic "denied" result
+  # so the agent's loop continues with the rejection in the dialog.
   def deny(enactment_id) do
     case find_risky(enactment_id) do
       nil ->
         :no_pending
 
       %{id: wid} ->
-        {:ok, _} = WorkitemTransition.withdraw_workitem(enactment_id, wid)
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+
+        {:ok, _} =
+          WorkitemTransition.complete_workitem(
+            enactment_id,
+            {wid, [tr: "[denied by user]"]}
+          )
+
         :denied
     end
   end
 
-  def merge(enactment_id), do: drive(enactment_id, "merge_result", [])
+  def merge(enactment_id) do
+    Process.sleep(400)
+    drive(enactment_id, "merge_result", [])
+  end
 
   def to_mermaid do
     cpnet()
@@ -544,7 +570,7 @@ defmodule PiAgent.B do
   end
 end
 
-PiAgent.B.to_mermaid()
+PiAgent.B.cpnet().__struct__
 ```
 
 ```elixir
@@ -600,7 +626,6 @@ binding.
 defmodule PiAgent.C do
   use ColouredFlow.DSL, task_supervisor: PiAgent.TaskSup
 
-  alias ColouredFlow.MultiSet
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
   alias ColouredFlow.Runner.Storage
 
@@ -648,6 +673,7 @@ defmodule PiAgent.C do
 
     action do
       tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
+      PiAgent.UI.render(options[:frame], event.markings)
       PiAgent.C.dispatch_call(event.enactment_id, tc)
     end
   end
@@ -758,7 +784,7 @@ defmodule PiAgent.C do
   end
 
   def dispatch_call(enactment_id, {:safe, op}) do
-    Process.sleep(100)
+    Process.sleep(900)
     drive(enactment_id, "run_safe", tr: PiAgent.MockTool.run(op))
   end
 
@@ -770,8 +796,8 @@ defmodule PiAgent.C do
         :no_pending
 
       %{id: wid, binding_element: %{binding: binding}} ->
-        {:risky, op} = Keyword.fetch!(binding, :tc)
-        Process.sleep(100)
+        op = Keyword.fetch!(binding, :op)
+        Process.sleep(900)
         {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
 
         {:ok, _} =
@@ -788,7 +814,10 @@ defmodule PiAgent.C do
     drive(enactment_id, "append_steering", m: {:user, content})
   end
 
-  def merge(enactment_id), do: drive(enactment_id, "merge_result", [])
+  def merge(enactment_id) do
+    Process.sleep(400)
+    drive(enactment_id, "merge_result", [])
+  end
 
   def to_mermaid do
     cpnet()
@@ -827,7 +856,7 @@ defmodule PiAgent.C do
   end
 end
 
-PiAgent.C.to_mermaid()
+PiAgent.C.cpnet().__struct__
 ```
 
 ```elixir
@@ -857,16 +886,16 @@ Kino.Layout.grid([frame_c, steer_input, approve_btn_c], boxed: true)
 
 The same module is also:
 
-- **Crash-safe.** Kill the runner mid-`bash` and restart — the runner
+* **Crash-safe.** Kill the runner mid-`bash` and restart — the runner
   replays `Occurrence`s from the latest snapshot, the workitem state
   comes back exactly where it was, no duplicate tool calls.
-- **Time-travelable.** Every firing is a stored event; an audit UI gets
+* **Time-travelable.** Every firing is a stored event; an audit UI gets
   the agent's full reasoning trace for free.
-- **Branchable.** Insert a fresh enactment from a snapshot of an existing
+* **Branchable.** Insert a fresh enactment from a snapshot of an existing
   one and you have a session fork — the same primitive Pi exposes via
   `/fork` and `/clone`, but earned automatically by the event-source
   runner.
-- **Provider-agnostic.** The CPN cares about token shapes, not vendors.
+* **Provider-agnostic.** The CPN cares about token shapes, not vendors.
   Add a new provider in Section C by adding one line to
   `race_providers/2`; the structure of the net does not change.
 
