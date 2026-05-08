@@ -1,0 +1,876 @@
+<!-- livebook:{"app_settings":{"access_type":"public","output_type":"rich","show_source":true,"slug":"pi-agent"}} -->
+
+# Pi Agent — Coding Agent as a Coloured Petri Net
+
+```elixir
+Mix.install(
+  [
+    {:coloured_flow, github: "Byzanteam/coloured_flow"},
+    {:kino, "~> 0.14.1"}
+  ],
+  config: [
+    coloured_flow: [
+      {ColouredFlow.Runner.Storage, [storage: ColouredFlow.Runner.Storage.InMemory]}
+    ]
+  ]
+)
+```
+
+## What we're building
+
+[pi.dev](https://pi.dev) ships a terminal coding agent — a model that reasons,
+calls tools (`read`, `grep`, `bash`, …), and keeps a session tree you can
+branch from. The execution loop has well-known shapes:
+
+- **think → tool → observe → repeat** — the ReAct cycle.
+- **safe vs. risky tool calls** — `read` runs unattended; `bash` waits on a
+  human approval.
+- **multi-provider race** — the same prompt fans out to several vendors;
+  fastest answer wins.
+- **steering** — the user injects a follow-up while the agent is mid-flight.
+
+Coloured Petri Nets express *exactly* these shapes natively: places hold
+state, transitions consume/produce tokens with guards, workitems sit in
+`:enabled` until a driver (a model, a human, a scheduler) starts them. The
+runner snapshots after every firing, so a crashed agent resumes from the
+last token state instead of re-running tool calls.
+
+We'll model Pi's loop in three passes:
+
+| | Adds | CPN feature |
+|---|---|---|
+| **A** | minimal ReAct cycle | deferred choice, free output bindings, self-driving via `action` |
+| **B** | risky-tool human gate | union colour set, workitem held in `:enabled` until human fires |
+| **C** | provider race + steering injection | concurrent enabled workitems, external-fed input place |
+
+## Mock LLM, mock tools, dialog renderer
+
+These are the only impure pieces — everything CPN-shaped lives in the
+workflow modules below. The mock LLM is a deterministic function of dialog
+length so the demo is reproducible. The dialog renderer is a pure markdown
+function passed into each enactment via `lifecycle_hooks` options.
+
+```elixir
+defmodule PiAgent.MockLLM do
+  @moduledoc false
+
+  # next_step/2: deterministic policy keyed off how many tool turns have run.
+  # Returns {:tool, {tool_name, args}} | {:answer, binary}.
+  def next_step(dialog, vendor \\ :anthropic) do
+    tools = Enum.count(dialog, fn {role, _} -> role == :tool end)
+
+    case {vendor, tools} do
+      {_, 0} -> {:tool, {:ls, "lib/"}}
+      {_, 1} -> {:tool, {:read, "lib/coloured_flow.ex"}}
+      {_, 2} -> {:tool, {:bash, "mix compile"}}
+      {v, _} -> {:answer, "[#{v}] lib/ has the ColouredFlow umbrella; compiles clean."}
+    end
+  end
+
+  # Provider-specific latency. Used by Section C to demo races.
+  def latency_ms(:anthropic), do: 80
+  def latency_ms(:openai), do: 130
+  def latency_ms(:google), do: 200
+end
+
+defmodule PiAgent.MockTool do
+  @moduledoc false
+
+  def run({:ls, args}), do: "ls(#{args}): coloured_flow.ex, dsl.ex, runner/, definition/, …"
+  def run({:read, args}), do: "<contents of #{args}>"
+  def run({:grep, args}), do: "<grep results for #{args}>"
+  def run({:write, args}), do: "wrote: #{args}"
+  def run({:edit, args}), do: "edited: #{args}"
+  def run({:bash, args}), do: "$ #{args}\n<simulated output>"
+
+  def risky?({tool, _}) when tool in [:write, :edit, :bash], do: true
+  def risky?(_), do: false
+end
+
+defmodule PiAgent.UI do
+  @moduledoc false
+  alias ColouredFlow.MultiSet
+
+  def render(nil, _markings), do: :ok
+
+  def render(frame, markings) do
+    Kino.Frame.render(frame, Kino.Markdown.new(format(markings)))
+  end
+
+  def read_dialog(markings) do
+    case Map.get(markings, "dialog") do
+      nil -> []
+      ms -> ms |> MultiSet.to_list() |> List.first() || []
+    end
+  end
+
+  defp format(markings) do
+    state = state_label(markings)
+    body = markings |> read_dialog() |> Enum.map_join("\n\n", &format_msg/1)
+    "**state**: #{state}\n\n---\n\n#{body}"
+  end
+
+  defp state_label(markings) do
+    cond do
+      Map.has_key?(markings, "answer") -> "✅ done"
+      has_token?(markings, "pending_call_risky") -> "⏸ waiting for human approval"
+      has_token?(markings, "pending_call") -> "⚙ tool running"
+      has_token?(markings, "steering_queue") -> "📣 steering pending"
+      true -> "💭 thinking"
+    end
+  end
+
+  defp has_token?(markings, place) do
+    case Map.get(markings, place) do
+      nil -> false
+      ms -> MultiSet.size(ms) > 0
+    end
+  end
+
+  defp format_msg({:user, c}), do: "**user** › #{c}"
+  defp format_msg({:assistant, c}), do: "**assistant** › #{c}"
+  defp format_msg({:tool, c}), do: "```\n#{c}\n```"
+end
+```
+
+## Shared runtime: storage + supervisor
+
+Started once for the whole notebook. All three enactments share this.
+
+```elixir
+storage_pid = Kino.start_child!(ColouredFlow.Runner.Storage.InMemory)
+runner_pid = Kino.start_child!(ColouredFlow.Runner.Supervisor)
+
+defmodule PiAgent.Sup do
+  use Supervisor
+
+  def start_link(_ \\ []) do
+    Process.whereis(__MODULE__) && Supervisor.stop(__MODULE__)
+    Supervisor.start_link(__MODULE__, [], name: __MODULE__)
+  end
+
+  @impl Supervisor
+  def init(_) do
+    Supervisor.init(
+      [{Task.Supervisor, name: PiAgent.TaskSup}],
+      strategy: :one_for_one
+    )
+  end
+end
+
+Kino.start_child!(PiAgent.Sup)
+"runtime ready (#{inspect(runner_pid)})"
+```
+
+## A. Simple ReAct cycle
+
+Five places, four transitions, one `on_markings` termination on `:answer`.
+
+```
+[ready]──┬──> :think_tool ─{tc}──> [pending_call] ──> :run_tool ─{tr}──> [tool_result]
+[dialog]─┤                                                                     │
+         │                                                                     v
+         └──> :think_answer ─{ans}──> [answer]      [dialog] ──> :merge_result ──> [ready],[dialog]
+```
+
+Three transitions emit free output bindings (`tc`, `tr`, `ans`) — the
+runner leaves them open and the driver fills them when calling
+`complete_workitem/2`. That is how the LLM's decision (which tool? which
+answer text?) crosses from impure Elixir into the pure CPN state.
+
+`:think_tool` and `:think_answer` share an input pattern — classic
+**deferred choice**: both are enabled simultaneously, whichever the driver
+fires first wins. The driver here calls `MockLLM.next_step/1` and routes
+to one or the other.
+
+```elixir
+defmodule PiAgent.A do
+  use ColouredFlow.DSL, task_supervisor: PiAgent.TaskSup
+
+  alias ColouredFlow.MultiSet
+  alias ColouredFlow.Runner.Enactment.WorkitemTransition
+  alias ColouredFlow.Runner.Storage
+
+  name "Pi Agent A — Simple ReAct"
+
+  colset role() :: :user | :assistant | :tool
+  colset msg() :: {role(), binary()}
+  colset dialog() :: list(msg())
+  colset tool_name() :: :read | :grep | :ls | :write | :edit | :bash
+  colset tool_call() :: {tool_name(), binary()}
+  colset tool_result() :: binary()
+  colset answer() :: binary()
+  colset signal() :: {}
+
+  var d :: dialog()
+  var tc :: tool_call()
+  var tr :: tool_result()
+  var ans :: answer()
+  var s :: signal()
+
+  place :dialog, :dialog
+  place :ready, :signal
+  place :pending_call, :tool_call
+  place :tool_result, :tool_result
+  place :answer, :answer
+
+  initial_marking :dialog,
+    ColouredFlow.MultiSet.new([[{:user, "What's in lib/?"}]])
+
+  initial_marking :ready, ~MS[{}]
+
+  transition :think_tool do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+
+    output :dialog, {1, d ++ [{:assistant, "calling tool"}]}
+    output :pending_call, {1, tc}
+
+    action do
+      tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
+      PiAgent.A.run_tool(event.enactment_id, tc)
+    end
+  end
+
+  transition :think_answer do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+
+    output :answer, {1, ans}
+  end
+
+  transition :run_tool do
+    input :pending_call, bind({1, tc})
+
+    output :tool_result, {1, tr}
+
+    action do
+      PiAgent.A.merge(event.enactment_id)
+    end
+  end
+
+  transition :merge_result do
+    input :dialog, bind({1, d})
+    input :tool_result, bind({1, tr})
+
+    output :dialog, {1, d ++ [{:tool, tr}]}
+    output :ready, {1, {}}
+
+    action do
+      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.A.think(event.enactment_id, event.markings)
+    end
+  end
+
+  termination do
+    on_markings do
+      match?(%{"answer" => _}, markings)
+    end
+  end
+
+  on_enactment_start do
+    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.A.think(event.enactment_id, event.markings)
+  end
+
+  on_enactment_terminate do
+    PiAgent.UI.render(options[:frame], event.markings)
+  end
+
+  ## Driver — turns mock-LLM/mock-tool decisions into workitem firings.
+
+  def think(enactment_id, markings) do
+    dialog = PiAgent.UI.read_dialog(markings)
+
+    case PiAgent.MockLLM.next_step(dialog) do
+      {:tool, tc} -> drive(enactment_id, "think_tool", tc: tc)
+      {:answer, ans} -> drive(enactment_id, "think_answer", ans: ans)
+    end
+  end
+
+  def run_tool(enactment_id, tc) do
+    Process.sleep(100)
+    drive(enactment_id, "run_tool", tr: PiAgent.MockTool.run(tc))
+  end
+
+  def merge(enactment_id), do: drive(enactment_id, "merge_result", [])
+
+  def to_mermaid do
+    cpnet()
+    |> ColouredFlow.Definition.Presentation.to_mermaid()
+    |> Kino.Mermaid.new()
+  end
+
+  defp drive(enactment_id, name, free_binding) do
+    enactment_id
+    |> Storage.list_live_workitems()
+    |> Enum.find(&(&1.state == :enabled and &1.binding_element.transition == name))
+    |> case do
+      nil ->
+        :ok
+
+      %{id: wid} ->
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+        {:ok, _} = WorkitemTransition.complete_workitem(enactment_id, {wid, free_binding})
+        :ok
+    end
+  end
+end
+
+PiAgent.A.to_mermaid()
+```
+
+```elixir
+import ColouredFlow.Runner.Storage.InMemory, only: :macros
+alias ColouredFlow.Runner.Storage.InMemory
+
+flow_a = InMemory.insert_flow!(PiAgent.A.cpnet())
+{:ok, e_a} = PiAgent.A.insert_enactment(flow(flow_a, :id))
+enactment_a = enactment(e_a, :id)
+
+frame_a = Kino.Frame.new()
+
+{:ok, _} =
+  PiAgent.A.start_enactment(enactment_a,
+    lifecycle_hooks: {PiAgent.A, [frame: frame_a]}
+  )
+
+frame_a
+```
+
+## B. Risky-tool human gate
+
+Same loop — but the model now sometimes asks for a `:bash` call. We do
+*not* trust a model with a shell unattended. The fix is one extra hop: the
+`:think_tool` output flows into a **union-typed** `:pending_call` place,
+tagged `{:safe, op}` or `{:risky, op}`. Two consumers compete for it:
+
+- `:run_safe` matches `{:safe, op}` — driver auto-fires it.
+- `:run_risky` matches `{:risky, op}` — workitem stays in `:enabled` until
+  a human clicks an approve button. The runner is happy to wait days.
+
+The crucial CPN trick is that **pattern-matching on a token's shape is
+how guards work** — no extra `guard` clause needed; `bind({1, {:safe, op}})`
+itself is the discriminator.
+
+```elixir
+defmodule PiAgent.B do
+  use ColouredFlow.DSL, task_supervisor: PiAgent.TaskSup
+
+  alias ColouredFlow.MultiSet
+  alias ColouredFlow.Runner.Enactment.WorkitemTransition
+  alias ColouredFlow.Runner.Storage
+
+  name "Pi Agent B — Permission Gate"
+
+  colset role() :: :user | :assistant | :tool
+  colset msg() :: {role(), binary()}
+  colset dialog() :: list(msg())
+  colset tool_name() :: :read | :grep | :ls | :write | :edit | :bash
+  colset tool_op() :: {tool_name(), binary()}
+  colset tool_call() :: {:safe, tool_op()} | {:risky, tool_op()}
+  colset tool_result() :: binary()
+  colset answer() :: binary()
+  colset signal() :: {}
+
+  var d :: dialog()
+  var tc :: tool_call()
+  var op :: tool_op()
+  var tr :: tool_result()
+  var ans :: answer()
+  var s :: signal()
+
+  place :dialog, :dialog
+  place :ready, :signal
+  place :pending_call, :tool_call
+  place :tool_result, :tool_result
+  place :answer, :answer
+
+  initial_marking :dialog,
+    ColouredFlow.MultiSet.new([[{:user, "Update lib/foo.ex via bash."}]])
+
+  initial_marking :ready, ~MS[{}]
+
+  transition :think_tool do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+
+    output :dialog, {1, d ++ [{:assistant, "calling tool"}]}
+    output :pending_call, {1, tc}
+
+    action do
+      tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
+      PiAgent.B.dispatch_call(event.enactment_id, tc)
+    end
+  end
+
+  transition :think_answer do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+
+    output :answer, {1, ans}
+  end
+
+  transition :run_safe do
+    input :pending_call, bind({1, {:safe, op}})
+
+    output :tool_result, {1, tr}
+
+    action do
+      PiAgent.B.merge(event.enactment_id)
+    end
+  end
+
+  transition :run_risky do
+    input :pending_call, bind({1, {:risky, op}})
+
+    output :tool_result, {1, tr}
+
+    action do
+      PiAgent.B.merge(event.enactment_id)
+    end
+  end
+
+  transition :merge_result do
+    input :dialog, bind({1, d})
+    input :tool_result, bind({1, tr})
+
+    output :dialog, {1, d ++ [{:tool, tr}]}
+    output :ready, {1, {}}
+
+    action do
+      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.B.think(event.enactment_id, event.markings)
+    end
+  end
+
+  termination do
+    on_markings do
+      match?(%{"answer" => _}, markings)
+    end
+  end
+
+  on_enactment_start do
+    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.B.think(event.enactment_id, event.markings)
+  end
+
+  on_enactment_terminate do
+    PiAgent.UI.render(options[:frame], event.markings)
+  end
+
+  ## Driver
+
+  def think(enactment_id, markings) do
+    dialog = PiAgent.UI.read_dialog(markings)
+
+    case PiAgent.MockLLM.next_step(dialog) do
+      {:tool, op} ->
+        tagged = if PiAgent.MockTool.risky?(op), do: {:risky, op}, else: {:safe, op}
+        drive(enactment_id, "think_tool", tc: tagged)
+
+      {:answer, ans} ->
+        drive(enactment_id, "think_answer", ans: ans)
+    end
+  end
+
+  # After :think_tool fires, route based on the tag — auto-run safe,
+  # leave risky workitem dangling for human approval.
+  def dispatch_call(enactment_id, {:safe, op}) do
+    Process.sleep(100)
+    drive(enactment_id, "run_safe", tr: PiAgent.MockTool.run(op))
+  end
+
+  def dispatch_call(_enactment_id, {:risky, _op}), do: :ok
+
+  def approve(enactment_id) do
+    case find_risky(enactment_id) do
+      nil ->
+        :no_pending
+
+      %{id: wid, binding_element: %{binding: binding}} ->
+        {:risky, op} = Keyword.fetch!(binding, :tc)
+        Process.sleep(100)
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+
+        {:ok, _} =
+          WorkitemTransition.complete_workitem(
+            enactment_id,
+            {wid, [tr: PiAgent.MockTool.run(op)]}
+          )
+
+        :ok
+    end
+  end
+
+  def deny(enactment_id) do
+    case find_risky(enactment_id) do
+      nil ->
+        :no_pending
+
+      %{id: wid} ->
+        {:ok, _} = WorkitemTransition.withdraw_workitem(enactment_id, wid)
+        :denied
+    end
+  end
+
+  def merge(enactment_id), do: drive(enactment_id, "merge_result", [])
+
+  def to_mermaid do
+    cpnet()
+    |> ColouredFlow.Definition.Presentation.to_mermaid()
+    |> Kino.Mermaid.new()
+  end
+
+  defp find_risky(enactment_id) do
+    enactment_id
+    |> Storage.list_live_workitems()
+    |> Enum.find(&(&1.state == :enabled and &1.binding_element.transition == "run_risky"))
+  end
+
+  defp drive(enactment_id, name, free_binding) do
+    enactment_id
+    |> Storage.list_live_workitems()
+    |> Enum.find(&(&1.state == :enabled and &1.binding_element.transition == name))
+    |> case do
+      nil ->
+        :ok
+
+      %{id: wid} ->
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+        {:ok, _} = WorkitemTransition.complete_workitem(enactment_id, {wid, free_binding})
+        :ok
+    end
+  end
+end
+
+PiAgent.B.to_mermaid()
+```
+
+```elixir
+flow_b = InMemory.insert_flow!(PiAgent.B.cpnet())
+{:ok, e_b} = PiAgent.B.insert_enactment(flow(flow_b, :id))
+enactment_b = enactment(e_b, :id)
+
+frame_b = Kino.Frame.new()
+approve_btn = Kino.Control.button("Approve risky tool")
+deny_btn = Kino.Control.button("Deny")
+
+Kino.listen(approve_btn, fn _ -> PiAgent.B.approve(enactment_b) end)
+Kino.listen(deny_btn, fn _ -> PiAgent.B.deny(enactment_b) end)
+
+{:ok, _} =
+  PiAgent.B.start_enactment(enactment_b,
+    lifecycle_hooks: {PiAgent.B, [frame: frame_b]}
+  )
+
+Kino.Layout.grid([frame_b, Kino.Layout.grid([approve_btn, deny_btn], columns: 2)],
+  boxed: true
+)
+```
+
+The agent will run `:ls` and `:read` automatically (both safe), then stop
+on a `bash` call. The dialog renders `⏸ waiting for human approval` until
+you click **Approve** — the workitem fires, the result merges, the loop
+resumes.
+
+## C. Multi-provider race + steering
+
+Two upgrades, neither requires changing the existing places:
+
+1. **Provider race.** `:think_tool` and `:think_answer` are both eligible
+   the moment `(:ready, :dialog)` align. Three independent driver tasks
+   call Anthropic / OpenAI / Google mocks in parallel; the first to finish
+   wins the workitem completion (CPN consumes the input tokens, the rest
+   no-op when their drive call finds an empty workitem list).
+2. **Steering queue.** A new `:steering_queue` place plus an
+   `:append_steering` transition lets the user push a follow-up message
+   while the agent is mid-flight. `:inject_steering` drains the queue
+   into `:dialog` *before* the next `think_*` round (it competes with
+   them for `(:ready, :dialog)` — driver picks it preferentially).
+
+`append_steering` consumes a `:steering_capacity` token (a counting
+semaphore — bounds how many follow-ups the user may push) and produces
+a `msg()` token in the queue. This is the canonical CPN pattern for
+**externally-fed input**: there is no "inject token" runner API; you
+declare a transition whose only job is to accept a value via a free
+binding.
+
+```elixir
+defmodule PiAgent.C do
+  use ColouredFlow.DSL, task_supervisor: PiAgent.TaskSup
+
+  alias ColouredFlow.MultiSet
+  alias ColouredFlow.Runner.Enactment.WorkitemTransition
+  alias ColouredFlow.Runner.Storage
+
+  name "Pi Agent C — Race & Steering"
+
+  colset role() :: :user | :assistant | :tool
+  colset msg() :: {role(), binary()}
+  colset dialog() :: list(msg())
+  colset tool_name() :: :read | :grep | :ls | :write | :edit | :bash
+  colset tool_op() :: {tool_name(), binary()}
+  colset tool_call() :: {:safe, tool_op()} | {:risky, tool_op()}
+  colset tool_result() :: binary()
+  colset answer() :: binary()
+  colset signal() :: {}
+
+  var d :: dialog()
+  var tc :: tool_call()
+  var op :: tool_op()
+  var tr :: tool_result()
+  var ans :: answer()
+  var s :: signal()
+  var m :: msg()
+
+  place :dialog, :dialog
+  place :ready, :signal
+  place :pending_call, :tool_call
+  place :tool_result, :tool_result
+  place :answer, :answer
+  place :steering_queue, :msg
+  place :steering_capacity, :signal
+
+  initial_marking :dialog,
+    ColouredFlow.MultiSet.new([[{:user, "What's in lib/?"}]])
+
+  initial_marking :ready, ~MS[{}]
+  # 5 user-steering slots: each :append_steering consumes one.
+  initial_marking :steering_capacity, ~MS[5**{}]
+
+  transition :think_tool do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+
+    output :dialog, {1, d ++ [{:assistant, "calling tool"}]}
+    output :pending_call, {1, tc}
+
+    action do
+      tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
+      PiAgent.C.dispatch_call(event.enactment_id, tc)
+    end
+  end
+
+  transition :think_answer do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+
+    output :answer, {1, ans}
+  end
+
+  transition :run_safe do
+    input :pending_call, bind({1, {:safe, op}})
+
+    output :tool_result, {1, tr}
+
+    action do
+      PiAgent.C.merge(event.enactment_id)
+    end
+  end
+
+  transition :run_risky do
+    input :pending_call, bind({1, {:risky, op}})
+
+    output :tool_result, {1, tr}
+
+    action do
+      PiAgent.C.merge(event.enactment_id)
+    end
+  end
+
+  transition :merge_result do
+    input :dialog, bind({1, d})
+    input :tool_result, bind({1, tr})
+
+    output :dialog, {1, d ++ [{:tool, tr}]}
+    output :ready, {1, {}}
+
+    action do
+      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.C.think(event.enactment_id, event.markings)
+    end
+  end
+
+  transition :append_steering do
+    input :steering_capacity, bind({1, s})
+
+    output :steering_queue, {1, m}
+  end
+
+  transition :inject_steering do
+    input :ready, bind({1, s})
+    input :dialog, bind({1, d})
+    input :steering_queue, bind({1, m})
+
+    output :dialog, {1, d ++ [m]}
+    output :ready, {1, s}
+
+    action do
+      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.C.think(event.enactment_id, event.markings)
+    end
+  end
+
+  termination do
+    on_markings do
+      match?(%{"answer" => _}, markings)
+    end
+  end
+
+  on_enactment_start do
+    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.C.think(event.enactment_id, event.markings)
+  end
+
+  on_enactment_terminate do
+    PiAgent.UI.render(options[:frame], event.markings)
+  end
+
+  ## Driver
+
+  def think(enactment_id, markings) do
+    # Steering takes precedence — drain the queue first.
+    if drain_steering(enactment_id) == :drained do
+      :ok
+    else
+      race_providers(enactment_id, markings)
+    end
+  end
+
+  def race_providers(enactment_id, markings) do
+    dialog = PiAgent.UI.read_dialog(markings)
+
+    Enum.each([:anthropic, :openai, :google], fn vendor ->
+      Task.Supervisor.start_child(PiAgent.TaskSup, fn ->
+        Process.sleep(PiAgent.MockLLM.latency_ms(vendor))
+
+        case PiAgent.MockLLM.next_step(dialog, vendor) do
+          {:tool, op} ->
+            tagged = if PiAgent.MockTool.risky?(op), do: {:risky, op}, else: {:safe, op}
+            drive(enactment_id, "think_tool", tc: tagged)
+
+          {:answer, ans} ->
+            drive(enactment_id, "think_answer", ans: ans)
+        end
+      end)
+    end)
+  end
+
+  def dispatch_call(enactment_id, {:safe, op}) do
+    Process.sleep(100)
+    drive(enactment_id, "run_safe", tr: PiAgent.MockTool.run(op))
+  end
+
+  def dispatch_call(_enactment_id, {:risky, _op}), do: :ok
+
+  def approve(enactment_id) do
+    case find_workitem(enactment_id, "run_risky") do
+      nil ->
+        :no_pending
+
+      %{id: wid, binding_element: %{binding: binding}} ->
+        {:risky, op} = Keyword.fetch!(binding, :tc)
+        Process.sleep(100)
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+
+        {:ok, _} =
+          WorkitemTransition.complete_workitem(
+            enactment_id,
+            {wid, [tr: PiAgent.MockTool.run(op)]}
+          )
+
+        :ok
+    end
+  end
+
+  def steer(enactment_id, content) when is_binary(content) do
+    drive(enactment_id, "append_steering", m: {:user, content})
+  end
+
+  def merge(enactment_id), do: drive(enactment_id, "merge_result", [])
+
+  def to_mermaid do
+    cpnet()
+    |> ColouredFlow.Definition.Presentation.to_mermaid()
+    |> Kino.Mermaid.new()
+  end
+
+  defp drain_steering(enactment_id) do
+    case find_workitem(enactment_id, "inject_steering") do
+      nil ->
+        :empty
+
+      %{id: wid} ->
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+        {:ok, _} = WorkitemTransition.complete_workitem(enactment_id, {wid, []})
+        :drained
+    end
+  end
+
+  defp find_workitem(enactment_id, transition_name) do
+    enactment_id
+    |> Storage.list_live_workitems()
+    |> Enum.find(&(&1.state == :enabled and &1.binding_element.transition == transition_name))
+  end
+
+  defp drive(enactment_id, name, free_binding) do
+    case find_workitem(enactment_id, name) do
+      nil ->
+        :ok
+
+      %{id: wid} ->
+        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
+        {:ok, _} = WorkitemTransition.complete_workitem(enactment_id, {wid, free_binding})
+        :ok
+    end
+  end
+end
+
+PiAgent.C.to_mermaid()
+```
+
+```elixir
+flow_c = InMemory.insert_flow!(PiAgent.C.cpnet())
+{:ok, e_c} = PiAgent.C.insert_enactment(flow(flow_c, :id))
+enactment_c = enactment(e_c, :id)
+
+frame_c = Kino.Frame.new()
+steer_input = Kino.Control.form([msg: Kino.Input.text("Steering")], submit: "Send")
+approve_btn_c = Kino.Control.button("Approve risky tool")
+
+Kino.listen(steer_input, fn %{data: %{msg: text}} ->
+  if text != "", do: PiAgent.C.steer(enactment_c, text)
+end)
+
+Kino.listen(approve_btn_c, fn _ -> PiAgent.C.approve(enactment_c) end)
+
+{:ok, _} =
+  PiAgent.C.start_enactment(enactment_c,
+    lifecycle_hooks: {PiAgent.C, [frame: frame_c]}
+  )
+
+Kino.Layout.grid([frame_c, steer_input, approve_btn_c], boxed: true)
+```
+
+## What this buys you
+
+The same module is also:
+
+- **Crash-safe.** Kill the runner mid-`bash` and restart — the runner
+  replays `Occurrence`s from the latest snapshot, the workitem state
+  comes back exactly where it was, no duplicate tool calls.
+- **Time-travelable.** Every firing is a stored event; an audit UI gets
+  the agent's full reasoning trace for free.
+- **Branchable.** Insert a fresh enactment from a snapshot of an existing
+  one and you have a session fork — the same primitive Pi exposes via
+  `/fork` and `/clone`, but earned automatically by the event-source
+  runner.
+- **Provider-agnostic.** The CPN cares about token shapes, not vendors.
+  Add a new provider in Section C by adding one line to
+  `race_providers/2`; the structure of the net does not change.
+
+The 200 lines of `PiAgent.C` give you a saga-style coding agent with
+human-in-loop, race semantics, mid-flight steering, and durable replay —
+properties that take thousands of lines to retrofit onto a hand-written
+ReAct loop.
