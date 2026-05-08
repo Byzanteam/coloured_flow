@@ -67,6 +67,37 @@ defmodule PiAgent.MockLLM do
     end
   end
 
+  # Builds the assistant's proposal message. If a steering / rejection
+  # has landed since the agent's last assistant turn, surface it so the
+  # human can confirm the model heard them.
+  #
+  # Pattern in action: after `:reject_proposal` or `:inject_steering`
+  # appends a `{:user, _}` to the dialog, the next planning round picks
+  # that message up and weaves it into the proposal.
+  def proposal_text(dialog, {tool, args}) do
+    call = "#{tool}(#{inspect(args)})"
+
+    case latest_steering(dialog) do
+      nil -> "proposing #{call}"
+      text -> "based on your note (#{inspect(text)}), proposing #{call}"
+    end
+  end
+
+  defp latest_steering(dialog) do
+    # The very first message is the user's original prompt; any
+    # subsequent {:user, _} is a steering or rejection note.
+    user_msgs =
+      dialog
+      |> Enum.filter(fn {role, _} -> role == :user end)
+      |> Enum.map(fn {:user, c} -> c end)
+
+    case user_msgs do
+      [_initial] -> nil
+      [_initial | rest] -> List.last(rest)
+      [] -> nil
+    end
+  end
+
   # Provider-specific latency. Used by Section C to demo races.
   def latency_ms(:anthropic), do: 600
   def latency_ms(:openai), do: 900
@@ -711,6 +742,7 @@ defmodule PiAgent.C do
   colset tool_result() :: binary()
   colset answer() :: binary()
   colset reason() :: binary()
+  colset proposal() :: binary()
   colset signal() :: {}
 
   var d :: dialog()
@@ -720,6 +752,7 @@ defmodule PiAgent.C do
   var s :: signal()
   var m :: msg()
   var reason :: reason()
+  var proposal :: proposal()
 
   place :dialog, :dialog
   place :ready, :signal
@@ -744,11 +777,14 @@ defmodule PiAgent.C do
 
   # Race producers fire :propose_call instead of running the tool. The
   # call sits in :proposed_call until a human approves or rejects it.
+  # `proposal` is a free binding the driver fills with the assistant's
+  # planning message — it can quote the latest steering / rejection
+  # so the human sees the model react to their note.
   transition :propose_call do
     input :ready, bind({1, s})
     input :dialog, bind({1, d})
 
-    output :dialog, {1, d ++ [{:assistant, "proposing tool call"}]}
+    output :dialog, {1, d ++ [{:assistant, proposal}]}
     output :proposed_call, {1, tc}
 
     action do
@@ -868,8 +904,12 @@ defmodule PiAgent.C do
         Process.sleep(PiAgent.MockLLM.latency_ms(vendor))
 
         case PiAgent.MockLLM.next_step(dialog, vendor) do
-          {:tool, op} -> drive(enactment_id, "propose_call", tc: op)
-          {:answer, ans} -> drive(enactment_id, "think_answer", ans: ans)
+          {:tool, op} ->
+            text = PiAgent.MockLLM.proposal_text(dialog, op)
+            drive(enactment_id, "propose_call", tc: op, proposal: text)
+
+          {:answer, ans} ->
+            drive(enactment_id, "think_answer", ans: ans)
         end
       end)
     end)
