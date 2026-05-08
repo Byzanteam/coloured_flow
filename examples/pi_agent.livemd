@@ -170,6 +170,7 @@ defmodule PiAgent.UI do
   defp state_label(markings) do
     cond do
       Map.has_key?(markings, "answer") -> "✅ done"
+      has_token?(markings, "proposed_call") -> "🤔 awaiting plan approval"
       risky_pending?(markings) -> "⏸ waiting for human approval"
       has_token?(markings, "pending_call") -> "⚙ tool running"
       has_token?(markings, "steering_queue") -> "📣 steering pending"
@@ -663,27 +664,35 @@ on a `bash` call. The dialog renders `⏸ waiting for human approval` until
 you click **Approve** — the workitem fires, the result merges, the loop
 resumes.
 
-## C. Multi-provider race + steering
+## C. Multi-provider race + steering + plan-then-act
 
-Two upgrades, neither requires changing the existing places:
+Three upgrades over Section B:
 
-1. **Provider race.** `:think_tool` and `:think_answer` are both eligible
-   the moment `(:ready, :dialog)` align. Three independent driver tasks
-   call Anthropic / OpenAI / Google mocks in parallel; the first to finish
-   wins the workitem completion (CPN consumes the input tokens, the rest
-   no-op when their drive call finds an empty workitem list).
+1. **Provider race.** `:propose_call` and `:think_answer` are both
+   eligible the moment `(:ready, :dialog)` align. Three independent
+   driver tasks call Anthropic / OpenAI / Google mocks in parallel; the
+   first to finish wins the workitem completion (CPN consumes the input
+   tokens, the rest no-op when their drive call finds an empty workitem
+   list).
 2. **Steering queue.** A new `:steering_queue` place plus an
    `:append_steering` transition lets the user push a follow-up message
    while the agent is mid-flight. `:inject_steering` drains the queue
-   into `:dialog` *before* the next `think_*` round (it competes with
-   them for `(:ready, :dialog)` — driver picks it preferentially).
+   into `:dialog` *before* the next round.
+3. **Plan-then-act gate.** Section B let safe tools auto-fire and only
+   gated risky ones. Section C drops the safe/risky tag and routes
+   *every* tool call through a human-approval step:
+   `:propose_call → [:proposed_call] → :approve_proposal | :reject_proposal`.
+   Approval moves the call to `:pending_call` and `:run_tool` executes
+   it. Rejection appends a rejection note to `:dialog` and restores
+   `:ready`, kicking the loop back to `think`.
 
 `append_steering` consumes a `:steering_capacity` token (a counting
 semaphore — bounds how many follow-ups the user may push) and produces
 a `msg()` token in the queue. This is the canonical CPN pattern for
 **externally-fed input**: there is no "inject token" runner API; you
 declare a transition whose only job is to accept a value via a free
-binding.
+binding. The same pattern (`:approve_proposal` / `:reject_proposal`,
+each with a free binding) gates the plan-then-act review.
 
 ```elixir
 defmodule PiAgent.C do
@@ -692,28 +701,29 @@ defmodule PiAgent.C do
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
   alias ColouredFlow.Runner.Storage
 
-  name "Pi Agent C — Race & Steering"
+  name "Pi Agent C — Race & Steering & Plan-then-act"
 
   colset role() :: :user | :assistant | :tool
   colset msg() :: {role(), binary()}
   colset dialog() :: list(msg())
   colset tool_name() :: :read | :grep | :ls | :write | :edit | :bash
-  colset tool_op() :: {tool_name(), binary()}
-  colset tool_call() :: {:safe, tool_op()} | {:risky, tool_op()}
+  colset tool_call() :: {tool_name(), binary()}
   colset tool_result() :: binary()
   colset answer() :: binary()
+  colset reason() :: binary()
   colset signal() :: {}
 
   var d :: dialog()
   var tc :: tool_call()
-  var op :: tool_op()
   var tr :: tool_result()
   var ans :: answer()
   var s :: signal()
   var m :: msg()
+  var reason :: reason()
 
   place :dialog, :dialog
   place :ready, :signal
+  place :proposed_call, :tool_call
   place :pending_call, :tool_call
   place :tool_result, :tool_result
   place :answer, :answer
@@ -732,17 +742,17 @@ defmodule PiAgent.C do
   initial_marking :steering_queue,
     ColouredFlow.MultiSet.new([{:user, "Also count the files."}])
 
-  transition :think_tool do
+  # Race producers fire :propose_call instead of running the tool. The
+  # call sits in :proposed_call until a human approves or rejects it.
+  transition :propose_call do
     input :ready, bind({1, s})
     input :dialog, bind({1, d})
 
-    output :dialog, {1, d ++ [{:assistant, "calling tool"}]}
-    output :pending_call, {1, tc}
+    output :dialog, {1, d ++ [{:assistant, "proposing tool call"}]}
+    output :proposed_call, {1, tc}
 
     action do
-      tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
       PiAgent.UI.render(options, event)
-      PiAgent.C.dispatch_call(event.enactment_id, tc)
     end
   end
 
@@ -753,18 +763,36 @@ defmodule PiAgent.C do
     output :answer, {1, ans}
   end
 
-  transition :run_safe do
-    input :pending_call, bind({1, {:safe, op}})
+  # Human-driven: move a proposed call into :pending_call and run it.
+  transition :approve_proposal do
+    input :proposed_call, bind({1, tc})
 
-    output :tool_result, {1, tr}
+    output :pending_call, {1, tc}
 
     action do
-      PiAgent.C.merge(event.enactment_id)
+      PiAgent.UI.render(options, event)
+      PiAgent.C.run_tool(event.enactment_id, tc)
     end
   end
 
-  transition :run_risky do
-    input :pending_call, bind({1, {:risky, op}})
+  # Human-driven: drop the proposal, append a rejection note to dialog,
+  # and put :ready back so the agent thinks again. `reason` is supplied
+  # by the driver via the workitem's free-binding list.
+  transition :reject_proposal do
+    input :proposed_call, bind({1, tc})
+    input :dialog, bind({1, d})
+
+    output :dialog, {1, d ++ [{:user, reason}]}
+    output :ready, {1, {}}
+
+    action do
+      PiAgent.UI.render(options, event)
+      PiAgent.C.think(event.enactment_id, event.markings)
+    end
+  end
+
+  transition :run_tool do
+    input :pending_call, bind({1, tc})
 
     output :tool_result, {1, tr}
 
@@ -840,42 +868,27 @@ defmodule PiAgent.C do
         Process.sleep(PiAgent.MockLLM.latency_ms(vendor))
 
         case PiAgent.MockLLM.next_step(dialog, vendor) do
-          {:tool, op} ->
-            tagged = if PiAgent.MockTool.risky?(op), do: {:risky, op}, else: {:safe, op}
-            drive(enactment_id, "think_tool", tc: tagged)
-
-          {:answer, ans} ->
-            drive(enactment_id, "think_answer", ans: ans)
+          {:tool, op} -> drive(enactment_id, "propose_call", tc: op)
+          {:answer, ans} -> drive(enactment_id, "think_answer", ans: ans)
         end
       end)
     end)
   end
 
-  def dispatch_call(enactment_id, {:safe, op}) do
+  def run_tool(enactment_id, tc) do
     Process.sleep(900)
-    drive(enactment_id, "run_safe", tr: PiAgent.MockTool.run(op))
+    drive(enactment_id, "run_tool", tr: PiAgent.MockTool.run(tc))
   end
 
-  def dispatch_call(_enactment_id, {:risky, _op}), do: :ok
-
   def approve(enactment_id) do
-    case find_workitem(enactment_id, "run_risky") do
-      nil ->
-        :no_pending
+    drive(enactment_id, "approve_proposal", [])
+  end
 
-      %{id: wid, binding_element: %{binding: binding}} ->
-        op = Keyword.fetch!(binding, :op)
-        Process.sleep(900)
-        {:ok, _} = WorkitemTransition.start_workitem(enactment_id, wid)
-
-        {:ok, _} =
-          WorkitemTransition.complete_workitem(
-            enactment_id,
-            {wid, [tr: PiAgent.MockTool.run(op)]}
-          )
-
-        :ok
-    end
+  # Reject the pending plan with a reason. Default reason kept short so
+  # the dialog stays readable.
+  def reject(enactment_id, reason \\ "rejected the proposed plan; try a different tool")
+      when is_binary(reason) do
+    drive(enactment_id, "reject_proposal", reason: reason)
   end
 
   def steer(enactment_id, content) when is_binary(content) do
@@ -941,13 +954,15 @@ steer_input =
     reset_on_submit: [:msg]
   )
 
-approve_btn_c = Kino.Control.button("Approve risky tool")
+approve_plan_btn = Kino.Control.button("Approve plan")
+reject_plan_btn = Kino.Control.button("Reject plan")
 
 Kino.listen(steer_input, fn %{data: %{msg: text}} ->
   if text != "", do: PiAgent.C.steer(enactment_c, text)
 end)
 
-Kino.listen(approve_btn_c, fn _ -> PiAgent.C.approve(enactment_c) end)
+Kino.listen(approve_plan_btn, fn _ -> PiAgent.C.approve(enactment_c) end)
+Kino.listen(reject_plan_btn, fn _ -> PiAgent.C.reject(enactment_c) end)
 
 {:ok, _} =
   PiAgent.C.start_enactment(enactment_c,
@@ -958,38 +973,42 @@ Kino.Layout.grid(
   [
     Kino.Layout.grid([dialog_c, events_c], columns: 2),
     steer_input,
-    approve_btn_c
+    Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2)
   ],
   boxed: true
 )
 ```
 
-### How to test steering
+### How to test the section
 
-Two steering paths run in this section:
+Three things to watch:
 
-1. **Pre-seeded steering** (automatic). `:steering_queue` starts with one
-   token (`{:user, "Also count the files."}`). The first `think` round
-   calls `drain_steering`, which fires `:inject_steering` and the message
-   appears in the dialog as a `**user**` line *before* the first tool
-   call. You'll see this on every run with no input from you.
-2. **Live steering** (interactive). The agent pauses at the `bash`
-   risky-tool gate (state shows `⏸ waiting for human approval`). While
-   it's paused:
-   * Type a follow-up into the **Steering** field, e.g.
-     `Make sure to mention the runner module.` and click **Send**.
-   * The input clears (`reset_on_submit: [:msg]`); the field stays empty
-     so you know the message was queued. There is no separate
-     "queued" indicator — the queue is invisible until drained.
-   * Click **Approve risky tool**. The bash result merges, the next
-     `think` calls `drain_steering`, your message lands in the dialog as
-     another `**user**` line, and the agent answers with the steering
-     msg in its context.
+1. **Plan-then-act gate** (every tool call). After each `think`, the
+   agent emits a `:proposed_call` token and pauses
+   (`🤔 awaiting plan approval`). Click **Approve plan** to fire
+   `:approve_proposal` (call moves to `:pending_call` and runs); click
+   **Reject plan** to fire `:reject_proposal` (a rejection note lands
+   in the dialog and the agent re-thinks). The events panel records
+   every `:propose_call` / `:approve_proposal` / `:reject_proposal`
+   firing.
+2. **Pre-seeded steering** (automatic). `:steering_queue` starts with
+   one token (`{:user, "Also count the files."}`). The first `think`
+   round calls `drain_steering`, fires `:inject_steering`, and the
+   message lands in the dialog as a `**user**` line *before* the first
+   plan proposal. Visible on every run with no input from you.
+3. **Live steering** (interactive). While the agent is paused at any
+   plan gate (or between rounds):
+   * Type a follow-up into the **Steering** field and click **Send**.
+   * Input clears (`reset_on_submit: [:msg]`); the queue is invisible
+     until drained.
+   * Click **Approve plan**. After the tool runs and merges, the next
+     `think` calls `drain_steering`, your message appears in the
+     dialog as another `**user**` line, and the agent re-plans with
+     the steering message in its context.
 
-If you click **Send** *after* the agent has terminated (`✅ done`),
-nothing happens — `drive/3` finds no enabled `:append_steering`
-workitem and returns silently. Re-evaluate the C run cell to start a
-fresh enactment.
+If you click any control *after* the agent terminates (`✅ done`),
+nothing happens — `drive/3` finds no enabled workitem and returns
+silently. Re-evaluate the C run cell to start a fresh enactment.
 
 ## What this buys you
 
