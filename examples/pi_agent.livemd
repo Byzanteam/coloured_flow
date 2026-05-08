@@ -119,43 +119,52 @@ defmodule PiAgent.UI do
     "**state**: #{state}\n\n---\n\n#{body}"
   end
 
+  # Bindings that add noise to the events panel: :d is the full dialog
+  # (already shown in the left frame), :s is the signal unit token.
+  @event_noisy_keys [:d, :s]
+
   defp format_events(enactment_id) do
     occurrences =
       enactment_id
       |> Storage.occurrences_stream(0)
       |> Enum.to_list()
 
-    if occurrences == [] do
-      "**events** (0)\n\n_no firings yet_"
-    else
-      lines =
-        occurrences
-        |> Enum.with_index(1)
-        |> Enum.map_join("\n", fn {o, i} -> format_occurrence(o, i) end)
+    body =
+      case occurrences do
+        [] ->
+          "_no firings yet_"
 
-      "**events** (#{length(occurrences)})\n\n#{lines}"
-    end
+        list ->
+          list
+          |> Enum.with_index(1)
+          |> Enum.map_join("\n\n", fn {o, i} -> format_occurrence(o, i) end)
+      end
+
+    "**events** (#{length(occurrences)})\n\n#{body}"
   end
 
   defp format_occurrence(occurrence, idx) do
     name = occurrence.binding_element.transition
-    bindings = occurrence.binding_element.binding ++ occurrence.free_binding
 
-    "**#{idx}.** `:#{name}`" <> render_bindings(bindings)
+    bindings =
+      (occurrence.binding_element.binding ++ occurrence.free_binding)
+      |> Enum.reject(fn {k, _} -> k in @event_noisy_keys end)
+
+    case bindings do
+      [] -> "**#{idx}.** `:#{name}`"
+      kvs -> "**#{idx}.** `:#{name}`  \n#{render_bindings(kvs)}"
+    end
   end
 
-  defp render_bindings([]), do: ""
-
   defp render_bindings(kvs) do
-    " · " <>
-      Enum.map_join(kvs, ", ", fn {k, v} ->
-        "`#{k}` = `#{inspect_short(v)}`"
-      end)
+    Enum.map_join(kvs, "  \n", fn {k, v} ->
+      "&nbsp;&nbsp;`#{k}` = `#{inspect_short(v)}`"
+    end)
   end
 
   defp inspect_short(v) do
-    s = inspect(v, limit: 5, printable_limit: 50)
-    if String.length(s) > 70, do: String.slice(s, 0, 67) <> "…", else: s
+    s = inspect(v, limit: 3, printable_limit: 30, structs: false)
+    if String.length(s) > 50, do: String.slice(s, 0, 47) <> "…", else: s
   end
 
   defp state_label(markings) do
