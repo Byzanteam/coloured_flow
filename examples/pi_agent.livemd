@@ -90,11 +90,20 @@ end
 defmodule PiAgent.UI do
   @moduledoc false
   alias ColouredFlow.MultiSet
+  alias ColouredFlow.Runner.Storage
 
-  def render(nil, _markings), do: :ok
+  # Renders dialog (left) and event history (right) frames from the
+  # lifecycle hook options. Either frame may be absent.
+  def render(opts, event) do
+    if frame = opts[:dialog_frame] do
+      Kino.Frame.render(frame, Kino.Markdown.new(format_dialog(event.markings)))
+    end
 
-  def render(frame, markings) do
-    Kino.Frame.render(frame, Kino.Markdown.new(format(markings)))
+    if frame = opts[:events_frame] do
+      Kino.Frame.render(frame, Kino.Markdown.new(format_events(event.enactment_id)))
+    end
+
+    :ok
   end
 
   def read_dialog(markings) do
@@ -104,10 +113,49 @@ defmodule PiAgent.UI do
     end
   end
 
-  defp format(markings) do
+  defp format_dialog(markings) do
     state = state_label(markings)
     body = markings |> read_dialog() |> Enum.map_join("\n\n", &format_msg/1)
     "**state**: #{state}\n\n---\n\n#{body}"
+  end
+
+  defp format_events(enactment_id) do
+    occurrences =
+      enactment_id
+      |> Storage.occurrences_stream(0)
+      |> Enum.to_list()
+
+    if occurrences == [] do
+      "**events** (0)\n\n_no firings yet_"
+    else
+      lines =
+        occurrences
+        |> Enum.with_index(1)
+        |> Enum.map_join("\n", fn {o, i} -> format_occurrence(o, i) end)
+
+      "**events** (#{length(occurrences)})\n\n#{lines}"
+    end
+  end
+
+  defp format_occurrence(occurrence, idx) do
+    name = occurrence.binding_element.transition
+    bindings = occurrence.binding_element.binding ++ occurrence.free_binding
+
+    "**#{idx}.** `:#{name}`" <> render_bindings(bindings)
+  end
+
+  defp render_bindings([]), do: ""
+
+  defp render_bindings(kvs) do
+    " · " <>
+      Enum.map_join(kvs, ", ", fn {k, v} ->
+        "`#{k}` = `#{inspect_short(v)}`"
+      end)
+  end
+
+  defp inspect_short(v) do
+    s = inspect(v, limit: 5, printable_limit: 50)
+    if String.length(s) > 70, do: String.slice(s, 0, 67) <> "…", else: s
   end
 
   defp state_label(markings) do
@@ -234,7 +282,7 @@ defmodule PiAgent.A do
 
     action do
       tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.A.run_tool(event.enactment_id, tc)
     end
   end
@@ -264,7 +312,7 @@ defmodule PiAgent.A do
     output :ready, {1, {}}
 
     action do
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.A.think(event.enactment_id, event.markings)
     end
   end
@@ -276,12 +324,12 @@ defmodule PiAgent.A do
   end
 
   on_enactment_start do
-    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.UI.render(options, event)
     PiAgent.A.think(event.enactment_id, event.markings)
   end
 
   on_enactment_terminate do
-    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.UI.render(options, event)
   end
 
   ## Driver — turns mock-LLM/mock-tool decisions into workitem firings.
@@ -341,14 +389,15 @@ flow_a = InMemory.insert_flow!(PiAgent.A.cpnet())
 {:ok, e_a} = PiAgent.A.insert_enactment(flow(flow_a, :id))
 enactment_a = enactment(e_a, :id)
 
-frame_a = Kino.Frame.new()
+dialog_a = Kino.Frame.new()
+events_a = Kino.Frame.new()
 
 {:ok, _} =
   PiAgent.A.start_enactment(enactment_a,
-    lifecycle_hooks: {PiAgent.A, [frame: frame_a]}
+    lifecycle_hooks: {PiAgent.A, [dialog_frame: dialog_a, events_frame: events_a]}
   )
 
-frame_a
+Kino.Layout.grid([dialog_a, events_a], columns: 2, boxed: true)
 ```
 
 ## B. Risky-tool human gate
@@ -412,7 +461,7 @@ defmodule PiAgent.B do
 
     action do
       tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.B.dispatch_call(event.enactment_id, tc)
     end
   end
@@ -452,7 +501,7 @@ defmodule PiAgent.B do
     output :ready, {1, {}}
 
     action do
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.B.think(event.enactment_id, event.markings)
     end
   end
@@ -464,12 +513,12 @@ defmodule PiAgent.B do
   end
 
   on_enactment_start do
-    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.UI.render(options, event)
     PiAgent.B.think(event.enactment_id, event.markings)
   end
 
   on_enactment_terminate do
-    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.UI.render(options, event)
   end
 
   ## Driver
@@ -578,7 +627,8 @@ flow_b = InMemory.insert_flow!(PiAgent.B.cpnet())
 {:ok, e_b} = PiAgent.B.insert_enactment(flow(flow_b, :id))
 enactment_b = enactment(e_b, :id)
 
-frame_b = Kino.Frame.new()
+dialog_b = Kino.Frame.new()
+events_b = Kino.Frame.new()
 approve_btn = Kino.Control.button("Approve risky tool")
 deny_btn = Kino.Control.button("Deny")
 
@@ -587,10 +637,14 @@ Kino.listen(deny_btn, fn _ -> PiAgent.B.deny(enactment_b) end)
 
 {:ok, _} =
   PiAgent.B.start_enactment(enactment_b,
-    lifecycle_hooks: {PiAgent.B, [frame: frame_b]}
+    lifecycle_hooks: {PiAgent.B, [dialog_frame: dialog_b, events_frame: events_b]}
   )
 
-Kino.Layout.grid([frame_b, Kino.Layout.grid([approve_btn, deny_btn], columns: 2)],
+Kino.Layout.grid(
+  [
+    Kino.Layout.grid([dialog_b, events_b], columns: 2),
+    Kino.Layout.grid([approve_btn, deny_btn], columns: 2)
+  ],
   boxed: true
 )
 ```
@@ -678,7 +732,7 @@ defmodule PiAgent.C do
 
     action do
       tc = Keyword.fetch!(event.occurrence.free_binding, :tc)
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.C.dispatch_call(event.enactment_id, tc)
     end
   end
@@ -718,7 +772,7 @@ defmodule PiAgent.C do
     output :ready, {1, {}}
 
     action do
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.C.think(event.enactment_id, event.markings)
     end
   end
@@ -738,7 +792,7 @@ defmodule PiAgent.C do
     output :ready, {1, s}
 
     action do
-      PiAgent.UI.render(options[:frame], event.markings)
+      PiAgent.UI.render(options, event)
       PiAgent.C.think(event.enactment_id, event.markings)
     end
   end
@@ -750,12 +804,12 @@ defmodule PiAgent.C do
   end
 
   on_enactment_start do
-    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.UI.render(options, event)
     PiAgent.C.think(event.enactment_id, event.markings)
   end
 
   on_enactment_terminate do
-    PiAgent.UI.render(options[:frame], event.markings)
+    PiAgent.UI.render(options, event)
   end
 
   ## Driver
@@ -869,7 +923,8 @@ flow_c = InMemory.insert_flow!(PiAgent.C.cpnet())
 {:ok, e_c} = PiAgent.C.insert_enactment(flow(flow_c, :id))
 enactment_c = enactment(e_c, :id)
 
-frame_c = Kino.Frame.new()
+dialog_c = Kino.Frame.new()
+events_c = Kino.Frame.new()
 
 steer_input =
   Kino.Control.form([msg: Kino.Input.text("Steering")],
@@ -887,10 +942,17 @@ Kino.listen(approve_btn_c, fn _ -> PiAgent.C.approve(enactment_c) end)
 
 {:ok, _} =
   PiAgent.C.start_enactment(enactment_c,
-    lifecycle_hooks: {PiAgent.C, [frame: frame_c]}
+    lifecycle_hooks: {PiAgent.C, [dialog_frame: dialog_c, events_frame: events_c]}
   )
 
-Kino.Layout.grid([frame_c, steer_input, approve_btn_c], boxed: true)
+Kino.Layout.grid(
+  [
+    Kino.Layout.grid([dialog_c, events_c], columns: 2),
+    steer_input,
+    approve_btn_c
+  ],
+  boxed: true
+)
 ```
 
 ### How to test steering
