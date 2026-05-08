@@ -870,7 +870,13 @@ flow_c = InMemory.insert_flow!(PiAgent.C.cpnet())
 enactment_c = enactment(e_c, :id)
 
 frame_c = Kino.Frame.new()
-steer_input = Kino.Control.form([msg: Kino.Input.text("Steering")], submit: "Send")
+
+steer_input =
+  Kino.Control.form([msg: Kino.Input.text("Steering")],
+    submit: "Send",
+    reset_on_submit: [:msg]
+  )
+
 approve_btn_c = Kino.Control.button("Approve risky tool")
 
 Kino.listen(steer_input, fn %{data: %{msg: text}} ->
@@ -886,6 +892,33 @@ Kino.listen(approve_btn_c, fn _ -> PiAgent.C.approve(enactment_c) end)
 
 Kino.Layout.grid([frame_c, steer_input, approve_btn_c], boxed: true)
 ```
+
+### How to test steering
+
+Two steering paths run in this section:
+
+1. **Pre-seeded steering** (automatic). `:steering_queue` starts with one
+   token (`{:user, "Also count the files."}`). The first `think` round
+   calls `drain_steering`, which fires `:inject_steering` and the message
+   appears in the dialog as a `**user**` line *before* the first tool
+   call. You'll see this on every run with no input from you.
+2. **Live steering** (interactive). The agent pauses at the `bash`
+   risky-tool gate (state shows `⏸ waiting for human approval`). While
+   it's paused:
+   * Type a follow-up into the **Steering** field, e.g.
+     `Make sure to mention the runner module.` and click **Send**.
+   * The input clears (`reset_on_submit: [:msg]`); the field stays empty
+     so you know the message was queued. There is no separate
+     "queued" indicator — the queue is invisible until drained.
+   * Click **Approve risky tool**. The bash result merges, the next
+     `think` calls `drain_steering`, your message lands in the dialog as
+     another `**user**` line, and the agent answers with the steering
+     msg in its context.
+
+If you click **Send** *after* the agent has terminated (`✅ done`),
+nothing happens — `drive/3` finds no enabled `:append_steering`
+workitem and returns silently. Re-evaluate the C run cell to start a
+fresh enactment.
 
 ## What this buys you
 
