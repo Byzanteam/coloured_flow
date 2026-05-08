@@ -49,7 +49,17 @@ defmodule ColouredFlow.Definition.Presentation do
   defp to_mermaid_colour_set(%ColourSet{name: name, type: type}) do
     alias ColouredFlow.Definition.ColourSet.Descr
 
-    "%% colset #{compose_call(name)} :: #{type |> Descr.to_quoted() |> Macro.to_string()}"
+    # `Macro.to_string` may return multi-line output for composite descrs
+    # (maps, nested tuples). Mermaid's `%%` only comments a single line, so
+    # trailing lines would escape the comment and break the parser. Prefix
+    # every continuation line with `%%` so the whole descr stays commented.
+    rendered =
+      type
+      |> Descr.to_quoted()
+      |> Macro.to_string()
+      |> String.replace("\n", "\n  %% ")
+
+    "%% colset #{compose_call(name)} :: #{rendered}"
   end
 
   defp to_mermaid_place(%Place{name: name, colour_set: colour_set}) do

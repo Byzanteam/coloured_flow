@@ -1,6 +1,10 @@
 defmodule ColouredFlow.Definition.PresentationTest do
   use ExUnit.Case, async: true
+  use ColouredFlow.DefinitionHelpers
 
+  alias ColouredFlow.Definition.ColourSet
+  alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.Definition.Place
   alias ColouredFlow.Definition.Presentation
 
   import ColouredFlow.CpnetBuilder
@@ -79,6 +83,76 @@ defmodule ColouredFlow.Definition.PresentationTest do
           send_packet --{1, {n, d}}--> packets_to_send
         """
       )
+    end
+
+    test "prefixes every continuation line of multi-line composite descrs with %%" do
+      # `Macro.to_string` breaks long unions (enums) across lines using `|` as
+      # the separator. List ordering is preserved, so the output is
+      # deterministic — making an exact-match assertion possible.
+      cpnet = %ColouredPetriNet{
+        colour_sets: [
+          %ColourSet{
+            name: :color,
+            type:
+              {:enum,
+               [
+                 :alpha,
+                 :bravo,
+                 :charlie,
+                 :delta,
+                 :echo,
+                 :foxtrot,
+                 :golf,
+                 :hotel,
+                 :india,
+                 :juliet,
+                 :kilo,
+                 :lima,
+                 :mike,
+                 :november
+               ]}
+          }
+        ],
+        places: [%Place{name: "input", colour_set: :color}],
+        transitions: [build_transition!(name: "pass_through")],
+        arcs: [
+          build_arc!(
+            label: "in",
+            place: "input",
+            transition: "pass_through",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          )
+        ],
+        variables: [%ColouredFlow.Definition.Variable{name: :x, colour_set: :color}]
+      }
+
+      assert_mermaid(cpnet, """
+      flowchart TB
+        %% colset color() :: :alpha
+        %% | :bravo
+        %% | :charlie
+        %% | :delta
+        %% | :echo
+        %% | :foxtrot
+        %% | :golf
+        %% | :hotel
+        %% | :india
+        %% | :juliet
+        %% | :kilo
+        %% | :lima
+        %% | :mike
+        %% | :november
+
+        %% places
+        input((input<br>:color:))
+
+        %% transitions
+        pass_through[pass_through]
+
+        %% arcs
+        input --in--> pass_through
+      """)
     end
   end
 
