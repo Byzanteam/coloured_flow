@@ -5,7 +5,7 @@
 ```elixir
 Mix.install(
   [
-    {:coloured_flow, github: "Byzanteam/coloured_flow"},
+    {:coloured_flow, path: "/Users/fahchen/Projects/coloured_flow"},
     {:kino, "~> 0.14.1"}
   ],
   config: [
@@ -330,7 +330,7 @@ defmodule PiAgent.A do
   end
 end
 
-PiAgent.A.cpnet().__struct__
+PiAgent.A.to_mermaid()
 ```
 
 ```elixir
@@ -570,7 +570,7 @@ defmodule PiAgent.B do
   end
 end
 
-PiAgent.B.cpnet().__struct__
+PiAgent.B.to_mermaid()
 ```
 
 ```elixir
@@ -663,6 +663,11 @@ defmodule PiAgent.C do
   initial_marking :ready, ~MS[{}]
   # 5 user-steering slots: each :append_steering consumes one.
   initial_marking :steering_capacity, ~MS[5**{}]
+
+  # Pre-seed a steering message so the demo always shows steering even
+  # without typing into the live form.
+  initial_marking :steering_queue,
+    ColouredFlow.MultiSet.new([{:user, "Also count the files."}])
 
   transition :think_tool do
     input :ready, bind({1, s})
@@ -856,7 +861,7 @@ defmodule PiAgent.C do
   end
 end
 
-PiAgent.C.cpnet().__struct__
+PiAgent.C.to_mermaid()
 ```
 
 ```elixir

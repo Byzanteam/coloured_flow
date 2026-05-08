@@ -77,7 +77,7 @@ defmodule ColouredFlow.Definition.Presentation do
          orientation: :p_to_t,
          expression: expression
        }) do
-    "#{place} --#{label || expression.code}--> #{transition}"
+    "#{place} -->|#{escape_arc_label(label || expression.code)}| #{transition}"
   end
 
   defp to_mermaid_arc(%Arc{
@@ -87,7 +87,15 @@ defmodule ColouredFlow.Definition.Presentation do
          orientation: :t_to_p,
          expression: expression
        }) do
-    "#{transition} --#{label || expression.code}--> #{place}"
+    "#{transition} -->|#{escape_arc_label(label || expression.code)}| #{place}"
+  end
+
+  # Mermaid's `-->|label|` edge form rejects unbalanced/special chars.
+  # The dash form (`--label-->`) is even pickier — `[`, `]`, `{`, `"` all
+  # break the parser. Quote the whole label so mermaid treats it as a
+  # string literal, and escape embedded quotes.
+  defp escape_arc_label(label) do
+    "\"" <> String.replace(label, "\"", "#quot;") <> "\""
   end
 
   @spec compose_call(atom()) :: String.t()
