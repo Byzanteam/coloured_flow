@@ -1,5 +1,6 @@
 defmodule ColouredFlow.Definition.PresentationTest do
   use ExUnit.Case, async: true
+  use ColouredFlow.DefinitionHelpers
 
   alias ColouredFlow.Definition.ColourSet
   alias ColouredFlow.Definition.ColouredPetriNet
@@ -85,49 +86,73 @@ defmodule ColouredFlow.Definition.PresentationTest do
     end
 
     test "prefixes every continuation line of multi-line composite descrs with %%" do
-      # `Macro.to_string` returns multi-line output for composite descrs.
-      # Mermaid's `%%` only comments a single line, so every continuation
-      # line must also start with `%%`; otherwise the parser bails with
-      # "Expecting NEWLINE/EOF, got NODE_STRING" on the lines that escape
-      # the comment block.
-      # Eight keys is enough for `Macro.to_string` to break the map across
-      # lines (heuristic kicks in past a width threshold).
+      # `Macro.to_string` breaks long unions (enums) across lines using `|` as
+      # the separator. List ordering is preserved, so the output is
+      # deterministic — making an exact-match assertion possible.
       cpnet = %ColouredPetriNet{
         colour_sets: [
           %ColourSet{
-            name: :user,
+            name: :color,
             type:
-              {:map,
-               %{
-                 name: {:binary, []},
-                 age: {:integer, []},
-                 email: {:binary, []},
-                 active: {:boolean, []},
-                 role: {:binary, []},
-                 dept: {:binary, []},
-                 score: {:integer, []},
-                 country: {:binary, []}
-               }}
+              {:enum,
+               [
+                 :alpha,
+                 :bravo,
+                 :charlie,
+                 :delta,
+                 :echo,
+                 :foxtrot,
+                 :golf,
+                 :hotel,
+                 :india,
+                 :juliet,
+                 :kilo,
+                 :lima,
+                 :mike,
+                 :november
+               ]}
           }
         ],
-        places: [%Place{name: "p", colour_set: :user}],
-        transitions: [],
-        arcs: [],
-        variables: [],
-        constants: [],
-        functions: []
+        places: [%Place{name: "input", colour_set: :color}],
+        transitions: [build_transition!(name: "pass_through")],
+        arcs: [
+          build_arc!(
+            label: "in",
+            place: "input",
+            transition: "pass_through",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          )
+        ],
+        variables: [%ColouredFlow.Definition.Variable{name: :x, colour_set: :color}]
       }
 
-      mermaid = Presentation.to_mermaid(cpnet)
+      assert_mermaid(cpnet, """
+      flowchart TB
+        %% colset color() :: :alpha
+        %% | :bravo
+        %% | :charlie
+        %% | :delta
+        %% | :echo
+        %% | :foxtrot
+        %% | :golf
+        %% | :hotel
+        %% | :india
+        %% | :juliet
+        %% | :kilo
+        %% | :lima
+        %% | :mike
+        %% | :november
 
-      colset_block =
-        mermaid
-        |> String.split("\n")
-        |> Enum.drop_while(&(not String.contains?(&1, "colset user")))
-        |> Enum.take_while(&(&1 |> String.trim() |> String.starts_with?("%%")))
+        %% places
+        input((input<br>:color:))
 
-      assert length(colset_block) > 1, "expected multi-line colset output"
-      assert Enum.all?(colset_block, &(&1 |> String.trim() |> String.starts_with?("%%")))
+        %% transitions
+        pass_through[pass_through]
+
+        %% arcs
+        input --in--> pass_through
+      """)
     end
   end
 
