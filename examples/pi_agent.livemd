@@ -124,10 +124,14 @@ defmodule PiAgent.UI do
   alias ColouredFlow.Runner.Storage
 
   # Renders dialog (left top), event history (right), and an optional
-  # controls frame (left bottom) from the lifecycle hook options. Once
-  # the enactment terminates (answer present), the controls frame is
-  # replaced with a "disabled" marker so the user cannot click stale
-  # buttons; the dialog gets a "workflow ended" footer.
+  # controls frame (left bottom) from the lifecycle hook options.
+  #
+  # The controls frame is rebuilt on every event so each widget only
+  # appears when its target workitem is actually firable: plan-gate
+  # buttons show up while `:proposed_call` has a token, the risky-tool
+  # buttons show up while `:pending_call` carries a `{:risky, _}`, the
+  # steering form is visible the whole run. After termination the
+  # frame is replaced with a "controls disabled" marker.
   def render(opts, event) do
     terminated? = Map.has_key?(event.markings, "answer")
 
@@ -139,14 +143,66 @@ defmodule PiAgent.UI do
       Kino.Frame.render(frame, Kino.Markdown.new(format_events(event.enactment_id)))
     end
 
-    if terminated? and (frame = opts[:controls_frame]) do
-      Kino.Frame.render(
-        frame,
-        Kino.Markdown.new("*✓ workflow ended — controls disabled.*")
-      )
+    if frame = opts[:controls_frame] do
+      content =
+        if terminated? do
+          Kino.Markdown.new("*✓ workflow ended — controls disabled.*")
+        else
+          build_controls(opts, event.markings)
+        end
+
+      Kino.Frame.render(frame, content)
     end
 
     :ok
+  end
+
+  defp build_controls(opts, markings) do
+    parts =
+      []
+      |> maybe_add_plan_gate(opts, markings)
+      |> maybe_add_risky_gate(opts, markings)
+      |> maybe_add_steer(opts)
+
+    case parts do
+      [] -> Kino.Markdown.new("*waiting for the agent to act…*")
+      [single] -> single
+      many -> Kino.Layout.grid(many, columns: 1)
+    end
+  end
+
+  defp maybe_add_plan_gate(parts, opts, markings) do
+    cond do
+      not has_token?(markings, "proposed_call") ->
+        parts
+
+      is_nil(opts[:approve_plan_btn]) or is_nil(opts[:reject_plan_btn]) ->
+        parts
+
+      true ->
+        plan_row =
+          Kino.Layout.grid([opts[:approve_plan_btn], opts[:reject_plan_btn]], columns: 2)
+
+        manual = if form = opts[:manual_form], do: [form], else: []
+        parts ++ [plan_row | manual]
+    end
+  end
+
+  defp maybe_add_risky_gate(parts, opts, markings) do
+    cond do
+      not risky_pending?(markings) ->
+        parts
+
+      is_nil(opts[:approve_btn]) or is_nil(opts[:deny_btn]) ->
+        parts
+
+      true ->
+        parts ++ [Kino.Layout.grid([opts[:approve_btn], opts[:deny_btn]], columns: 2)]
+    end
+  end
+
+  defp maybe_add_steer(parts, opts) do
+    if form = opts[:steer_form], do: parts ++ [form], else: parts
   end
 
   def read_dialog(markings) do
@@ -696,13 +752,17 @@ deny_btn = Kino.Control.button("Deny")
 Kino.listen(approve_btn, fn _ -> PiAgent.B.approve(enactment_b) end)
 Kino.listen(deny_btn, fn _ -> PiAgent.B.deny(enactment_b) end)
 
-Kino.Frame.render(controls_b, Kino.Layout.grid([approve_btn, deny_btn], columns: 2))
-
 {:ok, _} =
   PiAgent.B.start_enactment(enactment_b,
     lifecycle_hooks:
       {PiAgent.B,
-       [dialog_frame: dialog_b, events_frame: events_b, controls_frame: controls_b]}
+       [
+         dialog_frame: dialog_b,
+         events_frame: events_b,
+         controls_frame: controls_b,
+         approve_btn: approve_btn,
+         deny_btn: deny_btn
+       ]}
   )
 
 left_b = Kino.Layout.grid([dialog_b, controls_b], columns: 1)
@@ -1068,23 +1128,19 @@ end)
 Kino.listen(approve_plan_btn, fn _ -> PiAgent.C.approve(enactment_c) end)
 Kino.listen(reject_plan_btn, fn _ -> PiAgent.C.reject(enactment_c) end)
 
-Kino.Frame.render(
-  controls_c,
-  Kino.Layout.grid(
-    [
-      Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2),
-      manual_input,
-      steer_input
-    ],
-    columns: 1
-  )
-)
-
 {:ok, _} =
   PiAgent.C.start_enactment(enactment_c,
     lifecycle_hooks:
       {PiAgent.C,
-       [dialog_frame: dialog_c, events_frame: events_c, controls_frame: controls_c]}
+       [
+         dialog_frame: dialog_c,
+         events_frame: events_c,
+         controls_frame: controls_c,
+         approve_plan_btn: approve_plan_btn,
+         reject_plan_btn: reject_plan_btn,
+         manual_form: manual_input,
+         steer_form: steer_input
+       ]}
   )
 
 left_c = Kino.Layout.grid([dialog_c, controls_c], columns: 1)
