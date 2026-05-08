@@ -27,8 +27,8 @@ defmodule ColouredFlow.Definition.PresentationTest do
           pass_through[pass_through]
 
           %% arcs
-          input --in--> pass_through
-          pass_through --out--> output
+          input -->|"in"| pass_through
+          pass_through -->|"out"| output
         """
       )
     end
@@ -63,24 +63,24 @@ defmodule ColouredFlow.Definition.PresentationTest do
           transmit_packet[transmit_packet]
 
           %% arcs
-          a --bind {1, {n, d}}--> transmit_packet
-          send_packet --{1, {n, d}}--> a
-          b --bind {1, {n, d}}--> receive_packet
-          transmit_packet --if success, do: {1, {n, d}}, else: {0, {n, d}}--> b
-          c --bind {1, n}--> transmit_ack
-          receive_packet --if n == k, do: {1, k + 1}, else: {1, k}--> c
-          d --bind {1, n}--> receive_ack
-          transmit_ack --if success, do: {1, n}, else: {0, n}--> d
-          data_recevied --bind {1, data}--> receive_packet
-          receive_packet --if n == k, do: {1, data <> d}, else: {1, data}--> data_recevied
-          next_rec --bind {1, k}--> receive_packet
-          receive_packet --if n == k, do: {1, k + 1}, else: {1, k}--> next_rec
-          next_send --bind {1, k}--> receive_ack
-          next_send --bind {1, {1, n}}--> send_packet
-          receive_ack --{1, n}--> next_send
-          send_packet --{1, {1, n}}--> next_send
-          packets_to_send --bind {1, {n, d}}--> send_packet
-          send_packet --{1, {n, d}}--> packets_to_send
+          a -->|"bind {1, {n, d}}"| transmit_packet
+          send_packet -->|"{1, {n, d}}"| a
+          b -->|"bind {1, {n, d}}"| receive_packet
+          transmit_packet -->|"if success, do: {1, {n, d}}, else: {0, {n, d}}"| b
+          c -->|"bind {1, n}"| transmit_ack
+          receive_packet -->|"if n == k, do: {1, k + 1}, else: {1, k}"| c
+          d -->|"bind {1, n}"| receive_ack
+          transmit_ack -->|"if success, do: {1, n}, else: {0, n}"| d
+          data_recevied -->|"bind {1, data}"| receive_packet
+          receive_packet -->|"if n == k, do: {1, data <> d}, else: {1, data}"| data_recevied
+          next_rec -->|"bind {1, k}"| receive_packet
+          receive_packet -->|"if n == k, do: {1, k + 1}, else: {1, k}"| next_rec
+          next_send -->|"bind {1, k}"| receive_ack
+          next_send -->|"bind {1, {1, n}}"| send_packet
+          receive_ack -->|"{1, n}"| next_send
+          send_packet -->|"{1, {1, n}}"| next_send
+          packets_to_send -->|"bind {1, {n, d}}"| send_packet
+          send_packet -->|"{1, {n, d}}"| packets_to_send
         """
       )
     end
@@ -151,7 +151,7 @@ defmodule ColouredFlow.Definition.PresentationTest do
         pass_through[pass_through]
 
         %% arcs
-        input --in--> pass_through
+        input -->|"in"| pass_through
       """)
     end
   end
