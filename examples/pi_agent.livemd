@@ -123,15 +123,27 @@ defmodule PiAgent.UI do
   alias ColouredFlow.MultiSet
   alias ColouredFlow.Runner.Storage
 
-  # Renders dialog (left) and event history (right) frames from the
-  # lifecycle hook options. Either frame may be absent.
+  # Renders dialog (left top), event history (right), and an optional
+  # controls frame (left bottom) from the lifecycle hook options. Once
+  # the enactment terminates (answer present), the controls frame is
+  # replaced with a "disabled" marker so the user cannot click stale
+  # buttons; the dialog gets a "workflow ended" footer.
   def render(opts, event) do
+    terminated? = Map.has_key?(event.markings, "answer")
+
     if frame = opts[:dialog_frame] do
-      Kino.Frame.render(frame, Kino.Markdown.new(format_dialog(event.markings)))
+      Kino.Frame.render(frame, Kino.Markdown.new(format_dialog(event.markings, terminated?)))
     end
 
     if frame = opts[:events_frame] do
       Kino.Frame.render(frame, Kino.Markdown.new(format_events(event.enactment_id)))
+    end
+
+    if terminated? and (frame = opts[:controls_frame]) do
+      Kino.Frame.render(
+        frame,
+        Kino.Markdown.new("*✓ workflow ended — controls disabled.*")
+      )
     end
 
     :ok
@@ -144,10 +156,11 @@ defmodule PiAgent.UI do
     end
   end
 
-  defp format_dialog(markings) do
+  defp format_dialog(markings, terminated? \\ false) do
     state = state_label(markings)
     body = markings |> read_dialog() |> Enum.map_join("\n\n", &format_msg/1)
-    "**state**: #{state}\n\n---\n\n#{body}"
+    footer = if terminated?, do: "\n\n---\n\n**✓ workflow ended.**", else: ""
+    "**state**: #{state}\n\n---\n\n#{body}#{footer}"
   end
 
   # Bindings that add noise to the events panel: :d is the full dialog
@@ -676,26 +689,23 @@ enactment_b = enactment(e_b, :id)
 
 dialog_b = Kino.Frame.new()
 events_b = Kino.Frame.new()
+controls_b = Kino.Frame.new()
 approve_btn = Kino.Control.button("Approve risky tool")
 deny_btn = Kino.Control.button("Deny")
 
 Kino.listen(approve_btn, fn _ -> PiAgent.B.approve(enactment_b) end)
 Kino.listen(deny_btn, fn _ -> PiAgent.B.deny(enactment_b) end)
 
+Kino.Frame.render(controls_b, Kino.Layout.grid([approve_btn, deny_btn], columns: 2))
+
 {:ok, _} =
   PiAgent.B.start_enactment(enactment_b,
-    lifecycle_hooks: {PiAgent.B, [dialog_frame: dialog_b, events_frame: events_b]}
+    lifecycle_hooks:
+      {PiAgent.B,
+       [dialog_frame: dialog_b, events_frame: events_b, controls_frame: controls_b]}
   )
 
-left_b =
-  Kino.Layout.grid(
-    [
-      dialog_b,
-      Kino.Layout.grid([approve_btn, deny_btn], columns: 2)
-    ],
-    columns: 1
-  )
-
+left_b = Kino.Layout.grid([dialog_b, controls_b], columns: 1)
 Kino.Layout.grid([left_b, events_b], columns: 2, boxed: true)
 ```
 
@@ -1030,6 +1040,7 @@ enactment_c = enactment(e_c, :id)
 
 dialog_c = Kino.Frame.new()
 events_c = Kino.Frame.new()
+controls_c = Kino.Frame.new()
 
 steer_input =
   Kino.Control.form([msg: Kino.Input.text("Steering")],
@@ -1057,22 +1068,26 @@ end)
 Kino.listen(approve_plan_btn, fn _ -> PiAgent.C.approve(enactment_c) end)
 Kino.listen(reject_plan_btn, fn _ -> PiAgent.C.reject(enactment_c) end)
 
-{:ok, _} =
-  PiAgent.C.start_enactment(enactment_c,
-    lifecycle_hooks: {PiAgent.C, [dialog_frame: dialog_c, events_frame: events_c]}
-  )
-
-left_c =
+Kino.Frame.render(
+  controls_c,
   Kino.Layout.grid(
     [
-      dialog_c,
       Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2),
       manual_input,
       steer_input
     ],
     columns: 1
   )
+)
 
+{:ok, _} =
+  PiAgent.C.start_enactment(enactment_c,
+    lifecycle_hooks:
+      {PiAgent.C,
+       [dialog_frame: dialog_c, events_frame: events_c, controls_frame: controls_c]}
+  )
+
+left_c = Kino.Layout.grid([dialog_c, controls_c], columns: 1)
 Kino.Layout.grid([left_c, events_c], columns: 2, boxed: true)
 ```
 
