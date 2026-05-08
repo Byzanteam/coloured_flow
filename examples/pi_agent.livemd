@@ -709,13 +709,19 @@ Three upgrades over Section B:
    `:append_steering` transition lets the user push a follow-up message
    while the agent is mid-flight. `:inject_steering` drains the queue
    into `:dialog` *before* the next round.
-3. **Plan-then-act gate.** Section B let safe tools auto-fire and only
-   gated risky ones. Section C drops the safe/risky tag and routes
-   *every* tool call through a human-approval step:
-   `:propose_call → [:proposed_call] → :approve_proposal | :reject_proposal`.
-   Approval moves the call to `:pending_call` and `:run_tool` executes
-   it. Rejection appends a rejection note to `:dialog` and restores
-   `:ready`, kicking the loop back to `think`.
+3. **Plan-then-act gate with three branches.** Section B let safe
+   tools auto-fire and only gated risky ones. Section C drops the
+   safe/risky tag and routes *every* tool call through a human review
+   step: `:propose_call → [:proposed_call] → one of three exits`.
+   Each exit appends a `{:user, _}` line to the dialog so the next
+   planning round can quote it back via `MockLLM.proposal_text/2`:
+   * `:approve_proposal` — call moves to `:pending_call`, `:run_tool`
+     executes it; dialog gains `{:user, "approve"}`.
+   * `:reject_proposal` — drops the call, restores `:ready`; dialog
+     gains `{:user, "reject: <note>"}`.
+   * `:manual_input` — drops the call, restores `:ready`; dialog
+     gains the human's literal `{:user, <note>}` (a free-form override
+     that the next race round picks up via `proposal_text/2`).
 
 `append_steering` consumes a `:steering_capacity` token (a counting
 semaphore — bounds how many follow-ups the user may push) and produces
@@ -741,7 +747,7 @@ defmodule PiAgent.C do
   colset tool_call() :: {tool_name(), binary()}
   colset tool_result() :: binary()
   colset answer() :: binary()
-  colset reason() :: binary()
+  colset note() :: binary()
   colset proposal() :: binary()
   colset signal() :: {}
 
@@ -751,7 +757,7 @@ defmodule PiAgent.C do
   var ans :: answer()
   var s :: signal()
   var m :: msg()
-  var reason :: reason()
+  var note :: note()
   var proposal :: proposal()
 
   place :dialog, :dialog
@@ -799,10 +805,14 @@ defmodule PiAgent.C do
     output :answer, {1, ans}
   end
 
-  # Human-driven: move a proposed call into :pending_call and run it.
+  # Human-driven option 1: approve the plan. The proposed call moves to
+  # :pending_call and runs; an "approve" note lands in the dialog so the
+  # next round sees the human assented.
   transition :approve_proposal do
     input :proposed_call, bind({1, tc})
+    input :dialog, bind({1, d})
 
+    output :dialog, {1, d ++ [{:user, "approve"}]}
     output :pending_call, {1, tc}
 
     action do
@@ -811,14 +821,29 @@ defmodule PiAgent.C do
     end
   end
 
-  # Human-driven: drop the proposal, append a rejection note to dialog,
-  # and put :ready back so the agent thinks again. `reason` is supplied
-  # by the driver via the workitem's free-binding list.
+  # Human-driven option 2: reject the plan. Drops :proposed_call, appends
+  # a `reject: <note>` line to the dialog, and restores :ready.
   transition :reject_proposal do
     input :proposed_call, bind({1, tc})
     input :dialog, bind({1, d})
 
-    output :dialog, {1, d ++ [{:user, reason}]}
+    output :dialog, {1, d ++ [{:user, "reject: " <> note}]}
+    output :ready, {1, {}}
+
+    action do
+      PiAgent.UI.render(options, event)
+      PiAgent.C.think(event.enactment_id, event.markings)
+    end
+  end
+
+  # Human-driven option 3: override the plan with a manual instruction.
+  # The dropped proposal yields to a fresh `{:user, note}` line; the
+  # next race round picks the new instruction up via `proposal_text/2`.
+  transition :manual_input do
+    input :proposed_call, bind({1, tc})
+    input :dialog, bind({1, d})
+
+    output :dialog, {1, d ++ [{:user, note}]}
     output :ready, {1, {}}
 
     action do
@@ -924,11 +949,17 @@ defmodule PiAgent.C do
     drive(enactment_id, "approve_proposal", [])
   end
 
-  # Reject the pending plan with a reason. Default reason kept short so
-  # the dialog stays readable.
-  def reject(enactment_id, reason \\ "rejected the proposed plan; try a different tool")
-      when is_binary(reason) do
-    drive(enactment_id, "reject_proposal", reason: reason)
+  # Reject the pending plan. Default note kept short so dialog stays
+  # readable; the form-driven path passes a custom note.
+  def reject(enactment_id, note \\ "try a different tool")
+      when is_binary(note) do
+    drive(enactment_id, "reject_proposal", note: note)
+  end
+
+  # Override the pending plan with a manual instruction. Drops the
+  # proposal and lets the next planning round read the new note.
+  def override(enactment_id, note) when is_binary(note) and note != "" do
+    drive(enactment_id, "manual_input", note: note)
   end
 
   def steer(enactment_id, content) when is_binary(content) do
@@ -990,8 +1021,14 @@ events_c = Kino.Frame.new()
 
 steer_input =
   Kino.Control.form([msg: Kino.Input.text("Steering")],
-    submit: "Send",
+    submit: "Send steering",
     reset_on_submit: [:msg]
+  )
+
+manual_input =
+  Kino.Control.form([note: Kino.Input.text("Manual instruction")],
+    submit: "Override plan",
+    reset_on_submit: [:note]
   )
 
 approve_plan_btn = Kino.Control.button("Approve plan")
@@ -999,6 +1036,10 @@ reject_plan_btn = Kino.Control.button("Reject plan")
 
 Kino.listen(steer_input, fn %{data: %{msg: text}} ->
   if text != "", do: PiAgent.C.steer(enactment_c, text)
+end)
+
+Kino.listen(manual_input, fn %{data: %{note: text}} ->
+  if text != "", do: PiAgent.C.override(enactment_c, text)
 end)
 
 Kino.listen(approve_plan_btn, fn _ -> PiAgent.C.approve(enactment_c) end)
@@ -1012,8 +1053,9 @@ Kino.listen(reject_plan_btn, fn _ -> PiAgent.C.reject(enactment_c) end)
 Kino.Layout.grid(
   [
     Kino.Layout.grid([dialog_c, events_c], columns: 2),
-    steer_input,
-    Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2)
+    Kino.Layout.grid([approve_plan_btn, reject_plan_btn], columns: 2),
+    manual_input,
+    steer_input
   ],
   boxed: true
 )
@@ -1021,30 +1063,31 @@ Kino.Layout.grid(
 
 ### How to test the section
 
-Three things to watch:
+Four interactive controls. Each one lands a `{:user, _}` message in
+the dialog, and the next planning round picks the latest such message
+up via `MockLLM.proposal_text/2` and quotes it back in the proposal so
+the human can verify the model heard them.
 
-1. **Plan-then-act gate** (every tool call). After each `think`, the
-   agent emits a `:proposed_call` token and pauses
-   (`🤔 awaiting plan approval`). Click **Approve plan** to fire
-   `:approve_proposal` (call moves to `:pending_call` and runs); click
-   **Reject plan** to fire `:reject_proposal` (a rejection note lands
-   in the dialog and the agent re-thinks). The events panel records
-   every `:propose_call` / `:approve_proposal` / `:reject_proposal`
-   firing.
-2. **Pre-seeded steering** (automatic). `:steering_queue` starts with
-   one token (`{:user, "Also count the files."}`). The first `think`
-   round calls `drain_steering`, fires `:inject_steering`, and the
-   message lands in the dialog as a `**user**` line *before* the first
-   plan proposal. Visible on every run with no input from you.
-3. **Live steering** (interactive). While the agent is paused at any
-   plan gate (or between rounds):
-   * Type a follow-up into the **Steering** field and click **Send**.
-   * Input clears (`reset_on_submit: [:msg]`); the queue is invisible
-     until drained.
-   * Click **Approve plan**. After the tool runs and merges, the next
-     `think` calls `drain_steering`, your message appears in the
-     dialog as another `**user**` line, and the agent re-plans with
-     the steering message in its context.
+1. **Approve plan** (button). Fires `:approve_proposal`. Dialog
+   gains `{:user, "approve"}`; tool runs; agent re-plans for next round.
+2. **Reject plan** (button). Fires `:reject_proposal` with a fixed
+   default note. Dialog gains `{:user, "reject: try a different
+   tool"}`; the proposal is dropped; agent re-plans, and the next
+   `propose_call` quotes the rejection back to you.
+3. **Manual instruction** (form). Type a custom note and click
+   **Override plan**. Fires `:manual_input` with your text as the
+   `note` free binding. Dialog gains `{:user, <your note>}`; proposal
+   dropped; agent re-plans with your override as the new context.
+4. **Steering** (form). Type a follow-up and click **Send steering**.
+   Fires `:append_steering` (queues the message). The next time
+   `:ready` and `:dialog` align — typically right after the current
+   tool merges or the current proposal resolves — `:inject_steering`
+   drains the queue into the dialog.
+
+Pre-seeded steering: `:steering_queue` starts with one token
+(`{:user, "Also count the files."}`). The very first `think` call
+drains it, so the first proposal already references it. You'll see
+this on every run with no input from you.
 
 If you click any control *after* the agent terminates (`✅ done`),
 nothing happens — `drive/3` finds no enabled workitem and returns
