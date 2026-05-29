@@ -90,6 +90,40 @@ declare namespace Musubi {
   }
 
   interface Stores {
+    "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore": StoreDef<
+      "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore",
+      {
+        summary: ColouredFlowDashboardWeb.Views.EnactmentSummary
+        markings: Musubi.StreamField<ColouredFlowDashboardWeb.Views.MarkingRow>
+        workitems: Musubi.StreamField<ColouredFlowDashboardWeb.Views.WorkitemRow>
+        occurrences: Musubi.StreamField<ColouredFlowDashboardWeb.Views.OccurrenceRow>
+      },
+      {
+        withdraw_workitem: {
+          payload: {
+            workitem_id: string
+          }
+          reply: {
+            code: "ok" | "already_withdrawn" | "unknown_workitem" | "unsupported" | "runner_error"
+          }
+        }
+        force_terminate: {
+          payload: {
+            reason: string
+          }
+          reply: {
+            code: "ok" | "already_terminated" | "runner_error"
+          }
+        }
+        take_snapshot: {
+          payload: {}
+          reply: {
+            code: "ok" | "not_running" | "runner_error"
+          }
+        }
+      }
+    >
+
     "ColouredFlowDashboardWeb.Stores.InboxStore": StoreDef<
       "ColouredFlowDashboardWeb.Stores.InboxStore",
       {
@@ -113,10 +147,36 @@ declare namespace Musubi {
 
 declare namespace ColouredFlowDashboardWeb {
   namespace Views {
+    interface EnactmentSummary {
+      enactment_id: string
+      flow_topic_id: string | null
+      state: "running" | "exception" | "terminated"
+      version: number
+      markings_count: number
+      workitems_count: number
+      last_occurrence_at: string | null
+    }
+
     interface InboxCounts {
       enabled: number
       started: number
       by_enactment: Record<string, unknown>
+    }
+
+    interface MarkingRow {
+      place: string
+      colour_set: string
+      tokens_count: number
+      tokens_summary: string
+    }
+
+    interface OccurrenceRow {
+      id: string
+      step_number: number
+      transition: string
+      binding_summary: string
+      occurred_at: string
+      outputs_summary: string
     }
 
     interface WorkitemRow {

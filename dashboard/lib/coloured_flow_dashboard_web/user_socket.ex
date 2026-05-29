@@ -3,12 +3,13 @@ defmodule ColouredFlowDashboardWeb.UserSocket do
   Musubi socket adapter for the ColouredFlow Dashboard.
 
   `roots:` advertises the root stores the SPA may mount via
-  `connection.mountStore({module: "...", id: "..."})`. Additional roots
-  (`EnactmentDetailStore`, `FlowCatalogStore`) land in later phases.
+  `connection.mountStore({module: "...", id: "..."})`. `FlowCatalogStore`
+  lands in a later phase.
   """
 
   use Musubi.Socket,
     roots: [
-      ColouredFlowDashboardWeb.Stores.InboxStore
+      ColouredFlowDashboardWeb.Stores.InboxStore,
+      ColouredFlowDashboardWeb.Stores.EnactmentDetailStore
     ]
 end

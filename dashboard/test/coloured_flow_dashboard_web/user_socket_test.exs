@@ -9,7 +9,10 @@ defmodule ColouredFlowDashboardWeb.UserSocketTest do
       Code.ensure_loaded!(UserSocket)
       assert function_exported?(UserSocket, :__musubi_roots__, 0)
 
-      assert ColouredFlowDashboardWeb.Stores.InboxStore in UserSocket.__musubi_roots__()
+      roots = UserSocket.__musubi_roots__()
+
+      assert ColouredFlowDashboardWeb.Stores.InboxStore in roots
+      assert ColouredFlowDashboardWeb.Stores.EnactmentDetailStore in roots
     end
 
     test "implements the Musubi.Socket lifecycle behaviour" do

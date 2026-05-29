@@ -10,9 +10,8 @@ import {
   Textarea,
   useKumoToastManager
 } from "@cloudflare/kumo"
-import { MusubiCommandError } from "@musubi/react"
-
 import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
+import { dispatchWithReply } from "../musubi/replyHandler"
 
 const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
@@ -205,33 +204,22 @@ function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => 
       return
     }
 
-    try {
-      const reply = await dispatch({ workitem_id: row.id, outputs })
-      // Resolved path = server-marked "ok" envelope. Musubi rejects every
-      // non-"ok" envelope into the catch branch below, so reply.code is
-      // effectively always "ok" here — route it through the same decoder
-      // for symmetry.
-      handleReply((reply.code as ReplyCode) ?? "ok", reply as Record<string, unknown>)
-    } catch (cause) {
-      if (MusubiCommandError.is(cause)) {
-        // Server rejected with a structured "error" envelope. Hand the FULL
-        // reply (with ad-hoc fields like `variable`, `workitem_id`) to the
-        // decoder so banners can render structured context.
-        const reply = (cause.reply ?? { code: cause.code }) as Record<string, unknown>
-        const code = ((cause.code ?? reply.code) as ReplyCode | undefined) ?? "runner_error"
-        handleReply(code, reply)
-        return
+    await dispatchWithReply<ReplyCode>(
+      dispatch as (payload: Record<string, unknown>) => Promise<{ code?: string } & Record<string, unknown>>,
+      { workitem_id: row.id, outputs },
+      {
+        onReply: handleReply,
+        onUnexpected: (cause) => {
+          toasts.add({
+            variant: "error",
+            title: "Submission failed",
+            description:
+              cause instanceof Error ? cause.message : "Command failed for an unknown reason.",
+            timeout: 6000
+          })
+        }
       }
-      // Non-Musubi failure (network, runtime crash, timeout w/o reply).
-      // Generic toast — drawer stays open for retry.
-      toasts.add({
-        variant: "error",
-        title: "Submission failed",
-        description:
-          cause instanceof Error ? cause.message : "Command failed for an unknown reason.",
-        timeout: 6000
-      })
-    }
+    )
   }
 
   function handleReply(code: ReplyCode, reply: Record<string, unknown>) {

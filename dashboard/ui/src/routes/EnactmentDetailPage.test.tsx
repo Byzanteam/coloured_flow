@@ -1,0 +1,262 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { describe, expect, it, vi, beforeEach } from "vitest"
+import type { ReactNode } from "react"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
+import { Toasty } from "@cloudflare/kumo"
+
+const { takeSnapshotMock, forceTerminateMock, withdrawMock, sampleSnapshot } = vi.hoisted(() => {
+  const summary = {
+    enactment_id: "en-aaaa",
+    flow_topic_id: "topic-x",
+    state: "running" as const,
+    version: 3,
+    markings_count: 1,
+    workitems_count: 1,
+    last_occurrence_at: "2026-05-29T00:00:00Z"
+  }
+
+  const marking = {
+    place: "input",
+    colour_set: "int",
+    tokens_count: 2,
+    tokens_summary: '2×"a"'
+  }
+
+  const workitem = {
+    id: "wi-1",
+    enactment_id: "en-aaaa",
+    flow_topic_id: "topic-x",
+    transition: "approve",
+    state: "enabled" as const,
+    binding_summary: "x = 1",
+    output_vars: [],
+    enabled_at: "2026-05-29T00:00:00Z",
+    updated_at: "2026-05-29T00:00:00Z"
+  }
+
+  const occurrence = {
+    id: "en-aaaa-1",
+    step_number: 1,
+    transition: "submit",
+    binding_summary: "x = 1",
+    occurred_at: "2026-05-29T00:00:00Z",
+    outputs_summary: ""
+  }
+
+  return {
+    takeSnapshotMock: vi.fn(),
+    forceTerminateMock: vi.fn(),
+    withdrawMock: vi.fn(),
+    sampleSnapshot: {
+      summary,
+      markings: [marking],
+      workitems: [workitem],
+      occurrences: [occurrence]
+    }
+  }
+})
+
+vi.mock("../musubi", () => ({
+  useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "detail-proxy" }),
+  useMusubiSnapshot: vi.fn().mockReturnValue(sampleSnapshot),
+  useMusubiCommand: vi.fn().mockImplementation((_proxy: unknown, name: string) => {
+    const dispatch =
+      name === "take_snapshot"
+        ? takeSnapshotMock
+        : name === "force_terminate"
+          ? forceTerminateMock
+          : withdrawMock
+    return {
+      dispatch,
+      isPending: false,
+      error: null,
+      data: null,
+      reset: vi.fn()
+    }
+  })
+}))
+
+vi.mock("@musubi/react", () => {
+  class MusubiCommandError extends Error {
+    readonly kind: "failed" | "timeout"
+    readonly command: string
+    readonly storeId: readonly string[]
+    readonly reply: unknown
+    readonly code: string | undefined
+    constructor(options: {
+      kind: "failed" | "timeout"
+      command: string
+      storeId: readonly string[]
+      reply?: unknown
+    }) {
+      super(`Command "${options.command}" failed`)
+      this.name = "MusubiCommandError"
+      this.kind = options.kind
+      this.command = options.command
+      this.storeId = options.storeId
+      this.reply = options.reply
+      this.code = extractCode(options.reply)
+    }
+    static is(value: unknown): value is MusubiCommandError {
+      return value instanceof Error && (value as { name?: string }).name === "MusubiCommandError"
+    }
+  }
+  function extractCode(reply: unknown): string | undefined {
+    if (typeof reply !== "object" || reply === null) return undefined
+    const record = reply as Record<string, unknown>
+    for (const key of ["code", "error", "reason"]) {
+      const value = record[key]
+      if (typeof value === "string") return value
+    }
+    return undefined
+  }
+  return { MusubiCommandError }
+})
+
+import { MusubiCommandError } from "@musubi/react"
+import EnactmentDetailPage from "./EnactmentDetailPage"
+
+function renderRoute(children: ReactNode) {
+  return render(
+    <Toasty>
+      <MemoryRouter initialEntries={["/enactments/en-aaaa"]}>
+        <Routes>
+          <Route path="/enactments/:id" element={children} />
+        </Routes>
+      </MemoryRouter>
+    </Toasty>
+  )
+}
+
+describe("EnactmentDetailPage", () => {
+  beforeEach(() => {
+    takeSnapshotMock.mockReset()
+    forceTerminateMock.mockReset()
+    withdrawMock.mockReset()
+  })
+
+  it("renders the header with summary stats", () => {
+    renderRoute(<EnactmentDetailPage />)
+    expect(screen.getByText("en-aaaa")).toBeDefined()
+    expect(screen.getByText("running")).toBeDefined()
+    expect(screen.getByText(/Live workitems/)).toBeDefined()
+  })
+
+  it("renders Markings tab by default", () => {
+    renderRoute(<EnactmentDetailPage />)
+    expect(screen.getByRole("tab", { name: /Markings/ })).toBeDefined()
+    expect(screen.getByText("input")).toBeDefined()
+    expect(screen.getByText('2×"a"')).toBeDefined()
+  })
+
+  it("switches to Workitems tab and shows the live row", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
+    })
+    expect(screen.getByText("approve")).toBeDefined()
+    expect(
+      screen.getByRole("button", { name: /Withdraw workitem wi-1/ })
+    ).toBeDefined()
+  })
+
+  it("switches to Occurrences tab and shows the synthesised row", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Occurrences/ }))
+    })
+    expect(screen.getByText("submit")).toBeDefined()
+  })
+
+  it("opens the force-terminate confirm dialog + dispatches", async () => {
+    forceTerminateMock.mockResolvedValueOnce({ code: "ok" })
+
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-force-terminate"))
+    })
+
+    expect(screen.getByText(/Force terminate enactment/)).toBeDefined()
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("force-terminate-reason"), {
+        target: { value: "demo reset" }
+      })
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("force-terminate-confirm"))
+    })
+
+    expect(forceTerminateMock).toHaveBeenCalledOnce()
+    expect(forceTerminateMock).toHaveBeenCalledWith({ reason: "demo reset" })
+
+    await waitFor(() => {
+      expect(screen.getByText(/Enactment terminated/i)).toBeDefined()
+    })
+  })
+
+  it("collapses :already_terminated into an info toast", async () => {
+    forceTerminateMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "force_terminate",
+        storeId: ["ColouredFlowDashboardWeb.Stores.EnactmentDetailStore", "en-aaaa"],
+        reply: { code: "already_terminated" }
+      })
+    )
+
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-force-terminate"))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("force-terminate-confirm"))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/Already terminated/i)).toBeDefined()
+    })
+  })
+
+  it("dispatches :take_snapshot and surfaces the ok toast", async () => {
+    takeSnapshotMock.mockResolvedValueOnce({ code: "ok" })
+
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-take-snapshot"))
+    })
+
+    expect(takeSnapshotMock).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(screen.getByText(/Snapshot scheduled/i)).toBeDefined()
+    })
+  })
+
+  it("surfaces :unsupported withdraw as an info toast", async () => {
+    withdrawMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "withdraw_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.EnactmentDetailStore", "en-aaaa"],
+        reply: {
+          code: "unsupported",
+          workitem_id: "wi-1",
+          message: "Withdraw of a specific workitem is not exposed by the public runner API."
+        }
+      })
+    )
+
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Withdraw workitem wi-1/ }))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/Withdraw unsupported/i)).toBeDefined()
+    })
+  })
+})
