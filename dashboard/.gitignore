@@ -34,8 +34,8 @@ coloured_flow_dashboard-*.tar
 # favicon.ico,robots.txt}` and never checked in.
 /priv/static/
 
-# SPA-generated bundles. The `:musubi_ts` Mix compiler rewrites this on every
-# `mix compile`, so the on-disk copy is always derivable from store sources.
-/ui/src/generated/musubi.d.ts
-
+# SPA-generated bundles live under `ui/src/generated/`. As of M2a the
+# `musubi.d.ts` bundle is committed so SPA TS checks (and the
+# `mix compile.musubi_ts --check` drift gate in `mix precommit`) stay in
+# sync with the source-of-truth `state do` blocks.
 

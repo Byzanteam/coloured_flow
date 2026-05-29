@@ -4,11 +4,12 @@ defmodule ColouredFlowDashboardWeb.UserSocketTest do
   alias ColouredFlowDashboardWeb.Endpoint
   alias ColouredFlowDashboardWeb.UserSocket
 
-  describe "Musubi UserSocket placeholder" do
-    test "compiles as a Musubi.Socket adapter with an empty roots list" do
+  describe "Musubi UserSocket" do
+    test "compiles as a Musubi.Socket adapter and advertises the dashboard root stores" do
       Code.ensure_loaded!(UserSocket)
       assert function_exported?(UserSocket, :__musubi_roots__, 0)
-      assert UserSocket.__musubi_roots__() == []
+
+      assert ColouredFlowDashboardWeb.Stores.InboxStore in UserSocket.__musubi_roots__()
     end
 
     test "implements the Musubi.Socket lifecycle behaviour" do
