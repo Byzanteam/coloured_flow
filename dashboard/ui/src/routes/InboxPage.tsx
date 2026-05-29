@@ -7,7 +7,8 @@ import {
   LayerCard,
   Table,
   Text,
-  Textarea
+  Textarea,
+  useKumoToastManager
 } from "@cloudflare/kumo"
 import { MusubiCommandError } from "@musubi/react"
 
@@ -161,7 +162,8 @@ function OutputsDrawer({ row, onClose }: OutputsDrawerProps) {
 
 function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => void }) {
   const inbox = useMusubiRootSuspense({ module: INBOX_STORE, id: "default" })
-  const { dispatch, isPending, error, reset } = useMusubiCommand(inbox, "complete_workitem")
+  const { dispatch, isPending, reset } = useMusubiCommand(inbox, "complete_workitem")
+  const toasts = useKumoToastManager()
   const textareaId = useId()
 
   const initialJson = useMemo(
@@ -169,64 +171,97 @@ function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => 
     [row.output_vars]
   )
   const [json, setJson] = useState(initialJson)
-  const [parseError, setParseError] = useState<string | null>(null)
-  const [serverBanner, setServerBanner] = useState<{
+  // Inline banner only for *actionable* server replies the operator can fix
+  // by editing the JSON (unknown_variable, invalid_outputs). Transient errors
+  // (race losses, runner exceptions) surface as toasts so the drawer either
+  // closes (race) or stays open without claiming the textarea is wrong.
+  const [inlineBanner, setInlineBanner] = useState<{
     title: string
     description: string
   } | null>(null)
 
-  // New row → reset textarea + clear stale banner/error state.
+  // Derive parse state on every render so submit stays disabled the instant
+  // the textarea contents become invalid — no blur required.
+  const parseError = useMemo(() => validateJson(json), [json])
+
+  // New row → reset textarea + clear stale banner state.
   useEffect(() => {
     setJson(initialJson)
-    setParseError(null)
-    setServerBanner(null)
+    setInlineBanner(null)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.id, initialJson])
 
-  const onBlur = () => {
-    setParseError(validateJson(json))
-  }
-
   const onSubmit = async () => {
-    const parseIssue = validateJson(json)
-    if (parseIssue) {
-      setParseError(parseIssue)
-      return
-    }
+    if (parseError) return
 
-    setParseError(null)
-    setServerBanner(null)
+    setInlineBanner(null)
 
     let outputs: Record<string, unknown>
     try {
       outputs = JSON.parse(json) as Record<string, unknown>
-    } catch (cause) {
-      setParseError(cause instanceof Error ? cause.message : String(cause))
+    } catch {
+      // useMemo above already covered this; defensive guard.
       return
     }
 
     try {
       const reply = await dispatch({ workitem_id: row.id, outputs })
-      if (reply.code === "ok") {
-        onClose()
-        return
-      }
-
-      setServerBanner({
-        title: replyTitle(reply.code),
-        description: replyDescription(reply.code, reply)
-      })
+      handleReply(reply.code as ReplyCode, reply)
     } catch (cause) {
-      // dispatch throws a MusubiCommandError; render its code + extracted reply.
-      const code = MusubiCommandError.is(cause) ? cause.code ?? "runner_error" : "runner_error"
+      const code = MusubiCommandError.is(cause) ? (cause.code as ReplyCode) ?? "runner_error" : "runner_error"
       const description =
         cause instanceof Error ? cause.message : "Command failed for an unknown reason."
+      // Treat thrown errors as transient runner faults (toast). The thrown
+      // path never carries an actionable structured field; the wire-validated
+      // structured replies above carry those.
+      handleReply(code, { code, message: description })
+    }
+  }
 
-      setServerBanner({
-        title: replyTitle(code),
-        description
-      })
+  function handleReply(code: ReplyCode, reply: Record<string, unknown>) {
+    switch (code) {
+      case "ok":
+        onClose()
+        return
+
+      // Race: another operator (or the runner) already moved this workitem.
+      // Server cleared the meta; the row is gone from the snapshot. Collapse
+      // both reply codes into the same "already handled" outcome so the UI
+      // does not leak server-side bookkeeping (`unknown_workitem` vs
+      // `already_completed`) into the operator's mental model.
+      case "already_completed":
+      case "unknown_workitem":
+        onClose()
+        toasts.add({
+          variant: "info",
+          title: "Already handled",
+          description: "Another operator handled this workitem before you submitted.",
+          timeout: 4000
+        })
+        return
+
+      // Actionable: operator can fix by editing the JSON. Keep the drawer
+      // open and surface inline so the message sits next to the textarea.
+      case "unknown_variable":
+      case "invalid_outputs":
+        setInlineBanner({
+          title: replyTitle(code),
+          description: replyDescription(code, reply)
+        })
+        return
+
+      // Runner exception path: not actionable from the drawer (e.g. action
+      // function raised). Toast — operator should consult enactment detail.
+      case "runner_error":
+      default:
+        toasts.add({
+          variant: "error",
+          title: replyTitle(code),
+          description: replyDescription(code, reply),
+          timeout: 6000
+        })
+        return
     }
   }
 
@@ -257,11 +292,7 @@ function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => 
           <Textarea
             id={textareaId}
             value={json}
-            onChange={(event) => {
-              setJson(event.target.value)
-              if (parseError) setParseError(null)
-            }}
-            onBlur={onBlur}
+            onChange={(event) => setJson(event.target.value)}
             rows={8}
             spellCheck={false}
             aria-invalid={parseError !== null}
@@ -273,19 +304,11 @@ function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => 
           <Banner variant="error" title="JSON invalid" description={parseError} />
         ) : null}
 
-        {error && !serverBanner ? (
+        {inlineBanner ? (
           <Banner
             variant="error"
-            title="Command failed"
-            description={error.message}
-          />
-        ) : null}
-
-        {serverBanner ? (
-          <Banner
-            variant="error"
-            title={serverBanner.title}
-            description={serverBanner.description}
+            title={inlineBanner.title}
+            description={inlineBanner.description}
           />
         ) : null}
       </div>
@@ -360,6 +383,14 @@ function validateJson(value: string): string | null {
     return cause instanceof Error ? cause.message : "Invalid JSON."
   }
 }
+
+type ReplyCode =
+  | "ok"
+  | "already_completed"
+  | "unknown_workitem"
+  | "unknown_variable"
+  | "invalid_outputs"
+  | "runner_error"
 
 function replyTitle(code: string): string {
   switch (code) {

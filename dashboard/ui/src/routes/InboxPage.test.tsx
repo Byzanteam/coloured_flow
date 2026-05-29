@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import type { ReactNode } from "react"
+import { Toasty } from "@cloudflare/kumo"
 
 // ---------------------------------------------------------------------------
 // musubi mocks
@@ -53,8 +54,16 @@ vi.mock("@musubi/react", () => ({
 
 import InboxPage from "./InboxPage"
 
-function renderWithSuspense(children: ReactNode) {
-  return render(<>{children}</>)
+function renderWithProviders(children: ReactNode) {
+  return render(<Toasty>{children}</Toasty>)
+}
+
+async function openDrawer() {
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("button", { name: /open outputs drawer for workitem wi-1/i })
+    )
+  })
 }
 
 describe("InboxPage outputs drawer", () => {
@@ -63,20 +72,15 @@ describe("InboxPage outputs drawer", () => {
   })
 
   it("renders the action button per row", () => {
-    renderWithSuspense(<InboxPage />)
+    renderWithProviders(<InboxPage />)
     expect(
       screen.getByRole("button", { name: /open outputs drawer for workitem wi-1/i })
     ).toBeDefined()
   })
 
   it("opens the drawer with row data when Action is clicked", async () => {
-    renderWithSuspense(<InboxPage />)
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: /open outputs drawer for workitem wi-1/i })
-      )
-    })
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
 
     expect(screen.getByText(/Complete workitem · approve/i)).toBeDefined()
     expect(screen.getByText("note")).toBeDefined()
@@ -86,12 +90,8 @@ describe("InboxPage outputs drawer", () => {
   it("dispatches :complete_workitem with parsed JSON on submit", async () => {
     dispatchMock.mockResolvedValueOnce({ code: "ok" })
 
-    renderWithSuspense(<InboxPage />)
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: /open outputs drawer for workitem wi-1/i })
-      )
-    })
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
 
     const textarea = screen.getByTestId("outputs-textarea") as HTMLTextAreaElement
     await act(async () => {
@@ -111,20 +111,95 @@ describe("InboxPage outputs drawer", () => {
     })
   })
 
-  it("renders the server banner on a non-:ok reply", async () => {
+  it("collapses :already_completed into a close+toast race outcome", async () => {
     dispatchMock.mockResolvedValueOnce({ code: "already_completed", workitem_id: "wi-1" })
 
-    renderWithSuspense(<InboxPage />)
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: /open outputs drawer for workitem wi-1/i })
-      )
-    })
-
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
     await act(async () => {
       fireEvent.click(screen.getByTestId("outputs-submit"))
     })
 
-    expect(screen.getAllByText(/Already handled/i).length).toBeGreaterThan(0)
+    // Drawer closed (textarea unmounted).
+    await waitFor(() => {
+      expect(screen.queryByTestId("outputs-textarea")).toBeNull()
+    })
+
+    // Toast surfaces in the portal.
+    await waitFor(() => {
+      expect(screen.getByText(/already handled/i)).toBeDefined()
+      expect(
+        screen.getByText(/another operator handled this workitem/i)
+      ).toBeDefined()
+    })
+  })
+
+  it("collapses :unknown_workitem into the same race outcome", async () => {
+    dispatchMock.mockResolvedValueOnce({ code: "unknown_workitem", workitem_id: "wi-1" })
+
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("outputs-textarea")).toBeNull()
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/already handled/i)).toBeDefined()
+    })
+  })
+
+  it("keeps drawer open + shows inline Banner for :unknown_variable", async () => {
+    dispatchMock.mockResolvedValueOnce({
+      code: "unknown_variable",
+      variable: "verdict",
+      workitem_id: "wi-1"
+    })
+
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    // Drawer stays mounted so the operator can edit.
+    expect(screen.getByTestId("outputs-textarea")).toBeDefined()
+    expect(screen.getByText(/unknown variable/i)).toBeDefined()
+    expect(
+      screen.getByText(/does not recognise the output variable "verdict"/i)
+    ).toBeDefined()
+  })
+
+  it("keeps drawer open + shows inline Banner for :invalid_outputs", async () => {
+    dispatchMock.mockResolvedValueOnce({ code: "invalid_outputs", workitem_id: "wi-1" })
+
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    expect(screen.getByTestId("outputs-textarea")).toBeDefined()
+    expect(screen.getByText(/invalid outputs/i)).toBeDefined()
+  })
+
+  it("disables Submit immediately when JSON becomes invalid, no blur required", async () => {
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
+
+    const textarea = screen.getByTestId("outputs-textarea") as HTMLTextAreaElement
+    const submit = screen.getByTestId("outputs-submit") as HTMLButtonElement
+
+    // Sanity: template is valid JSON, button enabled.
+    expect(submit.disabled).toBe(false)
+
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "{not json" } })
+    })
+
+    // Derived via useMemo — disabled on the same render as the change.
+    expect(submit.disabled).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 import { Component, type ReactNode, Suspense, use } from "react"
 import { RouterProvider } from "react-router-dom"
-import { Banner, Button } from "@cloudflare/kumo"
+import { Banner, Button, Toasty } from "@cloudflare/kumo"
 
 import { MusubiProvider, connect, socket } from "./musubi"
 import { router } from "./routes/router"
@@ -15,7 +15,9 @@ function ConnectedApp() {
   const connection = use(connectionPromise)
   return (
     <MusubiProvider connection={connection}>
-      <RouterProvider router={router} />
+      <Toasty>
+        <RouterProvider router={router} />
+      </Toasty>
     </MusubiProvider>
   )
 }

@@ -10,8 +10,10 @@ defmodule ColouredFlowDashboard.Seed do
 
     * `config :coloured_flow_dashboard, :seed_flows, true` enables. Default
       `false` (set explicitly in `config/prod.exs` for the audit trail and
-      omitted in `config/test.exs` so test suites stay quiet — the seed
-      test toggles the env in its own `setup` block).
+      omitted in `config/test.exs` so test suites stay quiet). Tests that
+      need the seed pass `Seed.run(enabled: true)` directly instead of
+      mutating the shared `:seed_flows` runtime config (per repo convention
+      on `Application.put_env`).
     * `config :coloured_flow, ColouredFlow.Runner.Storage, repo: ...` must
       be wired before `run/0` is invoked; otherwise the seed short-circuits
       with a `:warning` log so the dashboard still boots.
@@ -49,10 +51,22 @@ defmodule ColouredFlowDashboard.Seed do
 
   @doc """
   Insert + start every demo flow. Idempotent.
+
+  ## Options
+
+    * `:enabled` — boolean override. Defaults to
+      `Application.get_env(:coloured_flow_dashboard, :seed_flows, false)`.
+      Tests pass `enabled: true` directly instead of mutating the shared
+      `:seed_flows` runtime config key (which would leak across the suite).
   """
-  @spec run() :: :ok
-  def run do
-    if Application.get_env(:coloured_flow_dashboard, :seed_flows, false) do
+  @spec run(keyword()) :: :ok
+  def run(opts \\ []) do
+    enabled? =
+      Keyword.get_lazy(opts, :enabled, fn ->
+        Application.get_env(:coloured_flow_dashboard, :seed_flows, false)
+      end)
+
+    if enabled? do
       Enum.each(@seeded_flows, &seed_flow/1)
     end
 
