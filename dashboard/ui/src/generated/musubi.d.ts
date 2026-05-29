@@ -99,14 +99,6 @@ declare namespace Musubi {
         occurrences: Musubi.StreamField<ColouredFlowDashboardWeb.Views.OccurrenceRow>
       },
       {
-        withdraw_workitem: {
-          payload: {
-            workitem_id: string
-          }
-          reply: {
-            code: "ok" | "already_withdrawn" | "unknown_workitem" | "unsupported" | "runner_error"
-          }
-        }
         force_terminate: {
           payload: {
             reason: string

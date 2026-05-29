@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { Toasty } from "@cloudflare/kumo"
 
-const { takeSnapshotMock, forceTerminateMock, withdrawMock, sampleSnapshot } = vi.hoisted(() => {
+const { takeSnapshotMock, forceTerminateMock, sampleSnapshot } = vi.hoisted(() => {
   const summary = {
     enactment_id: "en-aaaa",
     flow_topic_id: "topic-x",
@@ -46,7 +46,6 @@ const { takeSnapshotMock, forceTerminateMock, withdrawMock, sampleSnapshot } = v
   return {
     takeSnapshotMock: vi.fn(),
     forceTerminateMock: vi.fn(),
-    withdrawMock: vi.fn(),
     sampleSnapshot: {
       summary,
       markings: [marking],
@@ -60,12 +59,7 @@ vi.mock("../musubi", () => ({
   useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "detail-proxy" }),
   useMusubiSnapshot: vi.fn().mockReturnValue(sampleSnapshot),
   useMusubiCommand: vi.fn().mockImplementation((_proxy: unknown, name: string) => {
-    const dispatch =
-      name === "take_snapshot"
-        ? takeSnapshotMock
-        : name === "force_terminate"
-          ? forceTerminateMock
-          : withdrawMock
+    const dispatch = name === "take_snapshot" ? takeSnapshotMock : forceTerminateMock
     return {
       dispatch,
       isPending: false,
@@ -132,7 +126,6 @@ describe("EnactmentDetailPage", () => {
   beforeEach(() => {
     takeSnapshotMock.mockReset()
     forceTerminateMock.mockReset()
-    withdrawMock.mockReset()
   })
 
   it("renders the header with summary stats", () => {
@@ -155,9 +148,30 @@ describe("EnactmentDetailPage", () => {
       fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
     })
     expect(screen.getByText("approve")).toBeDefined()
+    // Withdraw action is intentionally absent — see plan note 2026-05-29
+    // user decision dropping Withdraw/Reoffer end-to-end.
+    expect(screen.queryByRole("button", { name: /Withdraw/ })).toBeNull()
+  })
+
+  it("renders the stale-markings Banner on the Markings tab", () => {
+    renderRoute(<EnactmentDetailPage />)
+    expect(screen.getByText(/Markings are mount-time-accurate/i)).toBeDefined()
     expect(
-      screen.getByRole("button", { name: /Withdraw workitem wi-1/ })
+      screen.getByText(/Click Take snapshot in the action bar, then reload/i)
     ).toBeDefined()
+  })
+
+  it("labels the occurrences position column with a hover tooltip", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Occurrences/ }))
+    })
+    const position = screen.getByText("Position")
+    expect(position).toBeDefined()
+    expect(position.tagName).toBe("ABBR")
+    expect((position as HTMLElement).getAttribute("title")).toMatch(
+      /Per-mount stable index/
+    )
   })
 
   it("switches to Occurrences tab and shows the synthesised row", async () => {
@@ -233,30 +247,4 @@ describe("EnactmentDetailPage", () => {
     })
   })
 
-  it("surfaces :unsupported withdraw as an info toast", async () => {
-    withdrawMock.mockRejectedValueOnce(
-      new MusubiCommandError({
-        kind: "failed",
-        command: "withdraw_workitem",
-        storeId: ["ColouredFlowDashboardWeb.Stores.EnactmentDetailStore", "en-aaaa"],
-        reply: {
-          code: "unsupported",
-          workitem_id: "wi-1",
-          message: "Withdraw of a specific workitem is not exposed by the public runner API."
-        }
-      })
-    )
-
-    renderRoute(<EnactmentDetailPage />)
-    await act(async () => {
-      fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Withdraw workitem wi-1/ }))
-    })
-
-    await waitFor(() => {
-      expect(screen.getByText(/Withdraw unsupported/i)).toBeDefined()
-    })
-  })
 })

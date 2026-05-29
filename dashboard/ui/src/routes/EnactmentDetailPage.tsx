@@ -99,9 +99,7 @@ function DetailContent({ enactmentId }: { enactmentId: string }) {
       />
 
       {activeTab === "markings" && <MarkingsTab rows={markings} />}
-      {activeTab === "workitems" && (
-        <WorkitemsTab rows={workitems} enactmentId={enactmentId} />
-      )}
+      {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
       {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
     </section>
   )
@@ -349,64 +347,49 @@ function ActionBar({ enactmentId }: { enactmentId: string }) {
 // ---------------------------------------------------------------------------
 
 function MarkingsTab({ rows }: { rows: readonly MarkingRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <Banner
-        variant="default"
-        title="No tokens"
-        description="The enactment currently has no tokens on any place."
-      />
-    )
-  }
-
   return (
-    <Table>
-      <Table.Header>
-        <Table.Row>
-          <Table.Head>Place</Table.Head>
-          <Table.Head className="text-right">Tokens</Table.Head>
-          <Table.Head>Summary</Table.Head>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {rows.map((row) => (
-          <Table.Row key={row.place}>
-            <Table.Cell>
-              <code className="text-xs">{row.place}</code>
-            </Table.Cell>
-            <Table.Cell className="text-right">{row.tokens_count}</Table.Cell>
-            <Table.Cell>
-              <code className="text-xs">{row.tokens_summary || "—"}</code>
-            </Table.Cell>
-          </Table.Row>
-        ))}
-      </Table.Body>
-    </Table>
+    <div className="flex flex-col gap-3" data-testid="markings-tab">
+      <Banner
+        variant="alert"
+        title="Markings are mount-time-accurate"
+        description="Live workitem events do not refresh this view. Click Take snapshot in the action bar, then reload this page to refresh the markings after recent activity."
+        data-testid="markings-stale-banner"
+      />
+      {rows.length === 0 ? (
+        <Banner
+          variant="default"
+          title="No tokens"
+          description="The enactment currently has no tokens on any place."
+        />
+      ) : (
+        <Table>
+          <Table.Header>
+            <Table.Row>
+              <Table.Head>Place</Table.Head>
+              <Table.Head className="text-right">Tokens</Table.Head>
+              <Table.Head>Summary</Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {rows.map((row) => (
+              <Table.Row key={row.place}>
+                <Table.Cell>
+                  <code className="text-xs">{row.place}</code>
+                </Table.Cell>
+                <Table.Cell className="text-right">{row.tokens_count}</Table.Cell>
+                <Table.Cell>
+                  <code className="text-xs">{row.tokens_summary || "—"}</code>
+                </Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table>
+      )}
+    </div>
   )
 }
 
-type WithdrawCode =
-  | "ok"
-  | "already_withdrawn"
-  | "unknown_workitem"
-  | "unsupported"
-  | "runner_error"
-
-function WorkitemsTab({
-  rows,
-  enactmentId
-}: {
-  rows: readonly WorkitemRow[]
-  enactmentId: string
-}) {
-  const detail = useMusubiRootSuspense({
-    module: ENACTMENT_DETAIL_STORE,
-    id: enactmentId,
-    params: { id: enactmentId }
-  })
-  const withdraw = useMusubiCommand(detail, "withdraw_workitem")
-  const toasts = useKumoToastManager()
-
+function WorkitemsTab({ rows }: { rows: readonly WorkitemRow[] }) {
   if (rows.length === 0) {
     return (
       <Banner
@@ -417,69 +400,6 @@ function WorkitemsTab({
     )
   }
 
-  const onWithdraw = async (workitemId: string) => {
-    await dispatchWithReply<WithdrawCode>(
-      withdraw.dispatch as (payload: Record<string, unknown>) => Promise<
-        { code?: string } & Record<string, unknown>
-      >,
-      { workitem_id: workitemId },
-      {
-        onReply: (code, reply) => {
-          switch (code) {
-            case "ok":
-              return
-            case "already_withdrawn":
-              toasts.add({
-                variant: "info",
-                title: "Already withdrawn",
-                description: "Another operator (or the runner) already withdrew this workitem.",
-                timeout: 4000
-              })
-              return
-            case "unknown_workitem":
-              toasts.add({
-                variant: "info",
-                title: "Unknown workitem",
-                description: "The dashboard no longer tracks this workitem.",
-                timeout: 4000
-              })
-              return
-            case "unsupported": {
-              const message =
-                typeof reply.message === "string"
-                  ? reply.message
-                  : "Withdraw is not exposed by the current runner API."
-              toasts.add({
-                variant: "info",
-                title: "Withdraw unsupported",
-                description: message,
-                timeout: 6000
-              })
-              return
-            }
-            case "runner_error":
-            default:
-              toasts.add({
-                variant: "error",
-                title: "Withdraw failed",
-                description: typeof reply.message === "string" ? reply.message : "Runner error.",
-                timeout: 6000
-              })
-              return
-          }
-        },
-        onUnexpected: (cause) => {
-          toasts.add({
-            variant: "error",
-            title: "Withdraw failed",
-            description: cause instanceof Error ? cause.message : "Unknown error.",
-            timeout: 6000
-          })
-        }
-      }
-    )
-  }
-
   return (
     <Table>
       <Table.Header>
@@ -487,7 +407,6 @@ function WorkitemsTab({
           <Table.Head>Transition</Table.Head>
           <Table.Head>State</Table.Head>
           <Table.Head>Binding</Table.Head>
-          <Table.Head className="text-right">Action</Table.Head>
         </Table.Row>
       </Table.Header>
       <Table.Body>
@@ -499,17 +418,6 @@ function WorkitemsTab({
             </Table.Cell>
             <Table.Cell>
               <code className="text-xs">{row.binding_summary || "—"}</code>
-            </Table.Cell>
-            <Table.Cell className="text-right">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onWithdraw(row.id)}
-                disabled={withdraw.isPending}
-                aria-label={`Withdraw workitem ${row.id}`}
-              >
-                Withdraw
-              </Button>
             </Table.Cell>
           </Table.Row>
         ))}
@@ -533,7 +441,14 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
     <Table>
       <Table.Header>
         <Table.Row>
-          <Table.Head className="text-right">Step</Table.Head>
+          <Table.Head className="text-right">
+            <abbr
+              title="Per-mount stable index; not a persistent identifier. May shift across reloads."
+              className="cursor-help no-underline"
+            >
+              Position
+            </abbr>
+          </Table.Head>
           <Table.Head>Transition</Table.Head>
           <Table.Head>Binding</Table.Head>
           <Table.Head>Outputs</Table.Head>

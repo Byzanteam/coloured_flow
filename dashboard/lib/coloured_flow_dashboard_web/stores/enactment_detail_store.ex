@@ -21,7 +21,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     * `:workitems` stream — `WorkitemRow` per live workitem (same Wire shape
       used by `InboxStore`), keyed by workitem id.
     * `:occurrences` stream — `OccurrenceRow` per fired occurrence, keyed by
-      the synthetic `"<enactment_id>-<step_number>"` id. Capped to 200 rows.
+      the synthetic `"<enactment_id>-<step_number>"` id. The `step_number`
+      field is a per-mount stable index — the SPA surfaces it as a
+      "Position" column to avoid implying a stable cross-session identifier.
+      Capped to 200 rows.
 
   ## Event routing
 
@@ -48,29 +51,46 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   `:complete_workitems_stop` we cannot deterministically rebuild the
   `:markings` stream from the event alone. M3a treats markings as
   mount-time-accurate; a later phase will upgrade the bridge payload with
-  per-event marking deltas. Until then, operators can take a snapshot via the
-  action bar and re-mount to refresh markings.
+  per-event marking deltas. Until then, the SPA shows an inline `Banner`
+  on the Markings tab telling the operator to take a snapshot and reload
+  the page to refresh.
 
   ## Storage / runner peek strategy
 
-  `seed_world/1` prefers the live GenServer state via `:sys.get_state/1`,
-  falling back to `Storage.read_enactment_snapshot/1` +
-  `CatchingUp.apply/2` when the GenServer is not running.
+  `seed_world/1` first tries to read the live runner GenServer state, then
+  falls back to `Storage.read_enactment_snapshot/1` + `CatchingUp.apply/2`.
+  Live-peek failures (including the bounded-timeout case) log at
+  `:debug` and route to the storage fallback path.
+
+  ## Reliance on private runner surfaces
+
+  M3a intentionally reaches into a few internal runner surfaces because the
+  main repo does not yet expose a public read API for live enactment state.
+  The dashboard never mutates through these surfaces:
+
+    * `ColouredFlow.Runner.Enactment` GenServer is read via
+      `:sys.get_state/2` (OTP debugging API) with a bounded 500 ms timeout
+      to avoid blocking the page mount.
+    * `ColouredFlow.Runner.Enactment.Registry` is `@moduledoc false` in the
+      main repo and is used here only as a `whereis` source for the live
+      enactment pid.
+    * `ColouredFlow.Runner.Storage.read_enactment_snapshot/1` +
+      `ColouredFlow.Runner.Enactment.CatchingUp.apply/2` provide the
+      fallback path for terminated or temporarily unreachable enactments.
+
+  These choices preserve the zero-main-change rule (see epic plan). If the
+  main repo later exposes a proper `Runner.Enactment.peek/1` (or
+  equivalent) public surface, swap to it and drop the `:sys.get_state`
+  reliance here.
 
   ## Commands
 
-    * `:withdraw_workitem` — DEVIATION: no public runner API withdraws a
-      specific workitem (withdrawals happen automatically via
-      `WorkitemCalibration`). Storage-level `Storage.withdraw_workitems/2`
-      writes the row but leaves the runner GenServer state untouched,
-      drifting state. The command always replies `%{code: :unsupported}`
-      until main exposes a public withdraw surface.
     * `:force_terminate` — `Runner.Enactment.Supervisor.terminate_enactment/2`
       with the operator-supplied `:message`. Reply codes:
       `:ok | :already_terminated | :runner_error`.
     * `:take_snapshot` — sends a `:take_snapshot` message to the enactment
       GenServer (same hot path the runner uses internally after completions).
-      Missing process → `:not_running`.
+      Reply codes: `:ok | :not_running | :runner_error`.
   """
 
   use Musubi.Store, root: true
@@ -105,6 +125,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   @occurrence_limit 200
   @workitem_limit 200
   @live_states RunnerWorkitem.__live_states__()
+  # Bounded ceiling for the mount-time `:sys.get_state/2` peek so a slow or
+  # stuck runner GenServer never blocks the page mount past this. On
+  # timeout we fall through to the snapshot+replay path.
+  @peek_timeout_ms 500
 
   # Musubi's `state do` type walker resolves `Mod.t()` against the host
   # module's namespace ancestry, not its `alias` table. Inline FQN refs.
@@ -122,21 +146,6 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     stream :occurrences, ColouredFlowDashboardWeb.Views.OccurrenceRow.t(),
       limit: @occurrence_limit,
       item_key: & &1.id
-  end
-
-  command :withdraw_workitem do
-    payload do
-      field :workitem_id, String.t()
-    end
-
-    reply do
-      field :code,
-            :ok
-            | :already_withdrawn
-            | :unknown_workitem
-            | :unsupported
-            | :runner_error
-    end
   end
 
   command :force_terminate do
@@ -235,11 +244,6 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   # ---------------------------------------------------------------------------
 
   @impl Musubi.Store
-  def handle_command(:withdraw_workitem, payload, socket) when is_map(payload) do
-    workitem_id = Map.get(payload, "workitem_id") || Map.get(payload, :workitem_id)
-    {:reply, withdraw_workitem_reply(workitem_id, socket), socket}
-  end
-
   def handle_command(:force_terminate, payload, socket) when is_map(payload) do
     reason = Map.get(payload, "reason") || Map.get(payload, :reason) || ""
     {:reply, force_terminate_reply(socket.assigns.enactment_id, reason), socket}
@@ -266,7 +270,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           state: :running
         }
 
-      :not_running ->
+      {:fallback, reason} ->
+        Logger.debug(fn ->
+          "EnactmentDetailStore: live peek unavailable for #{inspect(enactment_id)} " <>
+            "(#{inspect(reason)}); seeding from storage snapshot + replay"
+        end)
+
         seed_from_storage(enactment_id)
     end
   end
@@ -296,11 +305,13 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     via = EnactmentRegistry.via_name({:enactment, enactment_id})
 
     case GenServer.whereis(via) do
-      nil -> :not_running
-      pid when is_pid(pid) -> {:ok, :sys.get_state(pid)}
+      nil -> {:fallback, :no_proc}
+      pid when is_pid(pid) -> {:ok, :sys.get_state(pid, @peek_timeout_ms)}
     end
   catch
-    :exit, _reason -> :not_running
+    :exit, {:timeout, _info} -> {:fallback, :timeout}
+    :exit, {:noproc, _info} -> {:fallback, :no_proc}
+    :exit, reason -> {:fallback, {:exit, reason}}
   end
 
   defp read_storage_markings(enactment_id) do
@@ -616,27 +627,6 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           {:ok, flow_id} -> flow_id
           :error -> nil
         end
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # :withdraw_workitem (deviation: see @moduledoc)
-  # ---------------------------------------------------------------------------
-
-  defp withdraw_workitem_reply(nil, _socket),
-    do: %{code: :unknown_workitem}
-
-  defp withdraw_workitem_reply(workitem_id, socket) when is_binary(workitem_id) do
-    if MapSet.member?(socket.assigns.workitem_ids, workitem_id) do
-      %{
-        code: :unsupported,
-        workitem_id: workitem_id,
-        message:
-          "Withdraw of a specific workitem is not exposed by the public runner " <>
-            "API in M3a; the SPA renders this code as a non-actionable toast."
-      }
-    else
-      %{code: :unknown_workitem, workitem_id: workitem_id}
     end
   end
 

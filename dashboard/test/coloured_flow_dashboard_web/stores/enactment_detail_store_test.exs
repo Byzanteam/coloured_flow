@@ -239,37 +239,6 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
-  describe ":withdraw_workitem command (deviation: unsupported)" do
-    test "tracked workitem id replies :unsupported with a structured message", %{
-      enactment_id: eid,
-      topic_prefix: topic_prefix,
-      topic: topic,
-      flow_cache: flow_cache
-    } do
-      page = mount_store(eid, topic_prefix, flow_cache)
-      wi_id = Ecto.UUID.generate()
-      broadcast!(topic, build_workitem_event(:produce_workitems_stop, eid, wi_id, :enabled, 1))
-
-      assert {:ok, %{code: :unsupported, workitem_id: ^wi_id, message: message}} =
-               Musubi.Testing.dispatch_command(page, :withdraw_workitem, %{workitem_id: wi_id})
-
-      assert is_binary(message)
-    end
-
-    test "untracked id replies :unknown_workitem", %{
-      enactment_id: eid,
-      topic_prefix: topic_prefix,
-      flow_cache: flow_cache
-    } do
-      page = mount_store(eid, topic_prefix, flow_cache)
-
-      bogus = Ecto.UUID.generate()
-
-      assert {:ok, %{code: :unknown_workitem, workitem_id: ^bogus}} =
-               Musubi.Testing.dispatch_command(page, :withdraw_workitem, %{workitem_id: bogus})
-    end
-  end
-
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,
