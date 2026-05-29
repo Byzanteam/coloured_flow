@@ -8,29 +8,43 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
   Subscribers `Phoenix.PubSub.subscribe(:coloured_flow_dashboard_pubsub, topic)`
   receive `{:cf_event, %ColouredFlowDashboard.TelemetryBridge.Event{}}` messages.
+  Topic strings are prefixed with the bridge's `:topic_prefix` option
+  (default `"cf:"`); the shapes below assume the default.
 
     * `"cf:inbox"` — every workitem-shape or lifecycle change, regardless of
       enactment. Drives the operator inbox.
     * `"cf:enactment:<id>"` — every event scoped to a single enactment. Drives
       the detail page.
-    * `"cf:flow:<module>"` — **deferred this phase.** The runner's
-      `ColouredFlow.Runner.Enactment` struct does not carry a flow-module
-      identity; only `enactment_id`. Resolving the flow module from the
-      `enactment_id` requires a synchronous read against
-      `ColouredFlow.Runner.Storage.get_flow_by_enactment/1`, which would
-      defeat the "do not block the runner" rule and couple the bridge to
-      the storage backend. A later phase must either thread the flow id
-      through the runner's telemetry metadata (a main-repo change, off-limits
-      to the dashboard epic) or maintain a side-channel `enactment_id ↦
-      flow_module` map seeded by the dashboard's flow registry.
+    * `"cf:flow:<flow_id>"` — every event scoped to a single flow definition.
+      `<flow_id>` is a stable string derived from the `%ColouredPetriNet{}`
+      returned by `ColouredFlow.Runner.Storage.get_flow_by_enactment/1`. The
+      runner only knows enactment ids — the public storage surface returns the
+      flow's CPN definition (no Elixir module identity, no flow-row id). We
+      therefore derive a stable id by hashing the cpnet term with
+      `:erlang.phash2/1`; two enactments sharing the same flow definition share
+      the same topic. If the storage backend later exposes a module/uuid
+      identifier, swap `flow_topic_id/1` over.
 
   ## Async invariant
 
   The handler runs inline with `:telemetry.execute/3` inside the runner
-  GenServer. It MUST NOT block: it extracts the broadcast payload and hands
-  it to `Task.Supervisor.start_child/2` against
-  `ColouredFlowDashboard.TaskSupervisor`. The actual `Phoenix.PubSub.broadcast/3`
-  runs in the task, off the runner's reduction budget.
+  GenServer. It MUST NOT block: it hands `{event_name, measurements, metadata}`
+  off to `Task.Supervisor.start_child/2` against the configured task supervisor
+  and returns `:ok` immediately. ALL real work — event shaping, the storage
+  read used to populate the flow cache, and `Phoenix.PubSub.broadcast/3` — runs
+  inside that supervised task, off the runner's reduction budget.
+
+  ## Flow cache
+
+  Resolving the flow topic requires a storage read. To keep that off the
+  runner AND off the hot path of repeat events for the same enactment, the
+  bridge owns a small ETS table (`:set`, `:public`, `:named_table`) keyed by
+  `enactment_id` and valued by the derived flow topic id. The cache is
+  populated lazily on first hit inside the task body; the per-enactment flow
+  is immutable so entries never expire. If the storage lookup fails (e.g. the
+  enactment row hasn't been written yet, or the backend has no record), the
+  task logs at `debug` and skips the `cf:flow:*` broadcast for that event;
+  `cf:inbox` and `cf:enactment:<id>` are unaffected.
 
   ## Catalog drift
 
@@ -42,10 +56,12 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
   use GenServer
 
+  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.MultiSet
   alias ColouredFlow.Runner.Enactment, as: RunnerEnactment
   alias ColouredFlow.Runner.Enactment.Workitem
+  alias ColouredFlow.Runner.Storage
   alias ColouredFlowDashboard.TelemetryBridge.Event
 
   require Logger
@@ -53,16 +69,23 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   @handler_id __MODULE__
   @default_pubsub :coloured_flow_dashboard_pubsub
   @default_task_supervisor ColouredFlowDashboard.TaskSupervisor
+  @default_flow_cache :coloured_flow_dashboard_telemetry_bridge_flow_cache
+  @default_topic_prefix "cf:"
 
   @enactment_lifecycle_events ~w[start stop terminate exception take_snapshot]a
   @workitem_operations ~w[produce_workitems start_workitems withdraw_workitems complete_workitems]a
   @workitem_op_events ~w[start stop exception]a
+
+  @type broadcast_fn() :: (atom(), String.t(), term() -> :ok | {:error, term()})
 
   @type option() ::
           {:name, GenServer.name()}
           | {:handler_id, :telemetry.handler_id()}
           | {:pubsub, atom()}
           | {:task_supervisor, atom()}
+          | {:topic_prefix, String.t()}
+          | {:flow_cache, atom()}
+          | {:broadcast_fn, broadcast_fn()}
 
   @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) when is_list(opts) do
@@ -97,11 +120,35 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     handler_id = Keyword.get(opts, :handler_id, @handler_id)
     pubsub = Keyword.get(opts, :pubsub, @default_pubsub)
     task_supervisor = Keyword.get(opts, :task_supervisor, @default_task_supervisor)
+    topic_prefix = Keyword.get(opts, :topic_prefix, @default_topic_prefix)
+    flow_cache = Keyword.get(opts, :flow_cache, @default_flow_cache)
+    broadcast_fn = Keyword.get(opts, :broadcast_fn, &Phoenix.PubSub.broadcast/3)
+
+    # GenServer owns the ETS table so it dies with us (test cleanup is free).
+    # `:public` lets the Task.Supervisor child write to it without going
+    # through the GenServer.
+    flow_cache =
+      case :ets.whereis(flow_cache) do
+        :undefined ->
+          :ets.new(flow_cache, [
+            :set,
+            :public,
+            :named_table,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
+
+        _existing ->
+          flow_cache
+      end
 
     config = %{
       handler_id: handler_id,
       pubsub: pubsub,
-      task_supervisor: task_supervisor
+      task_supervisor: task_supervisor,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache,
+      broadcast_fn: broadcast_fn
     }
 
     # Detach any stale handler from a previous instance (hot reload, crashed
@@ -111,7 +158,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
     :ok = :telemetry.attach_many(handler_id, events(), &__MODULE__.handle_event/4, config)
 
-    {:ok, %{handler_id: handler_id}}
+    {:ok, %{handler_id: handler_id, flow_cache: flow_cache}}
   end
 
   @impl GenServer
@@ -137,34 +184,41 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
           map()
         ) :: :ok
   def handle_event(event_name, measurements, metadata, config) do
-    case build_broadcasts(event_name, measurements, metadata) do
-      [] ->
-        :ok
+    # Defer EVERYTHING — shaping, flow lookup, broadcast — to the task. The
+    # only work that runs inline with the runner's `:telemetry.execute/3` is
+    # the `start_child` call itself. Tests assert this ordering by injecting
+    # a blocking `:broadcast_fn`.
+    Task.Supervisor.start_child(config.task_supervisor, fn ->
+      dispatch(event_name, measurements, metadata, config)
+    end)
 
-      broadcasts ->
-        Task.Supervisor.start_child(config.task_supervisor, fn ->
-          deliver_broadcasts(config.pubsub, broadcasts)
-        end)
+    :ok
+  end
 
-        :ok
+  defp dispatch(event_name, measurements, metadata, config) do
+    case build_broadcasts(event_name, measurements, metadata, config) do
+      [] -> :ok
+      broadcasts -> deliver_broadcasts(config, broadcasts)
     end
   end
 
-  defp deliver_broadcasts(pubsub, broadcasts) do
+  defp deliver_broadcasts(config, broadcasts) do
     Enum.each(broadcasts, fn {topic, event} ->
-      Phoenix.PubSub.broadcast(pubsub, topic, {:cf_event, event})
+      config.broadcast_fn.(config.pubsub, topic, {:cf_event, event})
     end)
   end
 
   @spec build_broadcasts(
           :telemetry.event_name(),
           :telemetry.event_measurements(),
-          :telemetry.event_metadata()
+          :telemetry.event_metadata(),
+          map()
         ) :: [{String.t(), Event.t()}]
   defp build_broadcasts(
          [:coloured_flow, :runner, :enactment, lifecycle] = event_name,
          measurements,
-         metadata
+         metadata,
+         config
        )
        when lifecycle in @enactment_lifecycle_events do
     case Map.get(metadata, :enactment_state) do
@@ -172,7 +226,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
         kind = lifecycle_kind(lifecycle)
         payload = lifecycle_payload(lifecycle, metadata)
 
-        broadcasts(state, kind, occurred_at(measurements), payload)
+        broadcasts(state, kind, occurred_at(measurements), payload, config)
 
       _missing ->
         log_missing_state(event_name, metadata)
@@ -183,7 +237,8 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   defp build_broadcasts(
          [:coloured_flow, :runner, :enactment, operation, op_event] = event_name,
          measurements,
-         metadata
+         metadata,
+         config
        )
        when operation in @workitem_operations and op_event in @workitem_op_events do
     case Map.get(metadata, :enactment_state) do
@@ -191,7 +246,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
         kind = workitem_kind(operation, op_event)
         payload = workitem_payload(operation, op_event, metadata)
 
-        broadcasts(state, kind, occurred_at(measurements), payload)
+        broadcasts(state, kind, occurred_at(measurements), payload, config)
 
       _missing ->
         log_missing_state(event_name, metadata)
@@ -199,7 +254,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     end
   end
 
-  defp build_broadcasts(_event_name, _measurements, _metadata), do: []
+  defp build_broadcasts(_event_name, _measurements, _metadata, _config), do: []
 
   # Compile-time atom tables keep the runtime kind lookup off the
   # `:erlang.binary_to_atom/2` path that credo flags as unsafe.
@@ -211,7 +266,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     defp workitem_kind(unquote(op), unquote(ev)), do: unquote(:"#{op}_#{ev}")
   end
 
-  defp broadcasts(%RunnerEnactment{} = state, kind, occurred_at, payload) do
+  defp broadcasts(%RunnerEnactment{} = state, kind, occurred_at, payload, config) do
     common = %{
       kind: kind,
       enactment_id: state.enactment_id,
@@ -222,12 +277,78 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
       workitems_summary: workitems_summary(state.workitems)
     }
 
-    [
-      {"cf:inbox", struct!(Event, Map.put(common, :topic, :inbox))},
-      {"cf:enactment:#{state.enactment_id}",
+    prefix = config.topic_prefix
+
+    base = [
+      {"#{prefix}inbox", struct!(Event, Map.put(common, :topic, :inbox))},
+      {"#{prefix}enactment:#{state.enactment_id}",
        struct!(Event, Map.put(common, :topic, {:enactment, state.enactment_id}))}
     ]
+
+    case lookup_flow_topic_id(state.enactment_id, config.flow_cache) do
+      {:ok, flow_id} ->
+        flow_topic =
+          {"#{prefix}flow:#{flow_id}", struct!(Event, Map.put(common, :topic, {:flow, flow_id}))}
+
+        [flow_topic | base]
+
+      :error ->
+        base
+    end
   end
+
+  @doc """
+  Looks up (or resolves and caches) the flow topic id for an enactment.
+
+  Public so the `task_supervisor`-spawned task can call into it; tests may
+  also pre-warm the cache. Returns `{:ok, flow_id}` on success, `:error`
+  when the storage lookup fails (and skips the `cf:flow:*` topic for that
+  event family).
+  """
+  @spec lookup_flow_topic_id(Event.enactment_id(), atom()) :: {:ok, String.t()} | :error
+  def lookup_flow_topic_id(enactment_id, cache) do
+    case :ets.lookup(cache, enactment_id) do
+      [{^enactment_id, flow_id}] ->
+        {:ok, flow_id}
+
+      [] ->
+        resolve_and_cache_flow_topic_id(enactment_id, cache)
+    end
+  end
+
+  defp resolve_and_cache_flow_topic_id(enactment_id, cache) do
+    case fetch_flow(enactment_id) do
+      {:ok, %ColouredPetriNet{} = cpnet} ->
+        flow_id = flow_topic_id(cpnet)
+        :ets.insert(cache, {enactment_id, flow_id})
+        {:ok, flow_id}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp fetch_flow(enactment_id) do
+    {:ok, Storage.get_flow_by_enactment(enactment_id)}
+  catch
+    kind, reason ->
+      Logger.debug(fn ->
+        "[#{inspect(__MODULE__)}] flow lookup failed for enactment #{inspect(enactment_id)}: " <>
+          Exception.format(kind, reason, __STACKTRACE__)
+      end)
+
+      :error
+  end
+
+  @doc """
+  Derives the stable `cf:flow:<id>` topic suffix for a coloured petri net
+  definition. Two enactments backed by the same `%ColouredPetriNet{}` share
+  the same topic. The storage backend returns no module/uuid identity through
+  its public surface, so the bridge hashes the term itself.
+  """
+  @spec flow_topic_id(ColouredPetriNet.t()) :: String.t()
+  def flow_topic_id(%ColouredPetriNet{} = cpnet),
+    do: Integer.to_string(:erlang.phash2(cpnet))
 
   @spec occurred_at(:telemetry.event_measurements()) :: DateTime.t()
   defp occurred_at(measurements) do

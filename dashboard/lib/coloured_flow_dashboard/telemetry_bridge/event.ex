@@ -11,10 +11,19 @@ defmodule ColouredFlowDashboard.TelemetryBridge.Event do
   @typedoc "UUID identifying an enactment instance — matches `ColouredFlow.Runner.Storage.enactment_id/0`."
   @type enactment_id() :: Ecto.UUID.t()
 
+  @typedoc """
+  Discriminator carried by every broadcast event.
+
+  `{:flow, id}` carries a string identifier derived from the flow's
+  `%ColouredPetriNet{}` definition by
+  `ColouredFlowDashboard.TelemetryBridge.flow_topic_id/1`. The runner's
+  public storage surface returns no Elixir-module identity for flows, so the
+  bridge hashes the cpnet term instead.
+  """
   @type topic() ::
           :inbox
           | {:enactment, enactment_id()}
-          | {:flow, module()}
+          | {:flow, String.t()}
 
   @lifecycle_kinds [
     :enactment_start,
