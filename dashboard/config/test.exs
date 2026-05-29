@@ -13,6 +13,14 @@ config :coloured_flow_dashboard, ColouredFlowDashboard.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
+# Use the in-memory ETS-backed runner storage in tests so the bridge +
+# integration smoke can drive enactments without a Postgres round-trip.
+# The dashboard's Application picks up `InMemory` and inserts the GenServer
+# ahead of `Runner.Supervisor` in the child list.
+config :coloured_flow, ColouredFlow.Runner.Storage,
+  storage: ColouredFlow.Runner.Storage.InMemory,
+  repo: ColouredFlowDashboard.Repo
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :coloured_flow_dashboard, ColouredFlowDashboardWeb.Endpoint,

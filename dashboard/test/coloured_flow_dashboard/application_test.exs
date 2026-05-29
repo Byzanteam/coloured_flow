@@ -31,8 +31,22 @@ defmodule ColouredFlowDashboard.ApplicationTest do
 
     test "wires the coloured_flow runner storage at our Repo" do
       cfg = Application.fetch_env!(:coloured_flow, ColouredFlow.Runner.Storage)
-      assert cfg[:storage] == ColouredFlow.Runner.Storage.Default
+      # Tests use the in-memory ETS backend (see config/test.exs); production
+      # config still pins `Storage.Default`.
+      assert cfg[:storage] == ColouredFlow.Runner.Storage.InMemory
       assert cfg[:repo] == ColouredFlowDashboard.Repo
+    end
+
+    test "starts the dashboard Task.Supervisor for async bridge work" do
+      assert is_pid(Process.whereis(ColouredFlowDashboard.TaskSupervisor))
+    end
+
+    test "starts the TelemetryBridge GenServer" do
+      assert is_pid(Process.whereis(ColouredFlowDashboard.TelemetryBridge))
+    end
+
+    test "starts the in-memory runner storage when configured for tests" do
+      assert is_pid(Process.whereis(ColouredFlow.Runner.Storage.InMemory))
     end
   end
 end
