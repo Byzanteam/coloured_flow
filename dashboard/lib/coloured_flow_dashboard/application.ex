@@ -15,7 +15,8 @@ defmodule ColouredFlowDashboard.Application do
     children = [
       ColouredFlowDashboardWeb.Telemetry,
       ColouredFlowDashboard.Repo,
-      {DNSCluster, query: Application.get_env(:coloured_flow_dashboard, :dns_cluster_query) || :ignore},
+      {DNSCluster,
+       query: Application.get_env(:coloured_flow_dashboard, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: :coloured_flow_dashboard_pubsub},
       ColouredFlow.Runner.Supervisor,
       ColouredFlowDashboardWeb.Endpoint

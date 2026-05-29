@@ -1,4 +1,4 @@
-# ColouredFlowDashboard
+# ColouredFlow Dashboard
 
 To start your Phoenix server:
 

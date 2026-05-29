@@ -20,8 +20,13 @@ if System.get_env("PHX_SERVER") do
   config :coloured_flow_dashboard, ColouredFlowDashboardWeb.Endpoint, server: true
 end
 
-config :coloured_flow_dashboard, ColouredFlowDashboardWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+# Only override the Endpoint HTTP port when PORT is explicitly exported.
+# Otherwise leave config/test.exs (and config/dev.exs) ports untouched so the
+# test suite keeps its dedicated port and other envs can keep their defaults.
+if port = System.get_env("PORT") do
+  config :coloured_flow_dashboard, ColouredFlowDashboardWeb.Endpoint,
+    http: [port: String.to_integer(port)]
+end
 
 if config_env() == :prod do
   database_url =

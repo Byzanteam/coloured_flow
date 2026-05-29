@@ -10,6 +10,7 @@ defmodule ColouredFlowDashboard.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      dialyzer: dialyzer(),
       listeners: [Phoenix.CodeReloader]
     ]
   end
@@ -18,12 +19,6 @@ defmodule ColouredFlowDashboard.MixProject do
     [
       mod: {ColouredFlowDashboard.Application, []},
       extra_applications: [:logger, :runtime_tools]
-    ]
-  end
-
-  def cli do
-    [
-      preferred_envs: [precommit: :test]
     ]
   end
 
@@ -42,7 +37,9 @@ defmodule ColouredFlowDashboard.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -52,7 +49,25 @@ defmodule ColouredFlowDashboard.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "deps.unlock --check-unused",
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict",
+        "dialyzer",
+        # Re-shell into `mix test` so MIX_ENV=test is honoured even when the
+        # alias chain runs from `:dev` (so dialyzer's PLT scan doesn't pick
+        # up `test/support/` and trip on ExUnit shims).
+        "cmd env MIX_ENV=test mix test"
+      ]
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_local_path: "priv/plts/coloured_flow_dashboard.plt",
+      plt_core_path: "priv/plts/core.plt",
+      ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 end

@@ -25,3 +25,8 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 coloured_flow_dashboard-*.tar
 
+# Dialyzer PLTs (the directory itself is checked in via .gitkeep).
+/priv/plts/*.plt
+/priv/plts/*.plt.hash
+
+
