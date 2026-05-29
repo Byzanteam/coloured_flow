@@ -29,6 +29,11 @@ config :coloured_flow, ColouredFlow.Runner.Storage,
   storage: ColouredFlow.Runner.Storage.Default,
   repo: ColouredFlowDashboard.Repo
 
+# Musubi TypeScript codegen output path — picked up by the `:musubi_ts`
+# compiler and written on every `mix compile`. The SPA imports the generated
+# `Musubi.Stores` registry through this file.
+config :musubi, :ts_codegen_output_path, "ui/src/generated/musubi.d.ts"
+
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

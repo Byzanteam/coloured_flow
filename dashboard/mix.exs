@@ -7,6 +7,7 @@ defmodule ColouredFlowDashboard.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: Mix.compilers() ++ [:musubi_ts],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -54,6 +55,7 @@ defmodule ColouredFlowDashboard.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
+        "compile.musubi_ts --check",
         "dialyzer",
         # Re-shell into `mix test` so MIX_ENV=test is honoured even when the
         # alias chain runs from `:dev` (so dialyzer's PLT scan doesn't pick

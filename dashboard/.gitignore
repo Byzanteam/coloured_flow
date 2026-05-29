@@ -29,4 +29,13 @@ coloured_flow_dashboard-*.tar
 /priv/plts/*.plt
 /priv/plts/*.plt.hash
 
+# SPA build output — produced by `cd ui && pnpm build`. Sources live in
+# `ui/`; static assets are emitted to `priv/static/{index.html,assets/*,
+# favicon.ico,robots.txt}` and never checked in.
+/priv/static/
+
+# SPA-generated bundles. The `:musubi_ts` Mix compiler rewrites this on every
+# `mix compile`, so the on-disk copy is always derivable from store sources.
+/ui/src/generated/musubi.d.ts
+
 
