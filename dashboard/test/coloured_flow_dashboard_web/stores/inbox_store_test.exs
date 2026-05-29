@@ -221,6 +221,106 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStoreTest do
     end
   end
 
+  describe "stream wire ops (regression: item_key insert/delete symmetry)" do
+    # Codex P8 BLOCKING: with the Musubi-default stream item_key
+    # (`"workitems-#{id}"`) and a delete site that passed the bare UUID,
+    # `stream_delete_by_item_key/3` never matched the inserted row and the
+    # client kept stale rows across `:complete / :withdraw / :terminate`.
+    # The store now declares `item_key: &(&1.id)`; this suite locks the
+    # insert+delete key shapes into one shape via the actual patch envelope.
+    setup %{topic: topic, flow_cache: flow_cache} do
+      # Drain the mount envelope (initial wire-root replace) so the per-test
+      # assertions only see envelopes triggered by `broadcast!/2` events.
+      page = mount_store(topic, flow_cache)
+      _drained = drain_patch()
+      {:ok, page: page}
+    end
+
+    test "produce → complete: delete carries the same item_key as the insert",
+         %{topic: topic, page: _page} do
+      enactment_id = Ecto.UUID.generate()
+      wi_id = Ecto.UUID.generate()
+
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_id, :enabled))
+      assert %{op: "insert", item_key: insert_key} = await_stream_op("insert", :workitems)
+      assert insert_key == wi_id
+
+      broadcast!(topic, build_event(:complete_workitems_stop, enactment_id, wi_id, :completed))
+      assert %{op: "delete", item_key: delete_key} = await_stream_op("delete", :workitems)
+      assert delete_key == insert_key
+    end
+
+    test "produce → withdraw: delete carries the same item_key as the insert",
+         %{topic: topic, page: _page} do
+      enactment_id = Ecto.UUID.generate()
+      wi_id = Ecto.UUID.generate()
+
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_id, :enabled))
+      assert %{op: "insert", item_key: insert_key} = await_stream_op("insert", :workitems)
+
+      broadcast!(topic, build_event(:withdraw_workitems_stop, enactment_id, wi_id, :withdrawn))
+      assert %{op: "delete", item_key: delete_key} = await_stream_op("delete", :workitems)
+      assert delete_key == insert_key
+    end
+
+    test "enactment_terminate emits a delete op per tracked row, all keyed by id",
+         %{topic: topic, page: _page} do
+      enactment_id = Ecto.UUID.generate()
+      wi_a = Ecto.UUID.generate()
+      wi_b = Ecto.UUID.generate()
+
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_a, :enabled))
+      assert %{item_key: ^wi_a} = await_stream_op("insert", :workitems)
+
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_b, :enabled))
+      assert %{item_key: ^wi_b} = await_stream_op("insert", :workitems)
+
+      terminate_event = %Event{
+        topic: :inbox,
+        kind: :enactment_terminate,
+        enactment_id: enactment_id,
+        enactment_version: 3,
+        occurred_at: DateTime.utc_now(),
+        payload: %{termination_type: :force, termination_message: nil}
+      }
+
+      broadcast!(topic, terminate_event)
+      delete_ops = await_stream_ops("delete", :workitems, 2)
+      assert Enum.sort(Enum.map(delete_ops, & &1.item_key)) == Enum.sort([wi_a, wi_b])
+    end
+  end
+
+  describe "flow_topic_id cache miss (regression: undefined ETS table)" do
+    # Codex P8 MINOR: when the bridge's flow_cache ETS table does not exist
+    # (bridge not running, table renamed, isolated test cache) the row must
+    # still be inserted with `flow_topic_id: nil` — never dropped.
+    test "row is streamed with flow_topic_id: nil when cache table is undefined",
+         %{topic: topic} do
+      # An atom that is never created as an ETS table: `:ets.whereis/1`
+      # returns `:undefined`, hitting the `resolve_flow_topic_id` miss path.
+      missing_cache = unique_cache_atom("inbox_store_cache_miss_")
+
+      assert :ets.whereis(missing_cache) == :undefined
+
+      page = mount_store(topic, missing_cache)
+      _drained = drain_patch()
+
+      enactment_id = Ecto.UUID.generate()
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_id, :enabled))
+
+      insert = await_stream_op("insert", :workitems)
+      assert insert.item_key == wi_id
+      # The streamed item is wire-encoded (string keys) — see `Wire.to_wire/1`.
+      assert is_nil(insert.item["flow_topic_id"])
+      assert insert.item["id"] == wi_id
+
+      assigns = Musubi.Testing.assigns(page)
+      assert assigns.workitem_states == %{wi_id => :enabled}
+      assert assigns.enactment_workitems == %{enactment_id => MapSet.new([wi_id])}
+    end
+  end
+
   describe "integration with a real runner + InMemory storage" do
     test "consumes bridge fan-out from a live runner firing", %{
       topic: _topic,
@@ -332,6 +432,85 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStoreTest do
         to_consume: []
       }
     })
+  end
+
+  # Builds a fresh atom for a per-test ETS cache name. The atom is created
+  # at runtime — `String.to_existing_atom/1` would fail since this exact
+  # value has never been encountered before. The credo override is scoped
+  # narrowly to this one call site.
+  defp unique_cache_atom(prefix) when is_binary(prefix) do
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
+    String.to_atom(prefix <> Integer.to_string(System.unique_integer([:positive])))
+  end
+
+  # Drains any pending patch envelopes addressed to the test process; used
+  # in `setup` to discard the initial mount envelope before per-test
+  # assertions on stream ops.
+  defp drain_patch do
+    receive do
+      {:patch, _envelope} -> drain_patch()
+    after
+      0 -> :ok
+    end
+  end
+
+  # Waits for one matching stream op from the next patch envelope; the
+  # page server emits a fresh envelope per `handle_info/2` cycle, so each
+  # broadcast we make is observable as exactly one `{:patch, _}` message.
+  defp await_stream_op(kind, stream_name) when is_binary(kind) and is_atom(stream_name) do
+    case await_stream_ops(kind, stream_name, 1) do
+      [op] -> op
+    end
+  end
+
+  defp await_stream_ops(kind, stream_name, count)
+       when is_binary(kind) and is_atom(stream_name) and is_integer(count) and count > 0 do
+    name_str = Atom.to_string(stream_name)
+    deadline = System.monotonic_time(:millisecond) + 2_000
+    collect_stream_ops(kind, name_str, count, [], deadline)
+  end
+
+  defp collect_stream_ops(_kind, _name, count, acc, _deadline) when length(acc) >= count do
+    Enum.reverse(acc)
+  end
+
+  defp collect_stream_ops(kind, name, count, acc, deadline) do
+    timeout = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:patch, %{stream_ops: ops}} ->
+        filtered =
+          Enum.filter(ops, fn op ->
+            op_field(op, :op) == kind and op_field(op, :stream) == name
+          end)
+
+        matching = Enum.map(filtered, &normalize_op/1)
+
+        collect_stream_ops(kind, name, count, Enum.reverse(matching) ++ acc, deadline)
+    after
+      timeout ->
+        flunk(
+          "timed out waiting for #{count} #{kind} op(s) on stream :#{name}; collected: " <>
+            inspect(Enum.reverse(acc))
+        )
+    end
+  end
+
+  defp op_field(op, key) when is_map(op) do
+    case op do
+      %{^key => v} ->
+        v
+
+      %{} ->
+        stringified = Map.new(op, fn {k, v} -> {to_string(k), v} end)
+        Map.get(stringified, Atom.to_string(key))
+    end
+  end
+
+  defp normalize_op(op) do
+    Enum.reduce([:op, :stream, :item_key, :item, :at, :limit, :ref], %{}, fn k, acc ->
+      Map.put(acc, k, op_field(op, k))
+    end)
   end
 
   # Spins until `fun.()` returns truthy or the deadline elapses. The

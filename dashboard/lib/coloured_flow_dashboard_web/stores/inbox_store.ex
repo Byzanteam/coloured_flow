@@ -77,8 +77,16 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   # the host module's namespace ancestry, not its `alias` table. Inline the
   # fully-qualified module names so the walker finds them without depending
   # on `Stores.*` ↔ `Views.*` sharing a parent prefix.
+  #
+  # `item_key: &(&1.id)` makes the stream's insert/delete key shape match
+  # the bare workitem UUID passed to `stream_delete_by_item_key/3` — without
+  # it the Musubi default (`"workitems-#{id}"`) would never match the
+  # delete-site key and completed/withdrawn rows would linger on the client.
   state do
-    stream :workitems, ColouredFlowDashboardWeb.Views.WorkitemRow.t(), limit: @stream_limit
+    stream :workitems, ColouredFlowDashboardWeb.Views.WorkitemRow.t(),
+      limit: @stream_limit,
+      item_key: & &1.id
+
     field :counts, ColouredFlowDashboardWeb.Views.InboxCounts.t()
   end
 
@@ -135,25 +143,35 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   # ---------------------------------------------------------------------------
 
   defp seed_rows(flow_cache) do
-    [limit: @stream_limit]
-    |> WorkitemStream.live_query()
-    |> WorkitemStream.list_live()
-    |> case do
-      :end_of_stream -> []
-      {workitems, _cursor} -> Enum.map(workitems, &schema_to_row(&1, flow_cache))
-    end
-  rescue
-    error ->
-      # The seed reads through `ColouredFlow.Runner.Storage.Repo`, which
-      # requires a configured Ecto repo. Tests pinned to the `InMemory`
-      # backend without a Repo (or boot-time race where the Repo has not
-      # checked out a connection yet) raise here. The store still mounts
-      # — we just start with an empty stream and rely on the PubSub feed.
-      Logger.warning(fn ->
-        "InboxStore seed skipped: #{Exception.message(error)}"
-      end)
+    # Check Repo presence *before* dispatching the query so genuine query
+    # failures (schema drift, storage outage, etc.) propagate instead of
+    # silently degrading the inbox to empty. The only swallowed case is the
+    # explicitly-unconfigured environment (e.g. a host app that mounts the
+    # dashboard without wiring `:coloured_flow, ColouredFlow.Runner.Storage`).
+    if repo_configured?() do
+      [limit: @stream_limit]
+      |> WorkitemStream.live_query()
+      |> WorkitemStream.list_live()
+      |> case do
+        :end_of_stream -> []
+        {workitems, _cursor} -> Enum.map(workitems, &schema_to_row(&1, flow_cache))
+      end
+    else
+      Logger.warning(
+        "InboxStore seed skipped: no Ecto repo configured under " <>
+          ":coloured_flow, ColouredFlow.Runner.Storage — PubSub will populate the inbox."
+      )
 
       []
+    end
+  end
+
+  defp repo_configured? do
+    case Application.get_env(:coloured_flow, ColouredFlow.Runner.Storage) do
+      nil -> false
+      cfg when is_list(cfg) -> not is_nil(Keyword.get(cfg, :repo))
+      _other -> false
+    end
   end
 
   defp build_enactment_index(rows) do
