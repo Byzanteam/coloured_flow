@@ -17,6 +17,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   ## State
 
     * `summary` — a `ColouredFlowDashboardWeb.Views.EnactmentSummary` rollup.
+    * `transitions` — sorted list of transition names declared by the cpnet
+      backing this enactment. Empty when the bridge cache cannot resolve a
+      cpnet (e.g. enactment row not yet written). Drives the Debug tab's
+      transition picker.
     * `:markings` stream — `MarkingRow` per place, keyed by `place` name.
     * `:workitems` stream — `WorkitemRow` per live workitem (same Wire shape
       used by `InboxStore`), keyed by workitem id.
@@ -25,6 +29,11 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       field is a per-mount stable index — the SPA surfaces it as a
       "Position" column to avoid implying a stable cross-session identifier.
       Capped to 200 rows.
+    * `:telemetry` stream — `TelemetryEntry` per bridge event matching this
+      enactment. Capped to 100 rows; the stream limit drops oldest entries
+      automatically. Bridge events do not carry per-event ids, so the store
+      mints `"<enactment_id>-<unique>"` at insert time via a monotonic
+      counter.
 
   ## Event routing
 
@@ -91,6 +100,13 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     * `:take_snapshot` — sends a `:take_snapshot` message to the enactment
       GenServer (same hot path the runner uses internally after completions).
       Reply codes: `:ok | :not_running | :runner_error`.
+    * `:inspect_transition` — read-only enumeration of candidate bindings
+      for a single transition, delegating to
+      `ColouredFlowDashboard.BindingInspector.inspect/3`. Reply codes:
+      `:ok | :unknown_transition | :cpnet_unavailable`. The `:ok` reply
+      carries `info :: TransitionDebugInfo.t()` and
+      `candidates :: [BindingCandidate.t()]` — both pre-rendered for the
+      SPA wire so the Debug tab does not need its own decoder.
   """
 
   use Musubi.Store, root: true
@@ -108,11 +124,15 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
+  alias ColouredFlowDashboard.BindingInspector
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
+  alias ColouredFlowDashboardWeb.Views.BindingCandidate
   alias ColouredFlowDashboardWeb.Views.EnactmentSummary
   alias ColouredFlowDashboardWeb.Views.MarkingRow
   alias ColouredFlowDashboardWeb.Views.OccurrenceRow
+  alias ColouredFlowDashboardWeb.Views.TelemetryEntry
+  alias ColouredFlowDashboardWeb.Views.TransitionDebugInfo
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
 
   import Ecto.Query, only: [where: 3]
@@ -124,6 +144,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   @default_flow_cache :coloured_flow_dashboard_telemetry_bridge_flow_cache
   @occurrence_limit 200
   @workitem_limit 200
+  @telemetry_limit 100
   @live_states RunnerWorkitem.__live_states__()
   # Bounded ceiling for the mount-time `:sys.get_state/2` peek so a slow or
   # stuck runner GenServer never blocks the page mount past this. On
@@ -134,6 +155,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   # module's namespace ancestry, not its `alias` table. Inline FQN refs.
   state do
     field :summary, ColouredFlowDashboardWeb.Views.EnactmentSummary.t()
+    field :transitions, list(String.t())
 
     stream :markings, ColouredFlowDashboardWeb.Views.MarkingRow.t(),
       limit: @workitem_limit,
@@ -145,6 +167,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
     stream :occurrences, ColouredFlowDashboardWeb.Views.OccurrenceRow.t(),
       limit: @occurrence_limit,
+      item_key: & &1.id
+
+    stream :telemetry, ColouredFlowDashboardWeb.Views.TelemetryEntry.t(),
+      limit: @telemetry_limit,
       item_key: & &1.id
   end
 
@@ -161,6 +187,19 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   command :take_snapshot do
     reply do
       field :code, :ok | :not_running | :runner_error
+    end
+  end
+
+  command :inspect_transition do
+    payload do
+      field :transition, String.t()
+    end
+
+    reply do
+      field :code, :ok | :unknown_transition | :cpnet_unavailable
+      field :info, ColouredFlowDashboardWeb.Views.TransitionDebugInfo.t() | nil
+      field :candidates, list(ColouredFlowDashboardWeb.Views.BindingCandidate.t())
+      field :transition, String.t() | nil
     end
   end
 
@@ -187,6 +226,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     } = seed_world(enactment_id)
 
     flow_topic_id = resolve_flow_topic_id(enactment_id, flow_cache)
+    transitions = resolve_transitions(enactment_id, flow_cache)
     last_occurrence_at = last_occurrence_at(occurrences)
 
     summary = %EnactmentSummary{
@@ -206,10 +246,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:topic, topic)
       |> assign(:flow_cache, flow_cache)
       |> assign(:summary, summary)
+      |> assign(:transitions, transitions)
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
       |> stream(:markings, markings, reset: true)
       |> stream(:workitems, workitems, reset: true)
       |> stream(:occurrences, occurrences, reset: true)
+      |> stream(:telemetry, [], reset: true)
 
     {:ok, socket}
   end
@@ -218,9 +260,11 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   def render(socket) do
     %{
       summary: socket.assigns.summary,
+      transitions: socket.assigns.transitions,
       markings: stream(:markings),
       workitems: stream(:workitems),
-      occurrences: stream(:occurrences)
+      occurrences: stream(:occurrences),
+      telemetry: stream(:telemetry)
     }
   end
 
@@ -231,7 +275,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   @impl Musubi.Store
   def handle_info({:cf_event, %Event{} = event}, socket) do
     if event.enactment_id == socket.assigns.enactment_id do
-      {:noreply, route_event(event, socket)}
+      socket = event |> route_event(socket) |> append_telemetry(event)
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
@@ -251,6 +296,11 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   def handle_command(:take_snapshot, _payload, socket) do
     {:reply, take_snapshot_reply(socket.assigns.enactment_id), socket}
+  end
+
+  def handle_command(:inspect_transition, payload, socket) when is_map(payload) do
+    transition = Map.get(payload, "transition") || Map.get(payload, :transition) || ""
+    {:reply, inspect_transition_reply(socket, transition), socket}
   end
 
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
@@ -650,6 +700,233 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   # ---------------------------------------------------------------------------
   # :take_snapshot (deviation: see @moduledoc)
   # ---------------------------------------------------------------------------
+
+  defp resolve_transitions(enactment_id, flow_cache)
+       when is_binary(enactment_id) and is_atom(flow_cache) do
+    case lookup_cpnet_safe(enactment_id, flow_cache) do
+      {:ok, cpnet} ->
+        cpnet.transitions
+        |> Enum.map(& &1.name)
+        |> Enum.sort()
+
+      :error ->
+        []
+    end
+  end
+
+  defp lookup_cpnet_safe(enactment_id, flow_cache) do
+    case :ets.whereis(flow_cache) do
+      :undefined -> :error
+      _table -> TelemetryBridge.lookup_cpnet(enactment_id, flow_cache)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Telemetry stream
+  # ---------------------------------------------------------------------------
+
+  defp append_telemetry(socket, %Event{} = event) do
+    entry = telemetry_entry(event, socket.assigns.enactment_id)
+    stream_insert(socket, :telemetry, entry, at: 0)
+  end
+
+  defp telemetry_entry(%Event{} = event, enactment_id) do
+    %TelemetryEntry{
+      id: synthesize_entry_id(enactment_id),
+      kind: event.kind,
+      at: datetime_to_iso(event.occurred_at),
+      summary: derive_summary(event),
+      severity: derive_severity(event.kind),
+      payload_json: encode_payload(event.payload)
+    }
+  end
+
+  defp synthesize_entry_id(enactment_id) do
+    "#{enactment_id}-#{System.unique_integer([:positive, :monotonic])}"
+  end
+
+  defp derive_severity(:enactment_exception), do: :error
+  defp derive_severity(:enactment_terminate), do: :warning
+
+  defp derive_severity(kind) when is_atom(kind) do
+    if String.ends_with?(Atom.to_string(kind), "_exception"), do: :error, else: :info
+  end
+
+  defp derive_summary(%Event{kind: :produce_workitems_stop, payload: %{workitems: workitems}}),
+    do: "Produced #{length(workitems)} workitem(s)"
+
+  defp derive_summary(%Event{kind: :start_workitems_stop, payload: %{workitems: workitems}}),
+    do: "Started #{length(workitems)} workitem(s)"
+
+  defp derive_summary(%Event{kind: :withdraw_workitems_stop, payload: %{workitems: workitems}}),
+    do: "Withdrew #{length(workitems)} workitem(s)"
+
+  defp derive_summary(%Event{kind: :complete_workitems_stop, payload: %{workitems: workitems}}),
+    do: "Completed #{length(workitems)} workitem(s)"
+
+  defp derive_summary(%Event{kind: :produce_workitems_start, payload: payload}) do
+    case Map.get(payload, :binding_elements, []) do
+      [] -> "Producing workitems"
+      list -> "Producing #{length(list)} workitem(s)"
+    end
+  end
+
+  defp derive_summary(%Event{kind: kind, payload: payload})
+       when kind in [:start_workitems_start, :withdraw_workitems_start, :complete_workitems_start] do
+    case Map.get(payload, :workitem_ids, []) do
+      [] -> Atom.to_string(kind)
+      list -> "#{Atom.to_string(kind)} (#{length(list)} id(s))"
+    end
+  end
+
+  defp derive_summary(%Event{kind: :enactment_start, enactment_version: version}),
+    do: "Enactment started at version #{version}"
+
+  defp derive_summary(%Event{kind: :enactment_stop}), do: "Enactment GenServer stopped"
+
+  defp derive_summary(%Event{kind: :enactment_take_snapshot, enactment_version: version}),
+    do: "Snapshot taken at version #{version}"
+
+  defp derive_summary(%Event{kind: :enactment_terminate, payload: payload}) do
+    msg = Map.get(payload, :termination_message) || Map.get(payload, :termination_type) || "force"
+    "Enactment terminated: #{inspect_safe(msg)}"
+  end
+
+  defp derive_summary(%Event{kind: :enactment_exception, payload: payload}) do
+    Map.get(payload, :error_banner) || "Enactment exception"
+  end
+
+  defp derive_summary(%Event{kind: kind, payload: payload}) when is_atom(kind) do
+    case Map.get(payload, :error_banner) do
+      banner when is_binary(banner) -> banner
+      _other -> Atom.to_string(kind)
+    end
+  end
+
+  defp encode_payload(payload) when is_map(payload) do
+    JSON.encode!(sanitize_for_json(payload))
+  rescue
+    _err -> inspect_safe(payload)
+  end
+
+  defp encode_payload(_other), do: "{}"
+
+  defp sanitize_for_json(value) when is_map(value) and not is_struct(value) do
+    Map.new(value, fn {k, v} -> {sanitize_key(k), sanitize_for_json(v)} end)
+  end
+
+  defp sanitize_for_json(value) when is_list(value), do: Enum.map(value, &sanitize_for_json/1)
+  defp sanitize_for_json(value) when is_binary(value) or is_number(value), do: value
+  defp sanitize_for_json(value) when is_boolean(value) or is_nil(value), do: value
+  defp sanitize_for_json(value) when is_atom(value), do: Atom.to_string(value)
+
+  defp sanitize_for_json(value) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.map(&sanitize_for_json/1)
+
+  defp sanitize_for_json(value), do: inspect_safe(value)
+
+  defp sanitize_key(k) when is_binary(k), do: k
+  defp sanitize_key(k) when is_atom(k), do: Atom.to_string(k)
+  defp sanitize_key(k), do: inspect_safe(k)
+
+  defp inspect_safe(value), do: inspect(value, limit: 50, printable_limit: 200)
+
+  # ---------------------------------------------------------------------------
+  # :inspect_transition
+  # ---------------------------------------------------------------------------
+
+  defp inspect_transition_reply(socket, transition) when is_binary(transition) do
+    enactment_id = socket.assigns.enactment_id
+    flow_cache = socket.assigns.flow_cache
+
+    case lookup_cpnet_safe(enactment_id, flow_cache) do
+      {:ok, cpnet} ->
+        case peek_markings(enactment_id) do
+          {:ok, markings} ->
+            do_inspect(cpnet, markings, transition)
+
+          :error ->
+            %{
+              code: :cpnet_unavailable,
+              transition: transition,
+              info: nil,
+              candidates: []
+            }
+        end
+
+      :error ->
+        %{
+          code: :cpnet_unavailable,
+          transition: transition,
+          info: nil,
+          candidates: []
+        }
+    end
+  end
+
+  defp do_inspect(cpnet, markings, transition) do
+    case BindingInspector.inspect(cpnet, markings, transition) do
+      {:ok, info, candidates} ->
+        %{
+          code: :ok,
+          transition: transition,
+          info: %TransitionDebugInfo{
+            transition: info.transition,
+            candidates_count: info.candidates_count,
+            enabled_count: info.enabled_count,
+            rejected_by_guard_count: info.rejected_by_guard_count,
+            rejected_by_marking_count: info.rejected_by_marking_count
+          },
+          candidates:
+            Enum.map(candidates, fn c ->
+              %BindingCandidate{
+                transition: transition,
+                binding_summary: c.binding_summary,
+                guard_status: c.guard_status,
+                reason: c.reason
+              }
+            end)
+        }
+
+      {:error, :unknown_transition} ->
+        %{
+          code: :unknown_transition,
+          transition: transition,
+          info: nil,
+          candidates: []
+        }
+    end
+  end
+
+  # Returns the current markings map for inspection — same hierarchy as
+  # `seed_world/1` (live peek → storage snapshot+replay). Read-only.
+  defp peek_markings(enactment_id) do
+    case peek_live_enactment(enactment_id) do
+      {:ok, %RunnerEnactment{markings: markings}} ->
+        {:ok, markings}
+
+      {:fallback, _reason} ->
+        storage_markings(enactment_id)
+    end
+  end
+
+  defp storage_markings(enactment_id) do
+    if repo_configured?() do
+      {initial_markings, snapshot_version} =
+        case Storage.read_enactment_snapshot(enactment_id) do
+          {:ok, %Snapshot{markings: markings, version: version}} -> {markings, version}
+          _other -> {Storage.get_initial_markings(enactment_id), 0}
+        end
+
+      occurrences = Storage.occurrences_stream(enactment_id, snapshot_version)
+      {_steps, replayed} = CatchingUp.apply(initial_markings, occurrences)
+      {:ok, Map.new(replayed, fn %Marking{place: p} = m -> {p, m} end)}
+    else
+      :error
+    end
+  rescue
+    _error -> :error
+  end
 
   defp take_snapshot_reply(enactment_id) do
     via = EnactmentRegistry.via_name({:enactment, enactment_id})

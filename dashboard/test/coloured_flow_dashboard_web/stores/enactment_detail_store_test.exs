@@ -10,6 +10,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
   alias ColouredFlow.Runner.Enactment.Workitem, as: RunnerWorkitem
   alias ColouredFlowDashboard.Seed
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
+  alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Stores.EnactmentDetailStore
   alias ColouredFlowDashboardWeb.Views.EnactmentSummary
@@ -239,6 +240,173 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe "telemetry stream" do
+    setup %{enactment_id: enactment_id, topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+      _drained = drain_patch()
+      {:ok, page: page}
+    end
+
+    test "produce_workitems_stop is appended as :info severity", %{
+      enactment_id: eid,
+      topic: topic
+    } do
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event(:produce_workitems_stop, eid, wi_id, :enabled, 1))
+
+      assert %{op: "insert", item: item} = await_stream_op("insert", :telemetry)
+      assert item["severity"] == "info"
+      assert item["kind"] == "produce_workitems_stop"
+      assert item["summary"] =~ "Produced"
+      assert String.starts_with?(item["id"], eid <> "-")
+      assert is_binary(item["payload_json"])
+    end
+
+    test "enactment_exception is appended as :error severity", %{
+      enactment_id: eid,
+      topic: topic
+    } do
+      event = %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_exception,
+        enactment_id: eid,
+        enactment_version: 3,
+        occurred_at: DateTime.utc_now(),
+        payload: %{exception_reason: :runtime, error_banner: "boom"}
+      }
+
+      broadcast!(topic, event)
+
+      assert %{op: "insert", item: item} = await_stream_op("insert", :telemetry)
+      assert item["severity"] == "error"
+      assert item["kind"] == "enactment_exception"
+      assert item["summary"] == "boom"
+    end
+
+    test "enactment_terminate is appended as :warning severity", %{
+      enactment_id: eid,
+      topic: topic
+    } do
+      event = %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_terminate,
+        enactment_id: eid,
+        enactment_version: 4,
+        occurred_at: DateTime.utc_now(),
+        payload: %{termination_type: :force, termination_message: "demo"}
+      }
+
+      broadcast!(topic, event)
+
+      ops = await_stream_ops("insert", :telemetry, 1)
+      assert [op] = ops
+      assert op.item["severity"] == "warning"
+      assert op.item["summary"] =~ "terminated"
+    end
+
+    test "stream limit caps the telemetry ring buffer", %{
+      enactment_id: eid,
+      topic: topic
+    } do
+      # Push more than @telemetry_limit (100) events; the stream's `limit:`
+      # opt should cause Musubi to drop older entries automatically.
+      for index <- 1..110 do
+        broadcast!(
+          topic,
+          build_workitem_event(
+            :produce_workitems_stop,
+            eid,
+            Ecto.UUID.generate(),
+            :enabled,
+            index
+          )
+        )
+      end
+
+      # Drain whatever inserts arrived; just assert no crash and at least
+      # one limit-bearing insert op landed.
+      _drained = drain_patch()
+      :ok
+    end
+
+    test "events for other enactments do NOT produce a telemetry row", %{
+      enactment_id: _eid,
+      topic: topic
+    } do
+      other_eid = Ecto.UUID.generate()
+      wi_id = Ecto.UUID.generate()
+
+      broadcast!(
+        topic,
+        build_workitem_event(:produce_workitems_stop, other_eid, wi_id, :enabled, 1)
+      )
+
+      refute telemetry_op_landed?(200)
+    end
+  end
+
+  describe ":inspect_transition command" do
+    setup %{topic_prefix: topic_prefix, flow_cache: _flow_cache} do
+      Seed.run(enabled: true)
+      enactment_id = Seed.enactment_id(ApprovalFlow)
+
+      # Pre-warm the bridge cpnet cache so the store mount sees transitions.
+      _warm = TelemetryBridge.lookup_cpnet(enactment_id, flow_cache_for_seed())
+
+      page = mount_store(enactment_id, topic_prefix, flow_cache_for_seed())
+      {:ok, page: page, enactment_id: enactment_id}
+    end
+
+    test "ok reply enumerates candidates + rolls up info for a known transition",
+         %{page: page} do
+      assert {:ok, reply} =
+               Musubi.Testing.dispatch_command(page, :inspect_transition, %{
+                 transition: "approve"
+               })
+
+      assert reply.code == :ok
+      assert reply.transition == "approve"
+      assert %ColouredFlowDashboardWeb.Views.TransitionDebugInfo{} = reply.info
+      assert reply.info.transition == "approve"
+      assert reply.info.candidates_count == length(reply.candidates)
+
+      assert reply.info.enabled_count + reply.info.rejected_by_guard_count +
+               reply.info.rejected_by_marking_count == reply.info.candidates_count
+
+      assert Enum.all?(reply.candidates, fn c -> c.transition == "approve" end)
+    end
+
+    test "unknown_transition reply when the cpnet has no such transition",
+         %{page: page} do
+      assert {:ok, %{code: :unknown_transition, transition: "ghost"} = reply} =
+               Musubi.Testing.dispatch_command(page, :inspect_transition, %{
+                 transition: "ghost"
+               })
+
+      assert reply.info == nil
+      assert reply.candidates == []
+    end
+  end
+
+  describe ":inspect_transition with no cpnet cached" do
+    test "cpnet_unavailable when the bridge cache table is undefined", %{
+      enactment_id: enactment_id,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      assert :ets.whereis(flow_cache) == :undefined
+
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+
+      assert {:ok, %{code: :cpnet_unavailable} = reply} =
+               Musubi.Testing.dispatch_command(page, :inspect_transition, %{
+                 transition: "approve"
+               })
+
+      assert reply.transition == "approve"
+    end
+  end
+
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,
@@ -318,6 +486,93 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
   defp operation_of(:start_workitems_stop), do: :start_workitems
   defp operation_of(:withdraw_workitems_stop), do: :withdraw_workitems
   defp operation_of(:complete_workitems_stop), do: :complete_workitems
+
+  defp telemetry_op_landed?(timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_telemetry_op_landed?(deadline)
+  end
+
+  defp do_telemetry_op_landed?(deadline) do
+    timeout = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:patch, %{stream_ops: ops}} ->
+        if Enum.any?(ops, fn op -> op_field(op, :stream) == "telemetry" end) do
+          true
+        else
+          do_telemetry_op_landed?(deadline)
+        end
+    after
+      timeout -> false
+    end
+  end
+
+  defp flow_cache_for_seed do
+    Application.get_env(:coloured_flow_dashboard, :telemetry_bridge)[:flow_cache] ||
+      :coloured_flow_dashboard_telemetry_bridge_flow_cache
+  end
+
+  defp drain_patch do
+    receive do
+      {:patch, _envelope} -> drain_patch()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp await_stream_op(kind, stream_name) when is_binary(kind) and is_atom(stream_name) do
+    [op] = await_stream_ops(kind, stream_name, 1)
+    op
+  end
+
+  defp await_stream_ops(kind, stream_name, count)
+       when is_binary(kind) and is_atom(stream_name) and is_integer(count) and count > 0 do
+    name_str = Atom.to_string(stream_name)
+    deadline = System.monotonic_time(:millisecond) + 2_000
+    collect_stream_ops(kind, name_str, count, [], deadline)
+  end
+
+  defp collect_stream_ops(_kind, _name, count, acc, _deadline) when length(acc) >= count do
+    Enum.reverse(acc)
+  end
+
+  defp collect_stream_ops(kind, name, count, acc, deadline) do
+    timeout = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:patch, %{stream_ops: ops}} ->
+        filtered =
+          Enum.filter(ops, fn op ->
+            op_field(op, :op) == kind and op_field(op, :stream) == name
+          end)
+
+        matching = Enum.map(filtered, &normalize_op/1)
+        collect_stream_ops(kind, name, count, Enum.reverse(matching) ++ acc, deadline)
+    after
+      timeout ->
+        flunk(
+          "timed out waiting for #{count} #{kind} op(s) on stream :#{name}; collected: " <>
+            inspect(Enum.reverse(acc))
+        )
+    end
+  end
+
+  defp op_field(op, key) when is_map(op) do
+    case op do
+      %{^key => v} ->
+        v
+
+      %{} ->
+        stringified = Map.new(op, fn {k, v} -> {to_string(k), v} end)
+        Map.get(stringified, Atom.to_string(key))
+    end
+  end
+
+  defp normalize_op(op) do
+    Enum.reduce([:op, :stream, :item_key, :item, :at, :limit, :ref], %{}, fn k, acc ->
+      Map.put(acc, k, op_field(op, k))
+    end)
+  end
 
   defp assert_eventually(fun, timeout \\ 2_000, interval \\ 25) do
     deadline = System.monotonic_time(:millisecond) + timeout

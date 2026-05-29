@@ -21,14 +21,19 @@ const ENACTMENT_DETAIL_STORE =
 type MarkingRow = ColouredFlowDashboardWeb.Views.MarkingRow
 type WorkitemRow = ColouredFlowDashboardWeb.Views.WorkitemRow
 type OccurrenceRow = ColouredFlowDashboardWeb.Views.OccurrenceRow
+type TelemetryEntry = ColouredFlowDashboardWeb.Views.TelemetryEntry
+type BindingCandidate = ColouredFlowDashboardWeb.Views.BindingCandidate
+type TransitionDebugInfo = ColouredFlowDashboardWeb.Views.TransitionDebugInfo
 type EnactmentSummary = ColouredFlowDashboardWeb.Views.EnactmentSummary
 
-type TabId = "markings" | "workitems" | "occurrences"
+type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 
 const TAB_ITEMS = [
   { value: "markings", label: "Markings" },
   { value: "workitems", label: "Workitems" },
-  { value: "occurrences", label: "Occurrences" }
+  { value: "occurrences", label: "Occurrences" },
+  { value: "telemetry", label: "Telemetry" },
+  { value: "debug", label: "Debug" }
 ] as const
 
 export default function EnactmentDetailPage() {
@@ -79,6 +84,8 @@ function DetailContent({ enactmentId }: { enactmentId: string }) {
   const markings: readonly MarkingRow[] = snapshot.markings ?? []
   const workitems: readonly WorkitemRow[] = snapshot.workitems ?? []
   const occurrences: readonly OccurrenceRow[] = snapshot.occurrences ?? []
+  const telemetry: readonly TelemetryEntry[] = snapshot.telemetry ?? []
+  const transitions: readonly string[] = snapshot.transitions ?? []
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
 
@@ -101,6 +108,12 @@ function DetailContent({ enactmentId }: { enactmentId: string }) {
       {activeTab === "markings" && <MarkingsTab rows={markings} />}
       {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
       {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
+      {activeTab === "telemetry" && (
+        <TelemetryTab rows={telemetry} state={summary?.state ?? "running"} />
+      )}
+      {activeTab === "debug" && (
+        <DebugTab enactmentId={enactmentId} transitions={transitions} />
+      )}
     </section>
   )
 }
@@ -472,6 +485,304 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
       </Table.Body>
     </Table>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry tab
+// ---------------------------------------------------------------------------
+
+function TelemetryTab({
+  rows,
+  state
+}: {
+  rows: readonly TelemetryEntry[]
+  state: "running" | "exception" | "terminated"
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  const orderedRows = useMemo(() => rows.slice(), [rows])
+  const lastExceptionBanner = useMemo(() => {
+    if (state !== "exception") return null
+    const exception = rows.find((entry) => entry.severity === "error")
+    return exception ? exception.summary : "Enactment is in an exception state."
+  }, [rows, state])
+
+  if (rows.length === 0 && !lastExceptionBanner) {
+    return (
+      <Banner
+        variant="default"
+        title="No telemetry events yet"
+        description="No telemetry events yet for this enactment."
+        data-testid="telemetry-empty"
+      />
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="telemetry-tab">
+      {lastExceptionBanner ? (
+        <Banner
+          variant="error"
+          title="Enactment exception"
+          description={lastExceptionBanner}
+          data-testid="telemetry-exception-banner"
+        />
+      ) : null}
+
+      {orderedRows.length === 0 ? (
+        <Banner
+          variant="default"
+          title="No telemetry events yet"
+          description="No telemetry events yet for this enactment."
+        />
+      ) : (
+        <Table>
+          <Table.Header>
+            <Table.Row>
+              <Table.Head>At</Table.Head>
+              <Table.Head>Kind</Table.Head>
+              <Table.Head>Severity</Table.Head>
+              <Table.Head>Summary</Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {orderedRows.map((row) => (
+              <TelemetryRow
+                key={row.id}
+                row={row}
+                expanded={expanded === row.id}
+                onToggle={() => setExpanded(expanded === row.id ? null : row.id)}
+              />
+            ))}
+          </Table.Body>
+        </Table>
+      )}
+    </div>
+  )
+}
+
+function TelemetryRow({
+  row,
+  expanded,
+  onToggle
+}: {
+  row: TelemetryEntry
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <>
+      <Table.Row
+        data-testid={`telemetry-row-${row.id}`}
+        onClick={onToggle}
+        className="cursor-pointer"
+      >
+        <Table.Cell>{formatTimestamp(row.at)}</Table.Cell>
+        <Table.Cell>
+          <Badge variant="neutral">{row.kind}</Badge>
+        </Table.Cell>
+        <Table.Cell>
+          <SeverityBadge severity={row.severity} />
+        </Table.Cell>
+        <Table.Cell>{row.summary || "—"}</Table.Cell>
+      </Table.Row>
+      {expanded ? (
+        <Table.Row>
+          <Table.Cell colSpan={4}>
+            <pre
+              className="overflow-x-auto whitespace-pre-wrap rounded border bg-neutral-50 p-2 text-xs"
+              data-testid={`telemetry-payload-${row.id}`}
+            >
+              {row.payload_json}
+            </pre>
+          </Table.Cell>
+        </Table.Row>
+      ) : null}
+    </>
+  )
+}
+
+function SeverityBadge({ severity }: { severity: "info" | "warning" | "error" }) {
+  switch (severity) {
+    case "error":
+      return <Badge variant="error">error</Badge>
+    case "warning":
+      return <Badge variant="warning">warning</Badge>
+    case "info":
+      return <Badge variant="info">info</Badge>
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Debug tab
+// ---------------------------------------------------------------------------
+
+type InspectCode = "ok" | "unknown_transition" | "cpnet_unavailable"
+
+interface InspectReply extends Record<string, unknown> {
+  code?: InspectCode
+  info?: TransitionDebugInfo | null
+  candidates?: readonly BindingCandidate[]
+  transition?: string | null
+}
+
+function DebugTab({
+  enactmentId,
+  transitions
+}: {
+  enactmentId: string
+  transitions: readonly string[]
+}) {
+  const detail = useMusubiRootSuspense({
+    module: ENACTMENT_DETAIL_STORE,
+    id: enactmentId,
+    params: { id: enactmentId }
+  })
+  const inspect = useMusubiCommand(detail, "inspect_transition")
+  const toasts = useKumoToastManager()
+
+  const [selected, setSelected] = useState<string | null>(transitions[0] ?? null)
+  const [info, setInfo] = useState<TransitionDebugInfo | null>(null)
+  const [candidates, setCandidates] = useState<readonly BindingCandidate[]>([])
+  const [lastCode, setLastCode] = useState<InspectCode | null>(null)
+
+  const onInspect = async (transition: string) => {
+    setSelected(transition)
+    await dispatchWithReply<InspectCode>(
+      inspect.dispatch as unknown as (payload: Record<string, unknown>) => Promise<InspectReply>,
+      { transition },
+      {
+        onReply: (code, reply) => {
+          const r = reply as InspectReply
+          setLastCode(code)
+          if (code === "ok") {
+            setInfo(r.info ?? null)
+            setCandidates(r.candidates ?? [])
+          } else {
+            setInfo(null)
+            setCandidates([])
+            if (code === "unknown_transition") {
+              toasts.add({
+                variant: "info",
+                title: "Unknown transition",
+                description: `No transition named "${transition}" in the cpnet.`,
+                timeout: 4000
+              })
+            } else {
+              toasts.add({
+                variant: "info",
+                title: "CPN definition unavailable",
+                description: "Bridge cache has no flow for this enactment yet.",
+                timeout: 4000
+              })
+            }
+          }
+        },
+        onUnexpected: (cause) => {
+          toasts.add({
+            variant: "error",
+            title: "Inspector failed",
+            description: cause instanceof Error ? cause.message : "Unknown error.",
+            timeout: 6000
+          })
+        }
+      }
+    )
+  }
+
+  if (transitions.length === 0) {
+    return (
+      <Banner
+        variant="default"
+        title="No transitions to inspect"
+        description="The CPN definition is not yet available. Reload after the bridge caches it."
+        data-testid="debug-empty"
+      />
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="debug-tab">
+      <LayerCard className="flex flex-wrap items-center gap-2 p-3">
+        <Text variant="secondary">Transition</Text>
+        {transitions.map((name) => (
+          <Button
+            key={name}
+            variant={selected === name ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => onInspect(name)}
+            disabled={inspect.isPending}
+            data-testid={`debug-transition-${name}`}
+          >
+            {name}
+          </Button>
+        ))}
+      </LayerCard>
+
+      {info ? <DebugInfoCard info={info} /> : null}
+
+      {lastCode === "ok" ? (
+        candidates.length === 0 ? (
+          <Banner
+            variant="default"
+            title="No candidate bindings"
+            description="The current marking produces no bindings for this transition."
+            data-testid="debug-no-candidates"
+          />
+        ) : (
+          <Table>
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>Status</Table.Head>
+                <Table.Head>Binding</Table.Head>
+                <Table.Head>Reason</Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {candidates.map((row, index) => (
+                <Table.Row key={`${row.transition}-${index}`}>
+                  <Table.Cell>
+                    <GuardStatusBadge status={row.guard_status} />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <code className="text-xs">{row.binding_summary || "—"}</code>
+                  </Table.Cell>
+                  <Table.Cell>{row.reason ?? "—"}</Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        )
+      ) : null}
+    </div>
+  )
+}
+
+function DebugInfoCard({ info }: { info: TransitionDebugInfo }) {
+  return (
+    <LayerCard className="flex flex-wrap items-center gap-3 p-3" data-testid="debug-info-card">
+      <Text variant="secondary">{info.transition}</Text>
+      <Badge variant="neutral">candidates {info.candidates_count}</Badge>
+      <Badge variant="info">enabled {info.enabled_count}</Badge>
+      <Badge variant="warning">guard {info.rejected_by_guard_count}</Badge>
+      <Badge variant="error">marking {info.rejected_by_marking_count}</Badge>
+    </LayerCard>
+  )
+}
+
+function GuardStatusBadge({
+  status
+}: {
+  status: "enabled" | "rejected_by_guard" | "rejected_by_marking"
+}) {
+  switch (status) {
+    case "enabled":
+      return <Badge variant="info">enabled</Badge>
+    case "rejected_by_guard":
+      return <Badge variant="warning">rejected_by_guard</Badge>
+    case "rejected_by_marking":
+      return <Badge variant="error">rejected_by_marking</Badge>
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -94,9 +94,11 @@ declare namespace Musubi {
       "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore",
       {
         summary: ColouredFlowDashboardWeb.Views.EnactmentSummary
+        transitions: string[]
         markings: Musubi.StreamField<ColouredFlowDashboardWeb.Views.MarkingRow>
         workitems: Musubi.StreamField<ColouredFlowDashboardWeb.Views.WorkitemRow>
         occurrences: Musubi.StreamField<ColouredFlowDashboardWeb.Views.OccurrenceRow>
+        telemetry: Musubi.StreamField<ColouredFlowDashboardWeb.Views.TelemetryEntry>
       },
       {
         force_terminate: {
@@ -111,6 +113,17 @@ declare namespace Musubi {
           payload: {}
           reply: {
             code: "ok" | "not_running" | "runner_error"
+          }
+        }
+        inspect_transition: {
+          payload: {
+            transition: string
+          }
+          reply: {
+            code: "ok" | "unknown_transition" | "cpnet_unavailable"
+            info: ColouredFlowDashboardWeb.Views.TransitionDebugInfo | null
+            candidates: ColouredFlowDashboardWeb.Views.BindingCandidate[]
+            transition: string | null
           }
         }
       }
@@ -139,6 +152,13 @@ declare namespace Musubi {
 
 declare namespace ColouredFlowDashboardWeb {
   namespace Views {
+    interface BindingCandidate {
+      transition: string
+      binding_summary: string
+      guard_status: "enabled" | "rejected_by_guard" | "rejected_by_marking"
+      reason: string | null
+    }
+
     interface EnactmentSummary {
       enactment_id: string
       flow_topic_id: string | null
@@ -169,6 +189,23 @@ declare namespace ColouredFlowDashboardWeb {
       binding_summary: string
       occurred_at: string
       outputs_summary: string
+    }
+
+    interface TelemetryEntry {
+      id: string
+      kind: string
+      at: string
+      summary: string
+      severity: "info" | "warning" | "error"
+      payload_json: string
+    }
+
+    interface TransitionDebugInfo {
+      transition: string
+      candidates_count: number
+      enabled_count: number
+      rejected_by_guard_count: number
+      rejected_by_marking_count: number
     }
 
     interface WorkitemRow {

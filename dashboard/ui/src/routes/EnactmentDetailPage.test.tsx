@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { Toasty } from "@cloudflare/kumo"
 
-const { takeSnapshotMock, forceTerminateMock, sampleSnapshot } = vi.hoisted(() => {
+const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnapshot } = vi.hoisted(() => {
   const summary = {
     enactment_id: "en-aaaa",
     flow_topic_id: "topic-x",
@@ -43,14 +43,26 @@ const { takeSnapshotMock, forceTerminateMock, sampleSnapshot } = vi.hoisted(() =
     outputs_summary: ""
   }
 
+  const telemetryEntry = {
+    id: "en-aaaa-1",
+    kind: "produce_workitems_stop" as const,
+    at: "2026-05-29T00:00:00Z",
+    summary: "Produced 1 workitem(s)",
+    severity: "info" as const,
+    payload_json: '{"operation":"produce_workitems"}'
+  }
+
   return {
     takeSnapshotMock: vi.fn(),
     forceTerminateMock: vi.fn(),
+    inspectTransitionMock: vi.fn(),
     sampleSnapshot: {
       summary,
+      transitions: ["approve"],
       markings: [marking],
       workitems: [workitem],
-      occurrences: [occurrence]
+      occurrences: [occurrence],
+      telemetry: [telemetryEntry]
     }
   }
 })
@@ -59,7 +71,12 @@ vi.mock("../musubi", () => ({
   useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "detail-proxy" }),
   useMusubiSnapshot: vi.fn().mockReturnValue(sampleSnapshot),
   useMusubiCommand: vi.fn().mockImplementation((_proxy: unknown, name: string) => {
-    const dispatch = name === "take_snapshot" ? takeSnapshotMock : forceTerminateMock
+    const dispatch =
+      name === "take_snapshot"
+        ? takeSnapshotMock
+        : name === "inspect_transition"
+          ? inspectTransitionMock
+          : forceTerminateMock
     return {
       dispatch,
       isPending: false,
@@ -126,6 +143,7 @@ describe("EnactmentDetailPage", () => {
   beforeEach(() => {
     takeSnapshotMock.mockReset()
     forceTerminateMock.mockReset()
+    inspectTransitionMock.mockReset()
   })
 
   it("renders the header with summary stats", () => {
@@ -230,6 +248,85 @@ describe("EnactmentDetailPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Already terminated/i)).toBeDefined()
+    })
+  })
+
+  it("renders telemetry rows on the Telemetry tab", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Telemetry/ }))
+    })
+    expect(screen.getByTestId("telemetry-tab")).toBeDefined()
+    expect(screen.getByText(/Produced 1 workitem/)).toBeDefined()
+    expect(screen.getByText("produce_workitems_stop")).toBeDefined()
+  })
+
+  it("renders the exception banner when summary.state is :exception", async () => {
+    const mut = sampleSnapshot as unknown as {
+      summary: { state: string }
+      telemetry: unknown[]
+    }
+    const original = mut.summary.state
+    mut.summary.state = "exception"
+    const originalTelemetry = mut.telemetry
+    mut.telemetry = [
+      {
+        id: "en-aaaa-exc",
+        kind: "enactment_exception",
+        at: "2026-05-29T00:00:00Z",
+        summary: "boom",
+        severity: "error",
+        payload_json: '{"error_banner":"boom"}'
+      }
+    ]
+    try {
+      renderRoute(<EnactmentDetailPage />)
+      await act(async () => {
+        fireEvent.click(screen.getByRole("tab", { name: /Telemetry/ }))
+      })
+      await waitFor(() => {
+        expect(screen.getByText("Enactment exception")).toBeDefined()
+      })
+    } finally {
+      mut.summary.state = original
+      mut.telemetry = originalTelemetry
+    }
+  })
+
+  it("dispatches :inspect_transition from the Debug tab and renders candidates", async () => {
+    inspectTransitionMock.mockResolvedValueOnce({
+      code: "ok",
+      transition: "approve",
+      info: {
+        transition: "approve",
+        candidates_count: 1,
+        enabled_count: 1,
+        rejected_by_guard_count: 0,
+        rejected_by_marking_count: 0
+      },
+      candidates: [
+        {
+          transition: "approve",
+          binding_summary: "t = true",
+          guard_status: "enabled" as const,
+          reason: null
+        }
+      ]
+    })
+
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Debug/ }))
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("debug-transition-approve"))
+    })
+
+    expect(inspectTransitionMock).toHaveBeenCalledWith({ transition: "approve" })
+    await waitFor(() => {
+      expect(screen.getByTestId("debug-info-card")).toBeDefined()
+      expect(screen.getByText("t = true")).toBeDefined()
     })
   })
 
