@@ -9,6 +9,16 @@ defmodule ColouredFlowDashboardWeb.Router do
     plug :accepts, ["html"]
   end
 
+  scope "/socket", ColouredFlowDashboardWeb do
+    pipe_through :api
+
+    # /socket/* is reserved for the Phoenix Socket transports (websocket /
+    # longpoll) which are mounted at the endpoint level before the router.
+    # Plain HTTP requests that do not match a transport must NOT fall
+    # through to the SPA shell — return JSON 404 instead.
+    match :*, "/*path", FallbackController, :not_found
+  end
+
   scope "/api", ColouredFlowDashboardWeb do
     pipe_through :api
 

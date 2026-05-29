@@ -21,6 +21,26 @@ defmodule ColouredFlowDashboardWeb.SPAControllerTest do
     end
   end
 
+  describe "/socket/* reserved" do
+    test "GET /socket/anything does NOT return the SPA shell", %{conn: conn} do
+      conn = get(conn, "/socket/anything")
+
+      # Reserved for the Phoenix Socket transports — must not leak the SPA
+      # HTML 200 to plain HTTP requests on /socket/*.
+      refute conn.status == 200
+      assert conn.status == 404
+      assert response_content_type(conn, :json)
+    end
+
+    test "GET /socket/info also does NOT return the SPA shell", %{conn: conn} do
+      conn = get(conn, "/socket/info")
+
+      refute conn.status == 200
+      assert conn.status == 404
+      assert response_content_type(conn, :json)
+    end
+  end
+
   describe "/api/* fallback" do
     test "GET /api/foo returns JSON 404", %{conn: conn} do
       conn =
