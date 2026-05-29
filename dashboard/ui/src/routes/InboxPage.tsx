@@ -207,15 +207,30 @@ function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => 
 
     try {
       const reply = await dispatch({ workitem_id: row.id, outputs })
-      handleReply(reply.code as ReplyCode, reply)
+      // Resolved path = server-marked "ok" envelope. Musubi rejects every
+      // non-"ok" envelope into the catch branch below, so reply.code is
+      // effectively always "ok" here — route it through the same decoder
+      // for symmetry.
+      handleReply((reply.code as ReplyCode) ?? "ok", reply as Record<string, unknown>)
     } catch (cause) {
-      const code = MusubiCommandError.is(cause) ? (cause.code as ReplyCode) ?? "runner_error" : "runner_error"
-      const description =
-        cause instanceof Error ? cause.message : "Command failed for an unknown reason."
-      // Treat thrown errors as transient runner faults (toast). The thrown
-      // path never carries an actionable structured field; the wire-validated
-      // structured replies above carry those.
-      handleReply(code, { code, message: description })
+      if (MusubiCommandError.is(cause)) {
+        // Server rejected with a structured "error" envelope. Hand the FULL
+        // reply (with ad-hoc fields like `variable`, `workitem_id`) to the
+        // decoder so banners can render structured context.
+        const reply = (cause.reply ?? { code: cause.code }) as Record<string, unknown>
+        const code = ((cause.code ?? reply.code) as ReplyCode | undefined) ?? "runner_error"
+        handleReply(code, reply)
+        return
+      }
+      // Non-Musubi failure (network, runtime crash, timeout w/o reply).
+      // Generic toast — drawer stays open for retry.
+      toasts.add({
+        variant: "error",
+        title: "Submission failed",
+        description:
+          cause instanceof Error ? cause.message : "Command failed for an unknown reason.",
+        timeout: 6000
+      })
     }
   }
 

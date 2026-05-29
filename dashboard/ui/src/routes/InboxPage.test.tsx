@@ -46,12 +46,62 @@ vi.mock("../musubi", () => ({
   })
 }))
 
-vi.mock("@musubi/react", () => ({
-  MusubiCommandError: {
-    is: () => false
+// Mirror the real `MusubiCommandError` shape from
+// `dashboard/deps/musubi/packages/client/src/error.ts` closely enough that
+// `MusubiCommandError.is(cause)` succeeds AND `cause.reply` / `cause.code`
+// are reachable from the catch branch. We can't instantiate the real class
+// here because its constructor wants a Musubi `Connection`-scoped envelope
+// shape we don't have in the test harness; a small subclass-style stub is
+// sufficient since the call site only depends on `instanceof Error` +
+// `name === "MusubiCommandError"`.
+// Mirror the real `MusubiCommandError` shape from
+// `dashboard/deps/musubi/packages/client/src/error.ts` closely enough that
+// `MusubiCommandError.is(cause)` succeeds AND `cause.reply` / `cause.code`
+// are reachable from the catch branch. We can't instantiate the real class
+// from production code paths in tests cleanly (its constructor expects a
+// Musubi `Connection`-scoped envelope shape that the test harness doesn't
+// build), so we provide a minimal subclass-style stub that honours the same
+// constructor signature + static `is`. `code` is derived from the reply, as
+// the real class does.
+vi.mock("@musubi/react", () => {
+  class MusubiCommandError extends Error {
+    readonly kind: "failed" | "timeout"
+    readonly command: string
+    readonly storeId: readonly string[]
+    readonly reply: unknown
+    readonly code: string | undefined
+    constructor(options: {
+      kind: "failed" | "timeout"
+      command: string
+      storeId: readonly string[]
+      reply?: unknown
+      cause?: unknown
+    }) {
+      super(`Command "${options.command}" failed`)
+      this.name = "MusubiCommandError"
+      this.kind = options.kind
+      this.command = options.command
+      this.storeId = options.storeId
+      this.reply = options.reply
+      this.code = extractCode(options.reply)
+    }
+    static is(value: unknown): value is MusubiCommandError {
+      return value instanceof Error && (value as { name?: string }).name === "MusubiCommandError"
+    }
   }
-}))
+  function extractCode(reply: unknown): string | undefined {
+    if (typeof reply !== "object" || reply === null) return undefined
+    const record = reply as Record<string, unknown>
+    for (const key of ["code", "error", "reason"]) {
+      const value = record[key]
+      if (typeof value === "string") return value
+    }
+    return undefined
+  }
+  return { MusubiCommandError }
+})
 
+import { MusubiCommandError } from "@musubi/react"
 import InboxPage from "./InboxPage"
 
 function renderWithProviders(children: ReactNode) {
@@ -112,7 +162,14 @@ describe("InboxPage outputs drawer", () => {
   })
 
   it("collapses :already_completed into a close+toast race outcome", async () => {
-    dispatchMock.mockResolvedValueOnce({ code: "already_completed", workitem_id: "wi-1" })
+    dispatchMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "complete_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.InboxStore", "default"],
+        reply: { code: "already_completed", workitem_id: "wi-1" }
+      })
+    )
 
     renderWithProviders(<InboxPage />)
     await openDrawer()
@@ -135,7 +192,14 @@ describe("InboxPage outputs drawer", () => {
   })
 
   it("collapses :unknown_workitem into the same race outcome", async () => {
-    dispatchMock.mockResolvedValueOnce({ code: "unknown_workitem", workitem_id: "wi-1" })
+    dispatchMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "complete_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.InboxStore", "default"],
+        reply: { code: "unknown_workitem", workitem_id: "wi-1" }
+      })
+    )
 
     renderWithProviders(<InboxPage />)
     await openDrawer()
@@ -152,11 +216,16 @@ describe("InboxPage outputs drawer", () => {
   })
 
   it("keeps drawer open + shows inline Banner for :unknown_variable", async () => {
-    dispatchMock.mockResolvedValueOnce({
-      code: "unknown_variable",
-      variable: "verdict",
-      workitem_id: "wi-1"
-    })
+    dispatchMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "complete_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.InboxStore", "default"],
+        // The ad-hoc `variable` field MUST flow through `cause.reply` so the
+        // Banner can name the offending key.
+        reply: { code: "unknown_variable", variable: "verdict", workitem_id: "wi-1" }
+      })
+    )
 
     renderWithProviders(<InboxPage />)
     await openDrawer()
@@ -173,7 +242,18 @@ describe("InboxPage outputs drawer", () => {
   })
 
   it("keeps drawer open + shows inline Banner for :invalid_outputs", async () => {
-    dispatchMock.mockResolvedValueOnce({ code: "invalid_outputs", workitem_id: "wi-1" })
+    dispatchMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "complete_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.InboxStore", "default"],
+        reply: {
+          code: "invalid_outputs",
+          message: "outputs must be a JSON object",
+          workitem_id: "wi-1"
+        }
+      })
+    )
 
     renderWithProviders(<InboxPage />)
     await openDrawer()
@@ -183,6 +263,46 @@ describe("InboxPage outputs drawer", () => {
 
     expect(screen.getByTestId("outputs-textarea")).toBeDefined()
     expect(screen.getByText(/invalid outputs/i)).toBeDefined()
+  })
+
+  it("surfaces :runner_error as a toast and keeps drawer open for context", async () => {
+    dispatchMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "complete_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.InboxStore", "default"],
+        reply: { code: "runner_error", message: "Action raised RuntimeError" }
+      })
+    )
+
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    expect(screen.getByTestId("outputs-textarea")).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText(/runner rejected the completion/i)).toBeDefined()
+      expect(screen.getByText(/Action raised RuntimeError/i)).toBeDefined()
+    })
+  })
+
+  it("falls back to a generic toast for non-MusubiCommandError exceptions", async () => {
+    // Network failure, runtime crash, etc. — no structured envelope.
+    dispatchMock.mockRejectedValueOnce(new Error("socket closed"))
+
+    renderWithProviders(<InboxPage />)
+    await openDrawer()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    expect(screen.getByTestId("outputs-textarea")).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText(/submission failed/i)).toBeDefined()
+      expect(screen.getByText(/socket closed/i)).toBeDefined()
+    })
   })
 
   it("disables Submit immediately when JSON becomes invalid, no blur required", async () => {
