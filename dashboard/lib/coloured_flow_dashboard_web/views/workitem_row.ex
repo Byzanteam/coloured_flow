@@ -11,6 +11,13 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
   `DateTime`/`NaiveDateTime` structs; only the live state subset
   (`#{inspect(ColouredFlow.Runner.Enactment.Workitem.__live_states__())}`)
   is ever streamed.
+
+  `output_vars` is the flat list of free-variable names (`Variable.name()`
+  serialised as strings) the operator must supply when completing this
+  workitem. Inferred at row construction from the transition's
+  `Action.outputs` — auto-populated by `ColouredFlow.Builder.SetActionOutputs`
+  as `output_arc_vars MINUS input_arc_vars MINUS constants`. Empty list when
+  the transition has no free variables (terminal step / pure side effect).
   """
 
   use Musubi.State
@@ -22,6 +29,7 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
     field :transition, String.t()
     field :state, :enabled | :started
     field :binding_summary, String.t()
+    field :output_vars, list(String.t())
     field :enabled_at, String.t()
     field :updated_at, String.t()
   end

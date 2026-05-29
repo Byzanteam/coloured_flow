@@ -359,6 +359,126 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStoreTest do
     end
   end
 
+  describe ":complete_workitem command" do
+    # `:complete_workitem` rides the InMemory runner end-to-end so the
+    # command verifies against the real `WorkitemTransition.complete_workitem`
+    # surface (state machine + occurrence emission), not a mock.
+    require ColouredFlow.Runner.Storage.InMemory, as: InMemory
+    alias ColouredFlowDashboard.Test.SimpleSequenceWorkflow
+
+    setup %{flow_cache: flow_cache} do
+      page =
+        Musubi.Testing.mount(InboxStore, %{
+          "topic" => "cf:inbox",
+          "flow_cache" => flow_cache
+        })
+
+      flow = InMemory.insert_flow!(SimpleSequenceWorkflow.cpnet())
+      flow_id = InMemory.flow(flow, :id)
+      {:ok, enactment} = SimpleSequenceWorkflow.insert_enactment(flow_id)
+      enactment_id = InMemory.enactment(enactment, :id)
+
+      {:ok, _pid} = SimpleSequenceWorkflow.start_enactment(enactment_id, lifecycle_hooks: nil)
+
+      workitem_id =
+        assert_eventually_workitem_id(page, enactment_id)
+
+      {:ok, page: page, enactment_id: enactment_id, workitem_id: workitem_id}
+    end
+
+    test "happy path: ok reply + stream removed", %{
+      page: page,
+      enactment_id: enactment_id,
+      workitem_id: workitem_id
+    } do
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{}
+               })
+
+      assert_eventually(fn ->
+        case Musubi.Testing.assigns(page) do
+          %{enactment_workitems: map} -> not is_map_key(map, enactment_id)
+          _other -> false
+        end
+      end)
+    end
+
+    test "second completion returns :already_completed", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{}
+               })
+
+      # First completion drops the row from `workitem_meta`, so the second
+      # dispatch lands in the `:unknown_workitem` branch. That is the
+      # observable already-completed signal from a client's perspective.
+      assert {:ok, %{code: code}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{}
+               })
+
+      assert code in [:already_completed, :unknown_workitem]
+    end
+
+    test "unknown_variable when outputs key has no existing atom", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      garbage = "cf_inbox_test_no_such_atom_#{System.unique_integer([:positive])}"
+
+      assert {:ok, %{code: :unknown_variable, variable: ^garbage}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{garbage => "ignored"}
+               })
+    end
+
+    test "invalid_outputs when outputs is not a map", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      # Wire layer normalizes scalar payload values, so a string outputs
+      # value reaches `handle_command/3` as a string and trips the guard.
+      assert {:ok, %{code: :invalid_outputs}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: "not a map"
+               })
+    end
+
+    test "unknown_workitem when id is not tracked", %{page: page} do
+      bogus = Ecto.UUID.generate()
+
+      assert {:ok, %{code: :unknown_workitem, workitem_id: ^bogus}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: bogus,
+                 outputs: %{}
+               })
+    end
+
+    defp assert_eventually_workitem_id(page, enactment_id) do
+      assert_eventually(fn ->
+        case Musubi.Testing.assigns(page) do
+          %{enactment_workitems: %{^enactment_id => ids}} ->
+            MapSet.size(ids) > 0
+
+          _other ->
+            false
+        end
+      end)
+
+      %{enactment_workitems: %{^enactment_id => ids}} = Musubi.Testing.assigns(page)
+      ids |> MapSet.to_list() |> List.first()
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------

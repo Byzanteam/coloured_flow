@@ -39,12 +39,17 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   Resolving the flow topic requires a storage read. To keep that off the
   runner AND off the hot path of repeat events for the same enactment, the
   bridge owns a small ETS table (`:set`, `:public`, `:named_table`) keyed by
-  `enactment_id` and valued by the derived flow topic id. The cache is
-  populated lazily on first hit inside the task body; the per-enactment flow
-  is immutable so entries never expire. If the storage lookup fails (e.g. the
-  enactment row hasn't been written yet, or the backend has no record), the
-  task logs at `debug` and skips the `cf:flow:*` broadcast for that event;
-  `cf:inbox` and `cf:enactment:<id>` are unaffected.
+  `enactment_id` and valued by `{flow_topic_id, %ColouredPetriNet{}}`. The
+  cache is populated lazily on first hit inside the task body; the
+  per-enactment flow is immutable so entries never expire. If the storage
+  lookup fails (e.g. the enactment row hasn't been written yet, or the
+  backend has no record), the task logs at `debug` and skips the `cf:flow:*`
+  broadcast for that event; `cf:inbox` and `cf:enactment:<id>` are unaffected.
+
+  Read-side consumers (e.g. `InboxStore`) reuse the same cache via
+  `lookup_flow_topic_id/2` and `lookup_cpnet/2`. Both helpers populate the
+  cache on miss, so the first row construction for an unseen enactment
+  takes the storage hit; subsequent rows are served from ETS.
 
   ## Catalog drift
 
@@ -307,21 +312,46 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   """
   @spec lookup_flow_topic_id(Event.enactment_id(), atom()) :: {:ok, String.t()} | :error
   def lookup_flow_topic_id(enactment_id, cache) do
-    case :ets.lookup(cache, enactment_id) do
-      [{^enactment_id, flow_id}] ->
-        {:ok, flow_id}
-
-      [] ->
-        resolve_and_cache_flow_topic_id(enactment_id, cache)
+    case lookup_cached(enactment_id, cache) do
+      {:ok, {flow_id, _cpnet}} -> {:ok, flow_id}
+      :error -> :error
     end
   end
 
-  defp resolve_and_cache_flow_topic_id(enactment_id, cache) do
+  @doc """
+  Looks up (or resolves and caches) the `%ColouredPetriNet{}` definition for
+  an enactment. Shares the same fetch + ETS cache as `lookup_flow_topic_id/2`.
+
+  Used by `ColouredFlowDashboardWeb.Stores.InboxStore` to derive the
+  transition's free-variable list (`output_vars`) for the outputs drawer.
+  Returns `:error` when storage has no flow for the enactment (e.g. the row
+  is gone or the in-memory store is uninitialised). Callers MUST tolerate
+  `:error` and surface an empty hint to the operator.
+  """
+  @spec lookup_cpnet(Event.enactment_id(), atom()) :: {:ok, ColouredPetriNet.t()} | :error
+  def lookup_cpnet(enactment_id, cache) do
+    case lookup_cached(enactment_id, cache) do
+      {:ok, {_flow_id, cpnet}} -> {:ok, cpnet}
+      :error -> :error
+    end
+  end
+
+  defp lookup_cached(enactment_id, cache) do
+    case :ets.lookup(cache, enactment_id) do
+      [{^enactment_id, flow_id, %ColouredPetriNet{} = cpnet}] ->
+        {:ok, {flow_id, cpnet}}
+
+      [] ->
+        resolve_and_cache(enactment_id, cache)
+    end
+  end
+
+  defp resolve_and_cache(enactment_id, cache) do
     case fetch_flow(enactment_id) do
       {:ok, %ColouredPetriNet{} = cpnet} ->
         flow_id = flow_topic_id(cpnet)
-        :ets.insert(cache, {enactment_id, flow_id})
-        {:ok, flow_id}
+        :ets.insert(cache, {enactment_id, flow_id, cpnet})
+        {:ok, {flow_id, cpnet}}
 
       :error ->
         :error

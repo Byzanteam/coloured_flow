@@ -96,7 +96,17 @@ declare namespace Musubi {
         workitems: Musubi.StreamField<ColouredFlowDashboardWeb.Views.WorkitemRow>
         counts: ColouredFlowDashboardWeb.Views.InboxCounts
       },
-      {}
+      {
+        complete_workitem: {
+          payload: {
+            workitem_id: string
+            outputs: Record<string, unknown>
+          }
+          reply: {
+            code: "ok" | "already_completed" | "unknown_workitem" | "unknown_variable" | "invalid_outputs" | "runner_error"
+          }
+        }
+      }
     >
   }
 }
@@ -116,6 +126,7 @@ declare namespace ColouredFlowDashboardWeb {
       transition: string
       state: "enabled" | "started"
       binding_summary: string
+      output_vars: string[]
       enabled_at: string
       updated_at: string
     }

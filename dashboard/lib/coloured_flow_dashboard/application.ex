@@ -36,7 +36,18 @@ defmodule ColouredFlowDashboard.Application do
         ]
 
     opts = [strategy: :one_for_one, name: ColouredFlowDashboard.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, _pid} = ok ->
+        # Seeds run *after* the supervision tree is up so
+        # `Runner.Enactment.Supervisor` is ready to receive children. Failure
+        # to seed logs a warning but does not block boot.
+        :ok = ColouredFlowDashboard.Seed.run()
+        ok
+
+      other ->
+        other
+    end
   end
 
   @impl Application
