@@ -58,7 +58,11 @@ function buildDotIcon(baseHref: string, mode: ModeKey): Promise<string> {
       resolve(canvas.toDataURL("image/png"))
     }
     img.onerror = () => {
-      ctx.fillStyle = mode === "dark" ? "#2a2438" : "#f6f5f3"
+      // Base favicon failed (CSP block, 404, decode error). Paint the ring
+      // colour as a neutral surface so the dot still reads against a known
+      // tone — reusing the documented PALETTE literal keeps the file honest
+      // about every hex value it ships.
+      ctx.fillStyle = PALETTE[mode].ring
       ctx.fillRect(0, 0, 32, 32)
       paintDot(ctx, mode)
       resolve(canvas.toDataURL("image/png"))

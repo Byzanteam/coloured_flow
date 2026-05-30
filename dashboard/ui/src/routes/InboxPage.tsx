@@ -18,6 +18,7 @@ import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
+import { useEmbedMode } from "../hooks/useEmbedMode"
 
 const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
@@ -69,6 +70,7 @@ function InboxError({ message }: { message: string }) {
 
 function InboxContent({ inbox }: { inbox: InboxProxy }) {
   const snapshot = useMusubiSnapshot(inbox)
+  const { embed } = useEmbedMode()
 
   const workitems: readonly WorkitemRow[] = snapshot.workitems ?? []
   const counts = snapshot.counts ?? { enabled: 0, started: 0, by_enactment: {} }
@@ -89,13 +91,15 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
     <section className="flex flex-col gap-6">
       <PageHeader title="Inbox" subtitle="Live workitems across every enactment" />
 
-      <MetricsRow
-        items={[
-          { label: "Enabled", value: counts.enabled },
-          { label: "Started", value: counts.started },
-          { label: "Enactments", value: enactmentCount }
-        ]}
-      />
+      {embed ? null : (
+        <MetricsRow
+          items={[
+            { label: "Enabled", value: counts.enabled },
+            { label: "Started", value: counts.started },
+            { label: "Enactments", value: enactmentCount }
+          ]}
+        />
+      )}
 
       <LayerCard.Primary className="overflow-hidden p-0">
         {workitems.length === 0 ? (

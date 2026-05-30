@@ -126,6 +126,64 @@ describe("TimelineScrubber autoplay", () => {
     expect(onScrub).toHaveBeenCalledTimes(1)
   })
 
+  it("Holds the next tick while the previous replay dispatch is in-flight (4× speed)", () => {
+    // 4× cadence is 250ms — easily shorter than a real server round-trip.
+    // The autoplay loop must NOT issue overlapping :replay_to_version
+    // dispatches, or replies can land out of order and the derived markings
+    // drift away from the slider position. Gate: when `isPending` is true,
+    // no new tick is scheduled; the next dispatch waits until isPending
+    // toggles back to false.
+    const onScrub = vi.fn()
+    const onExit = vi.fn()
+    const baseProps: Props = {
+      range: { min: 1, max: 10 },
+      liveVersion: 10,
+      replayState: { version: 1, replayed_from: 1 } as never,
+      onScrub,
+      onExit,
+      isPending: false
+    }
+    const { rerender } = render(<TimelineScrubber {...baseProps} />)
+
+    const speedSelect = screen.getByTestId("timeline-speed") as HTMLSelectElement
+    act(() => {
+      speedSelect.value = "4"
+      speedSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+
+    const playButton = screen.getByTestId("timeline-play-toggle") as HTMLButtonElement
+    act(() => {
+      playButton.click()
+    })
+
+    // First 4× tick fires at 250ms → v=2 dispatched.
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+    expect(onScrub).toHaveBeenCalledTimes(1)
+    expect(onScrub).toHaveBeenLastCalledWith(2)
+
+    // Parent reports the command is in-flight. The Play button must visibly
+    // disable to match the step buttons, and the autoplay loop must hold.
+    rerender(<TimelineScrubber {...baseProps} isPending={true} />)
+    expect((screen.getByTestId("timeline-play-toggle") as HTMLButtonElement).disabled).toBe(true)
+
+    // Advance well past several 4× cadences while the dispatch is in-flight.
+    // No further `onScrub` calls — the gate is the whole point of the fix.
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(onScrub).toHaveBeenCalledTimes(1)
+
+    // Reply settles. The effect re-runs and schedules the next 4× tick.
+    rerender(<TimelineScrubber {...baseProps} isPending={false} />)
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+    expect(onScrub).toHaveBeenCalledTimes(2)
+    expect(onScrub).toHaveBeenLastCalledWith(3)
+  })
+
   it("Home / End jump to extremes via the slider", () => {
     const { onScrub } = renderScrubber()
     const slider = screen.getByTestId("timeline-slider")

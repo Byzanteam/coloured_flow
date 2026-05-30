@@ -42,6 +42,13 @@ const SPEED_OPTIONS: ReadonlyArray<{ value: SpeedKey; label: string }> = [
  * Scrub dispatch is debounced ~150ms; Step / Play emit immediately so the
  * autoplay tick is deterministic. The loop lives in React (`setTimeout`),
  * not on the server — replay is a derived read-only view.
+ *
+ * Autoplay is gated on `isPending`: when a replay dispatch is in-flight, the
+ * tick that would schedule the NEXT dispatch is held until the reply settles
+ * (the effect re-runs on `isPending: true → false` and re-schedules). This
+ * prevents overlapping `:replay_to_version` commands at 4× (250ms) where the
+ * tick interval can be shorter than the round-trip, which would otherwise
+ * let replies land out of order and drift the derived markings.
  */
 export default function TimelineScrubber({
   range,
@@ -62,12 +69,7 @@ export default function TimelineScrubber({
   const [playing, setPlaying] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const valueRef = useRef(value)
   const speedRef = useRef(speed)
-
-  useEffect(() => {
-    valueRef.current = value
-  }, [value])
 
   // Speed is held in a ref so a mid-flight tick's interval is NOT mutated by
   // a speed change — only the next schedule reads the new cadence.
@@ -145,47 +147,38 @@ export default function TimelineScrubber({
     if (playing) setPlaying(false)
   }
 
-  // Autoplay loop. Self-rescheduling `setTimeout`: the timer callback reads
-  // `speedRef.current` when computing the NEXT delay, so a speed change
-  // during a pending tick does not disturb the in-flight schedule (the
-  // pending tick still fires on its original interval; the one after it
-  // uses the new cadence). Pauses on reaching `max`.
+  // Autoplay loop. Each effect run schedules at most ONE tick; after the
+  // tick fires it dispatches via `fireImmediate` and bumps `value`. The
+  // value change re-runs this effect, which either schedules the next tick
+  // (if `!isPending`) or holds until the parent's `:replay_to_version`
+  // reply lands and toggles `isPending` back to false.
+  //
+  // `speedRef.current` is read at schedule time, so a mid-flight speed
+  // change does not disturb the pending tick — the NEXT schedule picks up
+  // the new cadence. Pauses on reaching `max`.
   useEffect(() => {
     if (!playing) return
     if (disabled) {
       setPlaying(false)
       return
     }
-    if (valueRef.current >= max) {
+    if (value >= max) {
       setPlaying(false)
       return
     }
-    let cancelled = false
-    const tick = () => {
-      if (cancelled) return
-      const current = valueRef.current
-      const next = clamp(current + 1, min, max)
-      if (next === current) {
-        setPlaying(false)
-        return
-      }
+    if (isPending) return
+
+    const id = setTimeout(() => {
+      const next = clamp(value + 1, min, max)
       setValue(next)
       fireImmediate(next)
-      if (next >= max) {
-        setPlaying(false)
-        return
-      }
-      playTimerRef.current = setTimeout(tick, SPEED_TICK_MS[speedRef.current])
-    }
-    playTimerRef.current = setTimeout(tick, SPEED_TICK_MS[speedRef.current])
+    }, SPEED_TICK_MS[speedRef.current])
+    playTimerRef.current = id
     return () => {
-      cancelled = true
-      if (playTimerRef.current) {
-        clearTimeout(playTimerRef.current)
-        playTimerRef.current = null
-      }
+      clearTimeout(id)
+      if (playTimerRef.current === id) playTimerRef.current = null
     }
-  }, [playing, max, min, disabled, fireImmediate])
+  }, [playing, isPending, value, max, min, disabled, fireImmediate])
 
   const onTogglePlay = () => {
     if (disabled) return
@@ -283,7 +276,7 @@ export default function TimelineScrubber({
           variant={playing ? "secondary" : "primary"}
           size="sm"
           onClick={onTogglePlay}
-          disabled={disabled || atEnd}
+          disabled={disabled || atEnd || isPending}
           aria-label={playing ? "Pause autoplay" : "Play autoplay"}
           aria-pressed={playing}
           data-testid="timeline-play-toggle"
