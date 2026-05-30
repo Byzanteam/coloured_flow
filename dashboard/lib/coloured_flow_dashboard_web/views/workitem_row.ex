@@ -19,6 +19,13 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
   enough type info for the M5 structured form (Input / Number / Checkbox /
   Select / JSON fallback). Empty list when the transition has no free
   variables (terminal step / pure side effect).
+
+  `enactment_state` mirrors the parent enactment's lifecycle state
+  (`:running | :exception | :terminated`). M6 surfaces it on the inbox so
+  an operator can spot rows whose enactment cannot make progress (the row
+  is still live in the runner, but completing it will hit `:runner_error`).
+  Default `:running`; flips to `:exception` when an `:enactment_exception`
+  bridge event arrives for the row's enactment.
   """
 
   use Musubi.State
@@ -31,6 +38,7 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
     field :flow_topic_id, String.t() | nil
     field :transition, String.t()
     field :state, :enabled | :started
+    field :enactment_state, :running | :exception | :terminated
     field :binding_summary, String.t()
     field :output_vars, list(OutputVar.t())
     field :enabled_at, String.t()

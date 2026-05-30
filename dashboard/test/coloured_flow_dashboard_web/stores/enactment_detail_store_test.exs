@@ -240,6 +240,40 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe ":retry_enactment command" do
+    setup %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      stale = Ecto.UUID.generate()
+      page = mount_store(stale, topic_prefix, flow_cache)
+      {:ok, page: page, enactment_id: stale}
+    end
+
+    test "not_exception when summary.state is :running (default)", %{page: page} do
+      assert {:ok, %{code: :not_exception}} =
+               Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+    end
+
+    test "already_terminated when summary.state is :terminated",
+         %{page: page, topic_prefix: topic_prefix, enactment_id: enactment_id} do
+      :ok =
+        Phoenix.PubSub.broadcast(@pubsub, "#{topic_prefix}enactment:#{enactment_id}", {
+          :cf_event,
+          %ColouredFlowDashboard.TelemetryBridge.Event{
+            topic: {:enactment, enactment_id},
+            kind: :enactment_terminate,
+            enactment_id: enactment_id,
+            enactment_version: 1,
+            occurred_at: DateTime.utc_now(),
+            payload: %{termination_type: :force, termination_message: nil}
+          }
+        })
+
+      _assigns = Musubi.Testing.assigns(page)
+
+      assert {:ok, %{code: :already_terminated}} =
+               Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+    end
+  end
+
   describe "telemetry stream" do
     setup %{enactment_id: enactment_id, topic_prefix: topic_prefix, flow_cache: flow_cache} do
       page = mount_store(enactment_id, topic_prefix, flow_cache)

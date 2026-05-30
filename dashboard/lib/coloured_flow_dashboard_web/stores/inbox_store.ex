@@ -42,7 +42,9 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   | `:withdraw_workitems_stop`                                 | delete from stream (state non-live)                 |
   | `:complete_workitems_stop`                                 | delete from stream (state non-live)                 |
   | `:enactment_terminate`                                     | delete every remaining row for the enactment        |
-  | everything else (lifecycle starts, exception, take_snapshot, op `:start`/`:exception` halves) | no-op (counts unchanged) |
+  | `:enactment_exception`                                     | mark enactment `:exception`; re-emit tracked rows   |
+  | `:enactment_start`                                         | mark enactment `:running`; re-emit tracked rows     |
+  | everything else (lifecycle starts, take_snapshot, op `:start`/`:exception` halves) | no-op (counts unchanged)            |
 
   Per-event payloads are treated as eventually consistent: a `cf:flow:<id>`
   side-effect may have been skipped by the bridge on storage-lookup
@@ -61,11 +63,14 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
   alias ColouredFlowDashboard.OutputSchemaBuilder
+  alias ColouredFlowDashboard.Repo
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Views.InboxCounts
   alias ColouredFlowDashboardWeb.Views.OutputVar
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
+
+  import Ecto.Query, only: [from: 2]
 
   require Logger
 
@@ -126,7 +131,9 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
     :ok = Phoenix.PubSub.subscribe(pubsub, topic)
 
-    rows = seed_rows(flow_cache)
+    raw_rows = seed_rows(flow_cache)
+    enactment_states = seed_enactment_states(raw_rows)
+    rows = Enum.map(raw_rows, &stamp_enactment_state(&1, enactment_states))
     enactment_index = build_enactment_index(rows)
     counts = compute_counts(rows, enactment_index)
 
@@ -138,6 +145,8 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       |> assign(:enactment_workitems, enactment_index)
       |> assign(:workitem_states, build_state_index(rows))
       |> assign(:workitem_meta, build_meta_index(rows))
+      |> assign(:workitem_rows, build_row_index(rows))
+      |> assign(:enactment_states, enactment_states)
       |> assign(:counts, counts)
       |> stream(:workitems, rows, reset: true)
 
@@ -274,10 +283,51 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   defp route_event(%Event{kind: :enactment_terminate, enactment_id: eid}, socket) do
     ids = Map.get(socket.assigns.enactment_workitems, eid, MapSet.new())
 
-    Enum.reduce(ids, socket, &drop_workitem(&2, &1))
+    socket
+    |> set_enactment_state(eid, :terminated)
+    |> then(fn s -> Enum.reduce(ids, s, &drop_workitem(&2, &1)) end)
+  end
+
+  defp route_event(%Event{kind: :enactment_exception, enactment_id: eid}, socket) do
+    socket
+    |> set_enactment_state(eid, :exception)
+    |> restamp_rows_for(eid)
+  end
+
+  defp route_event(%Event{kind: :enactment_start, enactment_id: eid}, socket) do
+    socket
+    |> set_enactment_state(eid, :running)
+    |> restamp_rows_for(eid)
   end
 
   defp route_event(%Event{}, socket), do: socket
+
+  defp set_enactment_state(socket, eid, new_state) do
+    assign(socket, :enactment_states, Map.put(socket.assigns.enactment_states, eid, new_state))
+  end
+
+  # Re-emit every tracked row for `eid` with the freshly-stamped
+  # `enactment_state`. Stream key is the workitem id, so the upsert flips
+  # the field in-place without duplicating rows.
+  defp restamp_rows_for(socket, eid) do
+    ids = Map.get(socket.assigns.enactment_workitems, eid, MapSet.new())
+    enactment_state = Map.get(socket.assigns.enactment_states, eid, :running)
+
+    Enum.reduce(ids, socket, fn id, acc ->
+      case Map.get(acc.assigns.workitem_rows, id) do
+        %WorkitemRow{} = row -> restamp_row(acc, id, %{row | enactment_state: enactment_state})
+        nil -> acc
+      end
+    end)
+  end
+
+  defp restamp_row(socket, id, %WorkitemRow{} = row) do
+    rows = Map.put(socket.assigns.workitem_rows, id, row)
+
+    socket
+    |> stream_insert(:workitems, row)
+    |> assign(:workitem_rows, rows)
+  end
 
   defp apply_workitem(
          socket,
@@ -288,7 +338,10 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
          flow_cache
        )
        when state in @live_states do
-    row = runtime_to_row(wi, eid, flow_topic_id, at, flow_cache)
+    row =
+      wi
+      |> runtime_to_row(eid, flow_topic_id, at, flow_cache)
+      |> stamp_enactment_state(socket.assigns.enactment_states)
 
     socket
     |> stream_insert(:workitems, row)
@@ -299,13 +352,16 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
     drop_workitem(socket, id)
   end
 
-  defp track_workitem(socket, %WorkitemRow{
-         id: id,
-         enactment_id: eid,
-         state: state,
-         transition: name,
-         output_vars: schema
-       }) do
+  defp track_workitem(
+         socket,
+         %WorkitemRow{
+           id: id,
+           enactment_id: eid,
+           state: state,
+           transition: name,
+           output_vars: schema
+         } = row
+       ) do
     index = socket.assigns.enactment_workitems
     next_index = Map.update(index, eid, MapSet.new([id]), &MapSet.put(&1, id))
 
@@ -318,10 +374,13 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
         %{enactment_id: eid, transition: name, schema: index_schema(schema)}
       )
 
+    row_index = Map.put(socket.assigns.workitem_rows, id, row)
+
     socket
     |> assign(:enactment_workitems, next_index)
     |> assign(:workitem_states, state_index)
     |> assign(:workitem_meta, meta_index)
+    |> assign(:workitem_rows, row_index)
     |> recompute_counts(next_index, state_index)
   end
 
@@ -329,6 +388,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
     index = socket.assigns.enactment_workitems
     state_index = socket.assigns.workitem_states
     meta_index = socket.assigns.workitem_meta
+    row_index = socket.assigns.workitem_rows
 
     {next_index, next_state_index, next_meta_index} =
       remove_from_indices(index, state_index, meta_index, id)
@@ -338,6 +398,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
     |> assign(:enactment_workitems, next_index)
     |> assign(:workitem_states, next_state_index)
     |> assign(:workitem_meta, next_meta_index)
+    |> assign(:workitem_rows, Map.delete(row_index, id))
     |> recompute_counts(next_index, next_state_index)
   end
 
@@ -382,6 +443,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       flow_topic_id: resolve_flow_topic_id(w.enactment_id, flow_cache),
       transition: transition_label(w.binding_element),
       state: w.state,
+      enactment_state: :running,
       binding_summary: format_binding(w.binding_element),
       output_vars: resolve_output_schema(w.enactment_id, w.binding_element, flow_cache),
       enabled_at: datetime_to_iso(w.inserted_at),
@@ -398,11 +460,49 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       flow_topic_id: flow_topic_id,
       transition: transition_label(wi.binding_element),
       state: wi.state,
+      enactment_state: :running,
       binding_summary: format_binding(wi.binding_element),
       output_vars: resolve_output_schema(eid, wi.binding_element, flow_cache),
       enabled_at: iso,
       updated_at: iso
     }
+  end
+
+  defp stamp_enactment_state(%WorkitemRow{enactment_id: eid} = row, state_map) do
+    %WorkitemRow{row | enactment_state: Map.get(state_map, eid, :running)}
+  end
+
+  defp build_row_index(rows) do
+    Map.new(rows, fn %WorkitemRow{id: id} = row -> {id, row} end)
+  end
+
+  # Bulk-loads non-`:running` states for every enactment present in `rows`.
+  # We seed an enactment as `:running` by default and overwrite only when
+  # the DB row says otherwise — keeps the query result-set small (typically
+  # zero in healthy fleets) AND keeps the no-Repo path a single branch.
+  defp seed_enactment_states(rows) do
+    eids =
+      rows
+      |> Enum.map(& &1.enactment_id)
+      |> Enum.uniq()
+
+    cond do
+      eids == [] -> %{}
+      not repo_configured?() -> %{}
+      true -> query_enactment_states(eids)
+    end
+  end
+
+  defp query_enactment_states(eids) do
+    query =
+      from(e in Schemas.Enactment,
+        where: e.id in ^eids and e.state != ^:running,
+        select: {e.id, e.state}
+      )
+
+    query |> Repo.all() |> Map.new()
+  rescue
+    _error -> %{}
   end
 
   defp transition_label(%BindingElement{transition: transition}), do: to_string(transition)

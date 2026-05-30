@@ -58,6 +58,7 @@ const { dispatchMock, snapshotMock, makeRow, schemaMix, schemaBinary, schemaJson
         flow_topic_id: "topic-x",
         transition,
         state: "enabled",
+        enactment_state: "running",
         binding_summary: "",
         output_vars: schema,
         enabled_at: "2026-05-29T00:00:00Z",

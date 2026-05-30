@@ -12,6 +12,7 @@ import {
   useKumoToastManager
 } from "@cloudflare/kumo"
 import { TrayIcon } from "@phosphor-icons/react"
+import { Link } from "react-router-dom"
 import type { MusubiRootMount } from "@musubi/react"
 import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
@@ -150,14 +151,17 @@ function InboxTable({
       </Table.Header>
       <Table.Body>
         {rows.map((row) => (
-          <Table.Row key={row.id}>
+          <Table.Row key={row.id} data-testid={`inbox-row-${row.id}`}>
             <Table.Cell>
               <span className="font-medium text-cf-ink">{row.transition}</span>
             </Table.Cell>
             <Table.Cell>
-              <code className="text-xs text-cf-ink-muted">
-                {shortId(row.enactment_id)}
-              </code>
+              <div className="flex items-center gap-2">
+                <code className="text-xs text-cf-ink-muted">
+                  {shortId(row.enactment_id)}
+                </code>
+                <EnactmentChip state={row.enactment_state} />
+              </div>
             </Table.Cell>
             <Table.Cell>
               <StateDot state={row.state} />
@@ -173,14 +177,25 @@ function InboxTable({
               </span>
             </Table.Cell>
             <Table.Cell className="text-right">
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label={`Open outputs drawer for workitem ${row.id}`}
-                onClick={() => onOpen(row)}
-              >
-                Open
-              </Button>
+              {row.enactment_state === "exception" ? (
+                <Link
+                  to={`/enactments/${row.enactment_id}`}
+                  aria-label={`Open enactment ${row.enactment_id} detail`}
+                  data-testid={`inbox-open-detail-${row.id}`}
+                  className="inline-flex h-7 items-center rounded-md border border-cf-exception-ink/40 bg-cf-exception-bg px-2.5 text-xs font-medium text-cf-exception-ink hover:bg-cf-exception-bg/80"
+                >
+                  Open detail
+                </Link>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label={`Open outputs drawer for workitem ${row.id}`}
+                  onClick={() => onOpen(row)}
+                >
+                  Open
+                </Button>
+              )}
             </Table.Cell>
           </Table.Row>
         ))}
@@ -195,6 +210,34 @@ function StateDot({ state }: { state: "enabled" | "started" }) {
     <span className="inline-flex items-center gap-1.5 text-xs text-cf-ink">
       <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       {state}
+    </span>
+  )
+}
+
+function EnactmentChip({
+  state
+}: {
+  state: "running" | "exception" | "terminated"
+}) {
+  if (state === "running") return null
+  if (state === "exception") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full border border-cf-exception-ink/30 bg-cf-exception-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cf-exception-ink"
+        data-testid="inbox-enactment-chip-exception"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-cf-dot-exception" />
+        exception
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border border-cf-border bg-cf-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cf-ink-muted"
+      data-testid="inbox-enactment-chip-terminated"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-cf-dot-terminated" />
+      terminated
     </span>
   )
 }

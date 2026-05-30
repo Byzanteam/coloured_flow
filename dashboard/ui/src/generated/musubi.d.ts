@@ -116,6 +116,12 @@ declare namespace Musubi {
             code: "ok" | "not_running" | "runner_error"
           }
         }
+        retry_enactment: {
+          payload: {}
+          reply: {
+            code: "ok" | "not_exception" | "already_terminated" | "runner_error"
+          }
+        }
         inspect_transition: {
           payload: {
             transition: string
@@ -253,6 +259,7 @@ declare namespace ColouredFlowDashboardWeb {
       flow_topic_id: string | null
       transition: string
       state: "enabled" | "started"
+      enactment_state: "running" | "exception" | "terminated"
       binding_summary: string
       output_vars: ColouredFlowDashboardWeb.Views.OutputVar[]
       enabled_at: string

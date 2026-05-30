@@ -4,7 +4,13 @@ import type { ReactNode } from "react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { Toasty } from "@cloudflare/kumo"
 
-const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnapshot } = vi.hoisted(() => {
+const {
+  takeSnapshotMock,
+  forceTerminateMock,
+  inspectTransitionMock,
+  retryEnactmentMock,
+  sampleSnapshot
+} = vi.hoisted(() => {
   const summary = {
     enactment_id: "en-aaaa",
     flow_topic_id: "topic-x",
@@ -83,6 +89,7 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
     takeSnapshotMock: vi.fn(),
     forceTerminateMock: vi.fn(),
     inspectTransitionMock: vi.fn(),
+    retryEnactmentMock: vi.fn(),
     sampleSnapshot: {
       summary,
       transitions: ["approve"],
@@ -132,7 +139,9 @@ vi.mock("../musubi", () => ({
         ? takeSnapshotMock
         : name === "inspect_transition"
           ? inspectTransitionMock
-          : forceTerminateMock
+          : name === "retry_enactment"
+            ? retryEnactmentMock
+            : forceTerminateMock
     return {
       dispatch,
       isPending: false,
@@ -205,6 +214,7 @@ describe("EnactmentDetailPage", () => {
     takeSnapshotMock.mockReset()
     forceTerminateMock.mockReset()
     inspectTransitionMock.mockReset()
+    retryEnactmentMock.mockReset()
   })
 
   it("renders the net diagram card with NetDiagram mounted inside", () => {
@@ -419,20 +429,16 @@ describe("EnactmentDetailPage", () => {
         fireEvent.click(screen.getByRole("tab", { name: /Telemetry/ }))
       })
       await waitFor(() => {
-        expect(screen.getByText("Enactment exception")).toBeDefined()
-        // "real enactment failure" appears twice: once as the banner
-        // description (sourced from summary.last_exception_banner) and
-        // once as a telemetry row summary. Both render concurrently.
+        // The telemetry tab Banner sources its description from
+        // `summary.last_exception_banner` — never from the telemetry stream.
+        // M6 also renders a page-level exception banner above the diagram;
+        // both share the "Enactment exception" title.
+        expect(screen.getAllByText("Enactment exception").length).toBeGreaterThanOrEqual(1)
         expect(screen.getAllByText("real enactment failure").length).toBeGreaterThanOrEqual(1)
       })
 
-      // The workitem-op exception telemetry row IS rendered in the table
-      // (it's a valid telemetry entry), but its `error_banner` payload must
-      // NOT be the banner description — the banner sources from summary,
-      // never the telemetry stream.
-      expect(screen.queryByText(/Enactment exception$/)).toBeDefined()
-      // Sanity: banner description does NOT contain the workitem-op text.
-      // (The telemetry row's summary cell does — but the banner does not.)
+      // Sanity: telemetry banner description does NOT contain the workitem-op
+      // text. The telemetry row's summary cell does — but the banner does not.
       const allMatches = screen.queryAllByText("workitem op blew up")
       // Exactly one match (the telemetry row summary), never two.
       expect(allMatches.length).toBe(1)
@@ -495,4 +501,158 @@ describe("EnactmentDetailPage", () => {
     })
   })
 
+  describe("M6 exception affordances", () => {
+    const mutate = (
+      state: "running" | "exception" | "terminated",
+      banner: string | null = null
+    ) => {
+      const mut = sampleSnapshot as unknown as {
+        summary: { state: string; last_exception_banner: string | null }
+      }
+      const original = { state: mut.summary.state, banner: mut.summary.last_exception_banner }
+      mut.summary.state = state
+      mut.summary.last_exception_banner = banner
+      return () => {
+        mut.summary.state = original.state
+        mut.summary.last_exception_banner = original.banner
+      }
+    }
+
+    it("renders red Exception pill + subtitle + page banner when state=:exception", () => {
+      const restore = mutate("exception", "Action raised")
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        expect(screen.getByTestId("state-badge-exception")).toBeDefined()
+        expect(screen.getByTestId("detail-exception-banner")).toBeDefined()
+        expect(
+          screen.getByText("This enactment cannot make progress until terminated or reset.")
+        ).toBeDefined()
+        // Banner description renders from summary.last_exception_banner.
+        expect(screen.getAllByText("Action raised").length).toBeGreaterThanOrEqual(1)
+      } finally {
+        restore()
+      }
+    })
+
+    it("Retry button only renders in :exception and dispatches retry_enactment", async () => {
+      const restore = mutate("exception", "boom")
+      retryEnactmentMock.mockResolvedValueOnce({ code: "ok" })
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        const retry = screen.getByTestId("action-retry-enactment")
+        await act(async () => {
+          fireEvent.click(retry)
+        })
+        expect(retryEnactmentMock).toHaveBeenCalledOnce()
+        await waitFor(() => {
+          expect(screen.getByText(/Retry requested/i)).toBeDefined()
+        })
+      } finally {
+        restore()
+      }
+    })
+
+    it("Retry button is absent when state=:running", () => {
+      renderRoute(<EnactmentDetailPage />)
+      expect(screen.queryByTestId("action-retry-enactment")).toBeNull()
+    })
+
+    it("uses fallback banner copy when last_exception_banner is null", () => {
+      const restore = mutate("exception", null)
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        // Page-level banner + telemetry banner both fall back; at least one
+        // renders the fallback string.
+        expect(screen.getAllByText(/Enactment is in an exception state/).length)
+          .toBeGreaterThanOrEqual(1)
+      } finally {
+        restore()
+      }
+    })
+
+    it("Errors only filter on Telemetry tab hides non-error rows", async () => {
+      const mut = sampleSnapshot as unknown as {
+        telemetry: Array<{
+          id: string
+          kind: string
+          at: string
+          summary: string
+          severity: string
+          payload_json: string
+        }>
+      }
+      const original = mut.telemetry
+      mut.telemetry = [
+        { id: "a", kind: "produce_workitems_stop", at: "2026-05-29T00:00:00Z",
+          summary: "Produced 1", severity: "info", payload_json: "{}" },
+        { id: "b", kind: "enactment_exception", at: "2026-05-29T00:00:01Z",
+          summary: "boom", severity: "error", payload_json: '{"transition":"approve"}' }
+      ]
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        await act(async () => {
+          fireEvent.click(screen.getByRole("tab", { name: /Telemetry/ }))
+        })
+        // Both rows render initially.
+        expect(screen.getByTestId("telemetry-row-a")).toBeDefined()
+        expect(screen.getByTestId("telemetry-row-b")).toBeDefined()
+
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("telemetry-errors-only-checkbox"))
+        })
+        await waitFor(() => {
+          expect(screen.queryByTestId("telemetry-row-a")).toBeNull()
+          expect(screen.getByTestId("telemetry-row-b")).toBeDefined()
+        })
+      } finally {
+        mut.telemetry = original
+      }
+    })
+
+    it("Open in Debug button switches tab and dispatches inspect for the payload transition", async () => {
+      const mut = sampleSnapshot as unknown as {
+        telemetry: Array<{
+          id: string
+          kind: string
+          at: string
+          summary: string
+          severity: string
+          payload_json: string
+        }>
+      }
+      const original = mut.telemetry
+      mut.telemetry = [
+        { id: "err-1", kind: "enactment_exception", at: "2026-05-29T00:00:00Z",
+          summary: "boom", severity: "error",
+          payload_json: '{"transition":"approve"}' }
+      ]
+      inspectTransitionMock.mockResolvedValueOnce({
+        code: "ok",
+        transition: "approve",
+        info: {
+          transition: "approve",
+          candidates_count: 0,
+          enabled_count: 0,
+          rejected_by_guard_count: 0,
+          rejected_by_arc_eval_count: 0,
+          rejected_by_marking_count: 0
+        },
+        candidates: []
+      })
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        await act(async () => {
+          fireEvent.click(screen.getByRole("tab", { name: /Telemetry/ }))
+        })
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("telemetry-open-debug-err-1"))
+        })
+        await waitFor(() => {
+          expect(inspectTransitionMock).toHaveBeenCalledWith({ transition: "approve" })
+        })
+      } finally {
+        mut.telemetry = original
+      }
+    })
+  })
 })

@@ -100,6 +100,16 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     * `:take_snapshot` — sends a `:take_snapshot` message to the enactment
       GenServer (same hot path the runner uses internally after completions).
       Reply codes: `:ok | :not_running | :runner_error`.
+    * `:retry_enactment` — combines two public main-repo surfaces to recover an
+      `:exception`-state enactment: `Storage.retry_enactment/2` flips the DB
+      row back to `:running` and writes a `:retried` log entry; then
+      `Runner.Enactment.Supervisor.start_enactment/1` brings the GenServer
+      back online (the supervisor returns `{:ok, pid}` for both fresh starts
+      and `:already_started`). Reply codes:
+      `:ok | :not_exception | :already_terminated | :runner_error`. The
+      command rejects when the dashboard's current `summary.state` is not
+      `:exception` so an operator can't toggle a healthy enactment off the
+      hot path.
     * `:inspect_transition` — read-only enumeration of candidate bindings
       for a single transition, delegating to
       `ColouredFlowDashboard.BindingInspector.inspect/3`. Reply codes:
@@ -192,6 +202,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   command :take_snapshot do
     reply do
       field :code, :ok | :not_running | :runner_error
+    end
+  end
+
+  command :retry_enactment do
+    reply do
+      field :code, :ok | :not_exception | :already_terminated | :runner_error
     end
   end
 
@@ -317,6 +333,11 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   def handle_command(:take_snapshot, _payload, socket) do
     {:reply, take_snapshot_reply(socket.assigns.enactment_id), socket}
+  end
+
+  def handle_command(:retry_enactment, _payload, socket) do
+    {:reply, retry_enactment_reply(socket.assigns.enactment_id, socket.assigns.summary.state),
+     socket}
   end
 
   def handle_command(:inspect_transition, payload, socket) when is_map(payload) do
@@ -638,6 +659,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       flow_topic_id: nil,
       transition: transition_label(wi.binding_element),
       state: wi.state,
+      enactment_state: :running,
       binding_summary: format_binding(wi.binding_element),
       output_vars: [],
       enabled_at: "",
@@ -652,6 +674,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       flow_topic_id: nil,
       transition: transition_label(w.binding_element),
       state: w.state,
+      enactment_state: :running,
       binding_summary: format_binding(w.binding_element),
       output_vars: [],
       enabled_at: datetime_to_iso(w.inserted_at),
@@ -1182,6 +1205,28 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         send(pid, :take_snapshot)
         %{code: :ok}
     end
+  catch
+    kind, reason -> %{code: :runner_error, message: Exception.format(kind, reason)}
+  end
+
+  # `:retry_enactment` (M6) — runs only when the dashboard's last-seen state
+  # is `:exception`. Calls `Storage.retry_enactment/2` (flips DB row →
+  # `:running`, writes a `:retried` log) and then asks the runner supervisor
+  # to (re)start the enactment GenServer. `start_enactment/2` collapses
+  # `{:already_started, pid}` → `{:ok, pid}` so an existing process is not a
+  # failure mode.
+  defp retry_enactment_reply(_enactment_id, :terminated), do: %{code: :already_terminated}
+  defp retry_enactment_reply(_enactment_id, :running), do: %{code: :not_exception}
+
+  defp retry_enactment_reply(enactment_id, :exception) when is_binary(enactment_id) do
+    :ok = Storage.retry_enactment(enactment_id, message: "operator-triggered")
+
+    case EnactmentSupervisor.start_enactment(enactment_id) do
+      {:ok, _pid} -> %{code: :ok}
+      {:error, reason} -> %{code: :runner_error, message: inspect(reason)}
+    end
+  rescue
+    error -> %{code: :runner_error, message: Exception.message(error)}
   catch
     kind, reason -> %{code: :runner_error, message: Exception.format(kind, reason)}
   end

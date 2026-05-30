@@ -147,6 +147,37 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStoreTest do
       assert assigns.workitem_states == %{}
     end
 
+    test "enactment_exception flips enactment_states + restamps tracked rows",
+         %{topic: topic, page: page} do
+      enactment_id = Ecto.UUID.generate()
+      wi_id = Ecto.UUID.generate()
+
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_id, :enabled))
+      broadcast!(topic, build_lifecycle_event(:enactment_exception, enactment_id))
+
+      assigns = Musubi.Testing.assigns(page)
+      assert assigns.enactment_states == %{enactment_id => :exception}
+
+      row = Map.fetch!(assigns.workitem_rows, wi_id)
+      assert row.enactment_state == :exception
+    end
+
+    test "enactment_start flips enactment_states back to :running + restamps",
+         %{topic: topic, page: page} do
+      enactment_id = Ecto.UUID.generate()
+      wi_id = Ecto.UUID.generate()
+
+      broadcast!(topic, build_event(:produce_workitems_stop, enactment_id, wi_id, :enabled))
+      broadcast!(topic, build_lifecycle_event(:enactment_exception, enactment_id))
+      broadcast!(topic, build_lifecycle_event(:enactment_start, enactment_id))
+
+      assigns = Musubi.Testing.assigns(page)
+      assert assigns.enactment_states == %{enactment_id => :running}
+
+      row = Map.fetch!(assigns.workitem_rows, wi_id)
+      assert row.enactment_state == :running
+    end
+
     test "enactment_terminate clears every row tracked under the enactment id",
          %{topic: topic, page: page} do
       enactment_id = Ecto.UUID.generate()
@@ -525,6 +556,17 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStoreTest do
   defp operation_of(:start_workitems_stop), do: :start_workitems
   defp operation_of(:withdraw_workitems_stop), do: :withdraw_workitems
   defp operation_of(:complete_workitems_stop), do: :complete_workitems
+
+  defp build_lifecycle_event(kind, enactment_id) do
+    %Event{
+      topic: :inbox,
+      kind: kind,
+      enactment_id: enactment_id,
+      enactment_version: 1,
+      occurred_at: DateTime.utc_now(),
+      payload: %{}
+    }
+  end
 
   defp insert_enactment do
     flow =

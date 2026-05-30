@@ -35,6 +35,12 @@
   --color-cf-dot-terminated: oklch(0.7 0.006 260);
   --color-cf-dot-exception: oklch(0.62 0.18 22);
 
+  /* Exception emphasis surfaces. The pill uses a saturated hue-22 tint as
+   * background with deep ink, so the operator sees red the moment the
+   * page loads — distinct from the neutral pill used in `:running`. */
+  --color-cf-exception-bg: oklch(0.955 0.04 22);
+  --color-cf-exception-ink: oklch(0.38 0.16 22);
+
   --color-cf-pill-bg: oklch(0.185 0.012 260);
   --color-cf-pill-ink: oklch(0.985 0.002 260);
 }

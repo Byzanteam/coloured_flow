@@ -4,6 +4,7 @@ import {
   Badge,
   Banner,
   Button,
+  Checkbox,
   Dialog,
   LayerCard,
   Table,
@@ -147,6 +148,7 @@ function DetailContent({
   )
 
   const state = summary?.state ?? "running"
+  const exceptionBanner = summary?.last_exception_banner ?? null
 
   return (
     <section className="flex flex-col gap-6">
@@ -158,8 +160,23 @@ function DetailContent({
             <StateBadge state={state} />
           </div>
         }
-        actions={<ActionBar detail={detail} />}
+        subtitle={
+          state === "exception"
+            ? "This enactment cannot make progress until terminated or reset."
+            : undefined
+        }
+        actions={<ActionBar detail={detail} state={state} />}
       />
+
+      {state === "exception" ? (
+        <div data-testid="detail-exception-banner">
+          <Banner
+            variant="error"
+            title="Enactment exception"
+            description={exceptionBanner ?? "Enactment is in an exception state."}
+          />
+        </div>
+      ) : null}
 
       <MetricsRow
         items={[
@@ -217,6 +234,10 @@ function DetailContent({
                 rows={telemetry}
                 state={state}
                 lastExceptionBanner={summary?.last_exception_banner ?? null}
+                onOpenInDebug={(transition) => {
+                  setActiveTab("debug")
+                  if (transition) setPendingInspect(transition)
+                }}
               />
             )}
             {activeTab === "debug" && (
@@ -239,9 +260,20 @@ function DetailContent({
 // ---------------------------------------------------------------------------
 
 function StateBadge({ state }: { state: "running" | "exception" | "terminated" }) {
+  if (state === "exception") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full border border-cf-exception-ink/30 bg-cf-exception-bg px-2 py-0.5 text-xs font-medium text-cf-exception-ink"
+        data-testid="state-badge-exception"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-cf-dot-exception" />
+        Exception
+      </span>
+    )
+  }
+
   const dotMap = {
     running: "bg-cf-dot-enabled",
-    exception: "bg-cf-dot-exception",
     terminated: "bg-cf-dot-terminated"
   } as const
   return (
@@ -258,15 +290,77 @@ function StateBadge({ state }: { state: "running" | "exception" | "terminated" }
 
 type ForceTerminateCode = "ok" | "already_terminated" | "runner_error"
 type TakeSnapshotCode = "ok" | "not_running" | "runner_error"
+type RetryEnactmentCode =
+  | "ok"
+  | "not_exception"
+  | "already_terminated"
+  | "runner_error"
 
-function ActionBar({ detail }: { detail: DetailProxy }) {
+function ActionBar({
+  detail,
+  state
+}: {
+  detail: DetailProxy
+  state: "running" | "exception" | "terminated"
+}) {
   const toasts = useKumoToastManager()
 
   const forceTerminate = useMusubiCommand(detail, "force_terminate")
   const takeSnapshot = useMusubiCommand(detail, "take_snapshot")
+  const retryEnactment = useMusubiCommand(detail, "retry_enactment")
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [reason, setReason] = useState("")
+
+  const onRetry = async () => {
+    await dispatchWithReply<RetryEnactmentCode>(
+      retryEnactment.dispatch as (payload: Record<string, unknown>) => Promise<
+        { code?: string } & Record<string, unknown>
+      >,
+      {},
+      {
+        onReply: (code) => {
+          if (code === "ok") {
+            toasts.add({
+              variant: "success",
+              title: "Retry requested",
+              description: "Runner is bringing the enactment back online.",
+              timeout: 4000
+            })
+          } else if (code === "not_exception") {
+            toasts.add({
+              variant: "info",
+              title: "Not in exception",
+              description: "The enactment is already running.",
+              timeout: 4000
+            })
+          } else if (code === "already_terminated") {
+            toasts.add({
+              variant: "info",
+              title: "Already terminated",
+              description: "Terminated enactments cannot be retried.",
+              timeout: 4000
+            })
+          } else {
+            toasts.add({
+              variant: "error",
+              title: "Retry failed",
+              description: "Runner rejected the retry request.",
+              timeout: 6000
+            })
+          }
+        },
+        onUnexpected: (cause) => {
+          toasts.add({
+            variant: "error",
+            title: "Retry failed",
+            description: cause instanceof Error ? cause.message : "Unknown error.",
+            timeout: 6000
+          })
+        }
+      }
+    )
+  }
 
   const onTakeSnapshot = async () => {
     await dispatchWithReply<TakeSnapshotCode>(
@@ -358,6 +452,17 @@ function ActionBar({ detail }: { detail: DetailProxy }) {
 
   return (
     <div className="flex items-center gap-1.5">
+      {state === "exception" ? (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onRetry}
+          disabled={retryEnactment.isPending}
+          data-testid="action-retry-enactment"
+        >
+          {retryEnactment.isPending ? "Retrying…" : "Retry"}
+        </Button>
+      ) : null}
       <Button
         variant="secondary"
         size="sm"
@@ -387,8 +492,8 @@ function ActionBar({ detail }: { detail: DetailProxy }) {
           <Dialog>
             <Dialog.Title>Force terminate enactment?</Dialog.Title>
             <Dialog.Description>
-              Stops the runner GenServer for this enactment. Any in-flight workitems are
-              abandoned. This operation cannot be undone from the dashboard.
+              This will terminate the enactment immediately. All in-flight workitems will
+              be lost. This operation cannot be undone from the dashboard.
             </Dialog.Description>
             <div className="mt-4 flex flex-col gap-2">
               <Text variant="secondary">Termination reason (optional)</Text>
@@ -597,15 +702,21 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
 function TelemetryTab({
   rows,
   state,
-  lastExceptionBanner: bannerFromSummary
+  lastExceptionBanner: bannerFromSummary,
+  onOpenInDebug
 }: {
   rows: readonly TelemetryEntry[]
   state: "running" | "exception" | "terminated"
   lastExceptionBanner: string | null
+  onOpenInDebug: (transition: string | null) => void
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [errorsOnly, setErrorsOnly] = useState(false)
 
-  const orderedRows = useMemo(() => rows.slice(), [rows])
+  const visibleRows = useMemo(
+    () => (errorsOnly ? rows.filter((row) => row.severity === "error") : rows.slice()),
+    [errorsOnly, rows]
+  )
   const lastExceptionBanner = useMemo(() => {
     if (state !== "exception") return null
     return bannerFromSummary ?? "Enactment is in an exception state."
@@ -633,30 +744,54 @@ function TelemetryTab({
         />
       ) : null}
 
-      {orderedRows.length === 0 ? (
+      <div className="flex items-center justify-between gap-3 px-1">
+        <Text variant="secondary">
+          {visibleRows.length} of {rows.length} event{rows.length === 1 ? "" : "s"}
+        </Text>
+        <label
+          className="flex items-center gap-2 text-xs text-cf-ink"
+          data-testid="telemetry-errors-only-toggle"
+        >
+          <Checkbox
+            checked={errorsOnly}
+            onCheckedChange={(next) => setErrorsOnly(next === true)}
+            data-testid="telemetry-errors-only-checkbox"
+          />
+          Errors only
+        </label>
+      </div>
+
+      {visibleRows.length === 0 ? (
         <Banner
           variant="default"
-          title="No telemetry events yet"
-          description="No telemetry events yet for this enactment."
+          title={errorsOnly ? "No error events" : "No telemetry events yet"}
+          description={
+            errorsOnly
+              ? "No telemetry events with error severity match the filter."
+              : "No telemetry events yet for this enactment."
+          }
         />
       ) : (
         <LayerCard.Primary className="overflow-hidden p-0">
           <Table>
             <Table.Header>
               <Table.Row>
+                <Table.Head className="w-6" />
                 <Table.Head>At</Table.Head>
                 <Table.Head>Kind</Table.Head>
                 <Table.Head>Severity</Table.Head>
                 <Table.Head>Summary</Table.Head>
+                <Table.Head className="text-right">Action</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {orderedRows.map((row) => (
+              {visibleRows.map((row) => (
                 <TelemetryRow
                   key={row.id}
                   row={row}
                   expanded={expanded === row.id}
                   onToggle={() => setExpanded(expanded === row.id ? null : row.id)}
+                  onOpenInDebug={onOpenInDebug}
                 />
               ))}
             </Table.Body>
@@ -670,19 +805,33 @@ function TelemetryTab({
 function TelemetryRow({
   row,
   expanded,
-  onToggle
+  onToggle,
+  onOpenInDebug
 }: {
   row: TelemetryEntry
   expanded: boolean
   onToggle: () => void
+  onOpenInDebug: (transition: string | null) => void
 }) {
+  const isError = row.severity === "error"
   return (
     <>
       <Table.Row
         data-testid={`telemetry-row-${row.id}`}
         onClick={onToggle}
+        aria-expanded={expanded}
         className="cursor-pointer"
       >
+        <Table.Cell>
+          <span
+            aria-hidden
+            className={`inline-block text-cf-ink-muted transition-transform ${
+              expanded ? "rotate-90" : ""
+            }`}
+          >
+            ›
+          </span>
+        </Table.Cell>
         <Table.Cell>
           <span className="text-xs text-cf-ink-muted">{formatTimestamp(row.at)}</span>
         </Table.Cell>
@@ -693,10 +842,25 @@ function TelemetryRow({
           <SeverityDot severity={row.severity} />
         </Table.Cell>
         <Table.Cell>{row.summary || "—"}</Table.Cell>
+        <Table.Cell className="text-right">
+          {isError ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenInDebug(extractTransitionFromPayload(row.payload_json))
+              }}
+              data-testid={`telemetry-open-debug-${row.id}`}
+            >
+              Open in Debug
+            </Button>
+          ) : null}
+        </Table.Cell>
       </Table.Row>
       {expanded ? (
         <Table.Row>
-          <Table.Cell colSpan={4}>
+          <Table.Cell colSpan={6}>
             <pre
               className="overflow-x-auto whitespace-pre-wrap rounded-md border border-cf-border bg-cf-canvas p-3 text-xs text-cf-ink"
               data-testid={`telemetry-payload-${row.id}`}
@@ -708,6 +872,35 @@ function TelemetryRow({
       ) : null}
     </>
   )
+}
+
+// Best-effort transition extractor: bridge payloads vary by event kind, but
+// workitem-shaped events stash the bound transition under `binding_element`
+// or `workitems[*].binding_element`. Falls back to null when the payload
+// can't be decoded or no transition field is present — the Debug tab then
+// just switches without an auto-inspect target.
+function extractTransitionFromPayload(payloadJson: string): string | null {
+  try {
+    const payload = JSON.parse(payloadJson)
+    if (!payload || typeof payload !== "object") return null
+    const direct = (payload as Record<string, unknown>).transition
+    if (typeof direct === "string") return direct
+    const be = (payload as Record<string, unknown>).binding_element
+    if (be && typeof be === "object") {
+      const name = (be as Record<string, unknown>).transition
+      if (typeof name === "string") return name
+    }
+    const items = (payload as Record<string, unknown>).workitems
+    if (Array.isArray(items) && items.length > 0) {
+      const first = items[0] as Record<string, unknown>
+      const beFirst = first?.binding_element as Record<string, unknown> | undefined
+      const name = beFirst?.transition
+      if (typeof name === "string") return name
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 function SeverityDot({ severity }: { severity: "info" | "warning" | "error" }) {
