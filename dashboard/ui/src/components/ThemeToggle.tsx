@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { MoonIcon, SunIcon } from "@phosphor-icons/react"
+import { CircleHalfIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
 
 type Theme = "light" | "dark" | "system"
 
@@ -107,9 +107,11 @@ export default function ThemeToggle({ iconOnly = false, className }: ThemeToggle
       className={className ? `${baseClass} ${className}` : baseClass}
     >
       {theme === "dark" ? (
+        <MoonIcon size={14} weight="bold" aria-hidden />
+      ) : theme === "light" ? (
         <SunIcon size={14} weight="bold" aria-hidden />
       ) : (
-        <MoonIcon size={14} weight="bold" aria-hidden />
+        <CircleHalfIcon size={14} weight="bold" aria-hidden />
       )}
       {!iconOnly && <span className="capitalize">{theme}</span>}
     </button>

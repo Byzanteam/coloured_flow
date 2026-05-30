@@ -113,7 +113,7 @@ export default function RootLayout() {
                 </Sidebar.Menu>
               </Sidebar.Group>
             </Sidebar.Content>
-            <Sidebar.Footer className="gap-2">
+            <Sidebar.Footer className="mt-auto gap-2 border-t border-cf-border">
               <SidebarFooterContent />
             </Sidebar.Footer>
           </Sidebar>
@@ -146,7 +146,6 @@ function BrandHeader() {
           data-testid="sidebar-toggle"
           aria-label="Expand sidebar"
         />
-        <ThemeToggle iconOnly />
       </div>
     )
   }
@@ -164,13 +163,10 @@ function BrandHeader() {
           Dashboard
         </span>
       </div>
-      <div className="flex items-center gap-1">
-        <Sidebar.Trigger
-          data-testid="sidebar-toggle"
-          aria-label="Collapse sidebar"
-        />
-        <ThemeToggle />
-      </div>
+      <Sidebar.Trigger
+        data-testid="sidebar-toggle"
+        aria-label="Collapse sidebar"
+      />
     </div>
   )
 }
@@ -237,34 +233,32 @@ function SidebarFooterContent() {
   if (collapsed) {
     return (
       <div
-        className="flex w-full justify-center py-1"
+        className="flex w-full flex-col items-center gap-2 py-1"
         data-testid="sidebar-footer-collapsed"
       >
         <span
-          aria-label={`Connection ${view.label}`}
-          title={view.label}
+          data-testid="connection-status"
+          aria-label={`Connection ${view.label}. v${APP_VERSION}`}
+          title={`${view.label} · v${APP_VERSION}`}
           className={`h-2 w-2 rounded-full ${view.dotClass}`}
         />
+        <ThemeToggle iconOnly />
       </div>
     )
   }
 
   return (
     <div
-      className="flex w-full flex-col gap-1 px-1 leading-tight"
+      className="flex w-full flex-row items-center justify-between gap-2 px-1 leading-tight"
       data-testid="sidebar-footer-expanded"
     >
       <span
-        className="text-[11px] font-medium text-cf-ink"
-        aria-label={`App version ${APP_VERSION}`}
-        data-testid="app-version"
+        data-testid="connection-status"
+        className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-cf-border bg-cf-surface px-2 py-1 text-cf-ink"
       >
-        v{APP_VERSION}
-      </span>
-      <span className="flex items-center gap-1.5" data-testid="connection-status">
         <span
           aria-hidden="true"
-          className={`h-1.5 w-1.5 rounded-full ${view.dotClass}`}
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${view.dotClass}`}
         />
         {view.shimmer ? (
           <AnimatedShinyText
@@ -278,7 +272,18 @@ function SidebarFooterContent() {
             {view.label}
           </span>
         )}
+        <span aria-hidden="true" className="text-[11px] text-cf-ink-faint">
+          ·
+        </span>
+        <span
+          data-testid="app-version"
+          aria-label={`App version ${APP_VERSION}`}
+          className="text-[11px] font-medium text-cf-ink-muted"
+        >
+          v{APP_VERSION}
+        </span>
       </span>
+      <ThemeToggle iconOnly />
     </div>
   )
 }
