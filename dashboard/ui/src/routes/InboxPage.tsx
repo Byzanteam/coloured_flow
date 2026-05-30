@@ -6,7 +6,6 @@ import {
   Checkbox,
   ClipboardText,
   CodeBlock,
-  Dialog,
   Empty,
   Input,
   InputArea,
@@ -15,6 +14,7 @@ import {
   Text,
   useKumoToastManager
 } from "@cloudflare/kumo"
+import { Dialog } from "@base-ui/react/dialog"
 import { TrayIcon } from "@phosphor-icons/react"
 import { Link } from "react-router-dom"
 import type { StoreProxy } from "@musubi/react"
@@ -486,7 +486,10 @@ function OutputsDrawer({ inbox, row, onClose }: OutputsDrawerProps) {
   const open = row !== null
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      {row ? <OutputsDrawerBody inbox={inbox} row={row} onClose={onClose} /> : null}
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 bg-black/40 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        {row ? <OutputsDrawerBody inbox={inbox} row={row} onClose={onClose} /> : null}
+      </Dialog.Portal>
     </Dialog.Root>
   )
 }
@@ -610,22 +613,8 @@ function OutputsDrawerBody({
   const submitDisabled = isPending || !isValid
 
   return (
-    <Dialog
-      size="lg"
-      className="
-        h-screen max-h-screen
-        w-full sm:w-[28rem] max-w-full sm:max-w-[28rem] sm:min-w-0
-        flex flex-col p-0 overflow-hidden
-        border-l border-cf-border
-      "
-      style={{
-        top: 0,
-        right: 0,
-        left: "auto",
-        transform: "none",
-        maxHeight: "100vh",
-        borderRadius: 0
-      }}
+    <Dialog.Popup
+      className="fixed top-0 right-0 h-screen w-full sm:w-[28rem] flex flex-col bg-cf-surface border-l border-cf-border outline-none focus:outline-none shadow-2xl transition-transform duration-200 ease-out data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
     >
       <header className="flex flex-col gap-3 border-b border-cf-border bg-cf-surface px-6 pt-6 pb-4">
         <div className="flex items-center gap-3">
@@ -760,7 +749,7 @@ function OutputsDrawerBody({
           {isPending ? "Submitting…" : "Submit"}
         </Button>
       </footer>
-    </Dialog>
+    </Dialog.Popup>
   )
 }
 
