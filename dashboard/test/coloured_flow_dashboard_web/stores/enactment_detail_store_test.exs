@@ -860,6 +860,211 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe ":replay_to_version + :exit_replay (M7a)" do
+    require ColouredFlow.Runner.Storage.InMemory, as: InMemory
+    alias ColouredFlow.Runner.Enactment.Registry, as: EnactmentRegistry
+    alias ColouredFlow.Runner.Enactment.WorkitemTransition
+    alias ColouredFlowDashboard.Test.SimpleSequenceWorkflow
+
+    setup %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      flow = InMemory.insert_flow!(SimpleSequenceWorkflow.cpnet())
+      flow_id = InMemory.flow(flow, :id)
+      {:ok, enactment} = SimpleSequenceWorkflow.insert_enactment(flow_id)
+      enactment_id = InMemory.enactment(enactment, :id)
+      {:ok, pid} = SimpleSequenceWorkflow.start_enactment(enactment_id, lifecycle_hooks: nil)
+
+      # Drive one full workitem to completion so storage records one
+      # occurrence at step_number = 1; replay tests then have a non-trivial
+      # version range to exercise.
+      workitem_id = await_enabled_workitem_id!(enactment_id)
+      {:ok, _started} = WorkitemTransition.start_workitem(enactment_id, workitem_id)
+
+      {:ok, _completed} =
+        WorkitemTransition.complete_workitem(enactment_id, {workitem_id, []})
+
+      # The complete call returns synchronously after the runner persists
+      # the occurrence; verify storage shows the row before mounting so
+      # version_range.max reflects the post-complete state. (The runner
+      # GenServer may shut down here because SimpleSequenceWorkflow has
+      # no more firable workitems after `pass` — that is fine; the
+      # detail store falls back to the snapshot+replay seed path.)
+      assert [_occurrence] =
+               enactment_id
+               |> ColouredFlow.Runner.Storage.occurrences_stream(0)
+               |> Enum.to_list()
+
+      # Pre-warm the unique per-test flow_cache so the diagram can refresh
+      # against derived markings during replay (the cpnet is needed to
+      # enumerate places + arcs).
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {enactment_id, "flow-id", SimpleSequenceWorkflow.cpnet()})
+
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+
+      {:ok, page: page, enactment_id: enactment_id, runner_pid: pid}
+    end
+
+    test "ok reply at version 0 returns the initial markings", %{page: page} do
+      assert {:ok, reply} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 0})
+
+      assert reply.code == :ok
+      assert %ColouredFlowDashboardWeb.Views.ReplayState{version: 0} = reply.replay_state
+
+      assert Enum.any?(reply.markings, fn row ->
+               to_string(row.place) == "input" and row.tokens_count == 1
+             end)
+
+      refute Enum.any?(reply.markings, fn row -> to_string(row.place) == "output" end)
+
+      # Summary.replay_state mirrors the reply so the SPA can flip into
+      # replay chrome.
+      summary = Musubi.Testing.assigns(page).summary
+      assert summary.replay_state.version == 0
+    end
+
+    test "ok reply at version 1 returns the post-fire markings", %{page: page} do
+      assert {:ok, reply} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 1})
+
+      assert reply.code == :ok
+
+      assert Enum.any?(reply.markings, fn row ->
+               to_string(row.place) == "output" and row.tokens_count == 1
+             end)
+
+      refute Enum.any?(reply.markings, fn row -> to_string(row.place) == "input" end)
+
+      # The diagram derived view picks up the same place counts so the
+      # token badges agree with the Markings tab in replay mode.
+      diagram = Musubi.Testing.assigns(page).diagram
+
+      assert Enum.any?(diagram.places, fn p ->
+               to_string(p.name) == "output" and p.tokens_count == 1
+             end)
+    end
+
+    test "invalid_version when target exceeds version_range.max", %{page: page} do
+      assigns = Musubi.Testing.assigns(page)
+      cap = assigns.summary.version_range.max
+
+      assert {:ok, %{code: :invalid_version} = reply} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{
+                 version: cap + 50
+               })
+
+      assert reply.available_max_version == cap
+      assert reply.markings == []
+      assert reply.replay_state == nil
+
+      # The store does NOT silently flip into replay mode on an invalid
+      # request.
+      summary = Musubi.Testing.assigns(page).summary
+      assert summary.replay_state == nil
+    end
+
+    test "invalid_version for negative or non-integer versions", %{page: page} do
+      assert {:ok, %{code: :invalid_version}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: -1})
+
+      assert {:ok, %{code: :invalid_version}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: "abc"})
+    end
+
+    test ":exit_replay clears summary.replay_state and resets diagram", %{page: page} do
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 0})
+
+      assert Musubi.Testing.assigns(page).summary.replay_state != nil
+
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :exit_replay, %{})
+
+      assert Musubi.Testing.assigns(page).summary.replay_state == nil
+    end
+
+    test "replay does NOT mutate persisted runner state (occurrences/workitems unchanged)",
+         %{page: page, enactment_id: enactment_id} do
+      before_occurrences =
+        enactment_id
+        |> ColouredFlow.Runner.Storage.occurrences_stream(0)
+        |> Enum.to_list()
+
+      before_workitems = ColouredFlow.Runner.Storage.list_live_workitems(enactment_id)
+
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 0})
+
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 1})
+
+      after_occurrences =
+        enactment_id
+        |> ColouredFlow.Runner.Storage.occurrences_stream(0)
+        |> Enum.to_list()
+
+      after_workitems = ColouredFlow.Runner.Storage.list_live_workitems(enactment_id)
+
+      assert after_occurrences == before_occurrences
+      assert after_workitems == before_workitems
+
+      # If the runner GenServer is still up, its state is unchanged too.
+      via = EnactmentRegistry.via_name({:enactment, enactment_id})
+
+      case GenServer.whereis(via) do
+        nil ->
+          :ok
+
+        pid ->
+          live_state = :sys.get_state(pid)
+          assert live_state.version >= 1
+      end
+    end
+
+    test "summary.version_range floor is the snapshot version, max tracks events", %{
+      page: page
+    } do
+      summary = Musubi.Testing.assigns(page).summary
+      # InMemory storage takes no snapshots, so the floor is 0.
+      assert summary.version_range.min == 0
+      assert summary.version_range.max >= 1
+    end
+
+    defp await_enabled_workitem_id!(enactment_id) do
+      deadline = System.monotonic_time(:millisecond) + 2_000
+      do_await_enabled_workitem_id!(enactment_id, deadline)
+    end
+
+    defp do_await_enabled_workitem_id!(enactment_id, deadline) do
+      via = EnactmentRegistry.via_name({:enactment, enactment_id})
+      pid = GenServer.whereis(via)
+      candidate = pid && find_enabled_workitem_id(pid)
+
+      case candidate do
+        id when is_binary(id) -> id
+        _other -> maybe_retry_or_flunk(enactment_id, deadline)
+      end
+    end
+
+    defp find_enabled_workitem_id(pid) do
+      state = :sys.get_state(pid)
+
+      case Enum.find(state.workitems, fn {_id, wi} -> wi.state == :enabled end) do
+        {id, _wi} -> id
+        nil -> nil
+      end
+    end
+
+    defp maybe_retry_or_flunk(enactment_id, deadline) do
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk("no enabled workitem appeared on enactment #{inspect(enactment_id)} in time")
+      else
+        Process.sleep(25)
+        do_await_enabled_workitem_id!(enactment_id, deadline)
+      end
+    end
+  end
+
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,

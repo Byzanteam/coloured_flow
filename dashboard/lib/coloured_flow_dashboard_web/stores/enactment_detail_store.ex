@@ -145,8 +145,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlowDashboardWeb.Views.NetDiagramPlace
   alias ColouredFlowDashboardWeb.Views.NetDiagramTransition
   alias ColouredFlowDashboardWeb.Views.OccurrenceRow
+  alias ColouredFlowDashboardWeb.Views.ReplayState
   alias ColouredFlowDashboardWeb.Views.TelemetryEntry
   alias ColouredFlowDashboardWeb.Views.TransitionDebugInfo
+  alias ColouredFlowDashboardWeb.Views.VersionRange
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
 
   import Ecto.Query, only: [where: 3]
@@ -224,6 +226,33 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     end
   end
 
+  # M7a — read-only derivation of a marking snapshot at a prior version.
+  #
+  # The handler reads the nearest snapshot ≤ requested version via
+  # `Storage.read_enactment_snapshot/1` and replays `Storage.occurrences_stream/2`
+  # through `CatchingUp.apply/2`, taking only the prefix up to the requested
+  # version. The live `Runner.Enactment` GenServer is NOT touched — there are
+  # no mutations on either the runner process or the persisted state.
+  command :replay_to_version do
+    payload do
+      field :version, integer()
+    end
+
+    reply do
+      field :code, :ok | :invalid_version | :runner_error
+      field :markings, list(ColouredFlowDashboardWeb.Views.MarkingRow.t())
+      field :replay_state, ColouredFlowDashboardWeb.Views.ReplayState.t() | nil
+      field :available_max_version, integer() | nil
+      field :snapshot_floor, integer() | nil
+    end
+  end
+
+  command :exit_replay do
+    reply do
+      field :code, :ok
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Mount
   # ---------------------------------------------------------------------------
@@ -252,6 +281,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     marking_index = build_marking_index(markings)
     enabled_workitems = seed_enabled_workitems(workitems)
     diagram = build_diagram(enactment_id, flow_cache, marking_index, enabled_workitems, %{})
+    snapshot_floor = read_snapshot_floor(enactment_id)
 
     summary = %EnactmentSummary{
       enactment_id: enactment_id,
@@ -261,7 +291,9 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       markings_count: length(markings),
       workitems_count: length(workitems),
       last_occurrence_at: last_occurrence_at,
-      last_exception_banner: nil
+      last_exception_banner: nil,
+      replay_state: nil,
+      version_range: %VersionRange{min: snapshot_floor, max: max(version, snapshot_floor)}
     }
 
     socket =
@@ -274,6 +306,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:transitions, transitions)
       |> assign(:diagram, diagram)
       |> assign(:marking_index, marking_index)
+      |> assign(:replay_marking_index, nil)
       |> assign(:enabled_workitems, enabled_workitems)
       |> assign(:transition_fired_at, %{})
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
@@ -342,6 +375,62 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   def handle_command(:inspect_transition, payload, socket) when is_map(payload) do
     transition = Map.get(payload, "transition") || Map.get(payload, :transition) || ""
     {:reply, inspect_transition_reply(socket, transition), socket}
+  end
+
+  def handle_command(:replay_to_version, payload, socket) when is_map(payload) do
+    version_raw = Map.get(payload, "version") || Map.get(payload, :version)
+
+    case coerce_version(version_raw) do
+      {:ok, version} ->
+        case derive_replay(socket, version) do
+          {:ok, marking_rows, replay_state, marking_index} ->
+            socket =
+              socket
+              |> assign(:replay_marking_index, marking_index)
+              |> put_replay_state(replay_state)
+              |> refresh_diagram()
+
+            reply = %{
+              code: :ok,
+              markings: marking_rows,
+              replay_state: replay_state,
+              available_max_version: socket.assigns.summary.version_range.max,
+              snapshot_floor: socket.assigns.summary.version_range.min
+            }
+
+            {:reply, reply, socket}
+
+          {:error, reason, info} ->
+            reply =
+              Map.merge(
+                %{code: :invalid_version, markings: [], replay_state: nil},
+                replay_error_fields(reason, info, socket)
+              )
+
+            {:reply, reply, socket}
+        end
+
+      :error ->
+        reply = %{
+          code: :invalid_version,
+          markings: [],
+          replay_state: nil,
+          available_max_version: socket.assigns.summary.version_range.max,
+          snapshot_floor: socket.assigns.summary.version_range.min
+        }
+
+        {:reply, reply, socket}
+    end
+  end
+
+  def handle_command(:exit_replay, _payload, socket) do
+    socket =
+      socket
+      |> assign(:replay_marking_index, nil)
+      |> put_replay_state(nil)
+      |> refresh_diagram()
+
+    {:reply, %{code: :ok}, socket}
   end
 
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
@@ -471,6 +560,113 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   defp last_occurrence_at([]), do: nil
   defp last_occurrence_at([%OccurrenceRow{occurred_at: at} | _rest]), do: at
+
+  defp read_snapshot_floor(enactment_id) do
+    if repo_configured?() do
+      case Storage.read_enactment_snapshot(enactment_id) do
+        {:ok, %Snapshot{version: version}} -> version
+        _other -> 0
+      end
+    else
+      0
+    end
+  rescue
+    _error -> 0
+  end
+
+  defp coerce_version(v) when is_integer(v) and v >= 0, do: {:ok, v}
+
+  defp coerce_version(v) when is_binary(v) do
+    case Integer.parse(v) do
+      {int, ""} when int >= 0 -> {:ok, int}
+      _other -> :error
+    end
+  end
+
+  defp coerce_version(_other), do: :error
+
+  # `derive_replay/2` reads the nearest snapshot ≤ target_version and
+  # replays the persisted occurrence stream up to (and including) the
+  # target. The live `Runner.Enactment` GenServer is NOT touched — this
+  # path uses only `Storage.read_enactment_snapshot/1` +
+  # `Storage.occurrences_stream/2` + `CatchingUp.apply/2`, all of which
+  # are read-only public surfaces.
+  #
+  # When `target_version < snapshot_version`, we cannot reconstruct the
+  # state without keeping older snapshots, so we surface `:below_floor`
+  # for the caller to convert into `:invalid_version` + a snapshot_floor
+  # the SPA can display.
+  defp derive_replay(socket, target_version)
+       when is_integer(target_version) and target_version >= 0 do
+    enactment_id = socket.assigns.enactment_id
+    available_max = socket.assigns.summary.version_range.max
+
+    cond do
+      not repo_configured?() ->
+        {:error, :runner_error, %{message: "storage repo not configured"}}
+
+      target_version > available_max ->
+        {:error, :above_max, %{available_max_version: available_max}}
+
+      true ->
+        do_derive_replay(enactment_id, target_version)
+    end
+  end
+
+  defp do_derive_replay(enactment_id, target_version) do
+    {initial_markings, snapshot_version} =
+      case Storage.read_enactment_snapshot(enactment_id) do
+        {:ok, %Snapshot{markings: markings, version: version}} -> {markings, version}
+        _other -> {Storage.get_initial_markings(enactment_id), 0}
+      end
+
+    if target_version < snapshot_version do
+      {:error, :below_floor, %{snapshot_floor: snapshot_version}}
+    else
+      step_count = target_version - snapshot_version
+
+      occurrences =
+        enactment_id
+        |> Storage.occurrences_stream(snapshot_version)
+        |> Stream.take(step_count)
+
+      {_steps, derived} = CatchingUp.apply(initial_markings, occurrences)
+      marking_rows = Enum.map(derived, &marking_row/1)
+      marking_index = build_marking_index(marking_rows)
+
+      replay_state = %ReplayState{
+        version: target_version,
+        derived_at: DateTime.to_iso8601(DateTime.utc_now())
+      }
+
+      {:ok, marking_rows, replay_state, marking_index}
+    end
+  rescue
+    error -> {:error, :runner_error, %{message: Exception.message(error)}}
+  end
+
+  defp replay_error_fields(:below_floor, %{snapshot_floor: floor}, socket) do
+    %{
+      available_max_version: socket.assigns.summary.version_range.max,
+      snapshot_floor: floor
+    }
+  end
+
+  defp replay_error_fields(:above_max, %{available_max_version: max}, socket) do
+    %{
+      available_max_version: max,
+      snapshot_floor: socket.assigns.summary.version_range.min
+    }
+  end
+
+  defp replay_error_fields(:runner_error, info, socket) do
+    %{
+      code: :runner_error,
+      message: Map.get(info, :message, ""),
+      available_max_version: socket.assigns.summary.version_range.max,
+      snapshot_floor: socket.assigns.summary.version_range.min
+    }
+  end
 
   defp repo_configured? do
     case Application.get_env(:coloured_flow, ColouredFlow.Runner.Storage) do
@@ -635,7 +831,26 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   defp bump_summary(socket, fields) when is_list(fields) do
     summary = struct!(socket.assigns.summary, Map.new(fields))
+    summary = stretch_version_range(summary, Keyword.get(fields, :version))
     assign(socket, :summary, summary)
+  end
+
+  defp put_replay_state(socket, replay_state) do
+    summary = %{socket.assigns.summary | replay_state: replay_state}
+    assign(socket, :summary, summary)
+  end
+
+  defp stretch_version_range(%EnactmentSummary{} = summary, nil), do: summary
+
+  defp stretch_version_range(%EnactmentSummary{version_range: nil} = summary, _version),
+    do: summary
+
+  defp stretch_version_range(
+         %EnactmentSummary{version_range: %VersionRange{} = range} = summary,
+         version
+       )
+       when is_integer(version) do
+    %{summary | version_range: %{range | max: max(range.max, version)}}
   end
 
   # ---------------------------------------------------------------------------
@@ -1181,11 +1396,21 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp drop_enabled_workitems(socket, %Event{}), do: socket
 
   defp refresh_diagram(socket) do
+    # When replay is active, the diagram reflects the derived marking
+    # snapshot (M7a) so the place token badges match the Markings tab.
+    # Workitem-driven glow + last_fired_at stay on the live signal — only
+    # the place counts swap.
+    # Musubi.Socket.assign/3 skips the assign when the value is unchanged,
+    # so an initial nil never lands in the map. Read via Map.get so first
+    # access doesn't blow up before the operator enters replay mode.
+    marking_index =
+      Map.get(socket.assigns, :replay_marking_index) || socket.assigns.marking_index
+
     diagram =
       build_diagram(
         socket.assigns.enactment_id,
         socket.assigns.flow_cache,
-        socket.assigns.marking_index,
+        marking_index,
         socket.assigns.enabled_workitems,
         socket.assigns.transition_fired_at
       )

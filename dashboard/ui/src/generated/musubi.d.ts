@@ -133,6 +133,24 @@ declare namespace Musubi {
             transition: string | null
           }
         }
+        replay_to_version: {
+          payload: {
+            version: number
+          }
+          reply: {
+            code: "ok" | "invalid_version" | "runner_error"
+            markings: ColouredFlowDashboardWeb.Views.MarkingRow[]
+            replay_state: ColouredFlowDashboardWeb.Views.ReplayState | null
+            available_max_version: number | null
+            snapshot_floor: number | null
+          }
+        }
+        exit_replay: {
+          payload: {}
+          reply: {
+            code: "ok"
+          }
+        }
       }
     >
 
@@ -175,6 +193,8 @@ declare namespace ColouredFlowDashboardWeb {
       workitems_count: number
       last_occurrence_at: string | null
       last_exception_banner: string | null
+      replay_state: ColouredFlowDashboardWeb.Views.ReplayState | null
+      version_range: ColouredFlowDashboardWeb.Views.VersionRange
     }
 
     interface InboxCounts {
@@ -235,6 +255,11 @@ declare namespace ColouredFlowDashboardWeb {
       hint: string | null
     }
 
+    interface ReplayState {
+      version: number
+      derived_at: string
+    }
+
     interface TelemetryEntry {
       id: string
       kind: string
@@ -251,6 +276,11 @@ declare namespace ColouredFlowDashboardWeb {
       rejected_by_guard_count: number
       rejected_by_arc_eval_count: number
       rejected_by_marking_count: number
+    }
+
+    interface VersionRange {
+      min: number
+      max: number
     }
 
     interface WorkitemRow {

@@ -9,6 +9,8 @@ const {
   forceTerminateMock,
   inspectTransitionMock,
   retryEnactmentMock,
+  replayToVersionMock,
+  exitReplayMock,
   sampleSnapshot
 } = vi.hoisted(() => {
   const summary = {
@@ -19,7 +21,9 @@ const {
     markings_count: 1,
     workitems_count: 1,
     last_occurrence_at: "2026-05-29T00:00:00Z",
-    last_exception_banner: null as string | null
+    last_exception_banner: null as string | null,
+    replay_state: null as null | { version: number; derived_at: string },
+    version_range: { min: 0, max: 3 } as { min: number; max: number }
   }
 
   const marking = {
@@ -90,6 +94,8 @@ const {
     forceTerminateMock: vi.fn(),
     inspectTransitionMock: vi.fn(),
     retryEnactmentMock: vi.fn(),
+    replayToVersionMock: vi.fn(),
+    exitReplayMock: vi.fn(),
     sampleSnapshot: {
       summary,
       transitions: ["approve"],
@@ -141,7 +147,11 @@ vi.mock("../musubi", () => ({
           ? inspectTransitionMock
           : name === "retry_enactment"
             ? retryEnactmentMock
-            : forceTerminateMock
+            : name === "replay_to_version"
+              ? replayToVersionMock
+              : name === "exit_replay"
+                ? exitReplayMock
+                : forceTerminateMock
     return {
       dispatch,
       isPending: false,
@@ -215,6 +225,8 @@ describe("EnactmentDetailPage", () => {
     forceTerminateMock.mockReset()
     inspectTransitionMock.mockReset()
     retryEnactmentMock.mockReset()
+    replayToVersionMock.mockReset()
+    exitReplayMock.mockReset()
   })
 
   it("renders the net diagram card with NetDiagram mounted inside", () => {
@@ -649,6 +661,123 @@ describe("EnactmentDetailPage", () => {
         })
       } finally {
         mut.telemetry = original
+      }
+    })
+  })
+
+  describe("M7a timeline scrubber + replay", () => {
+    const mutateReplay = (
+      replayState: null | { version: number; derived_at: string },
+      range?: { min: number; max: number }
+    ) => {
+      const mut = sampleSnapshot as unknown as {
+        summary: {
+          replay_state: null | { version: number; derived_at: string }
+          version_range: { min: number; max: number }
+        }
+      }
+      const original = {
+        replay_state: mut.summary.replay_state,
+        version_range: mut.summary.version_range
+      }
+      mut.summary.replay_state = replayState
+      if (range) mut.summary.version_range = range
+      return () => {
+        mut.summary.replay_state = original.replay_state
+        mut.summary.version_range = original.version_range
+      }
+    }
+
+    it("renders the slider with the correct min/max from summary.version_range", () => {
+      const restore = mutateReplay(null, { min: 2, max: 9 })
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        const slider = screen.getByTestId("timeline-slider") as HTMLInputElement
+        expect(slider.min).toBe("2")
+        expect(slider.max).toBe("9")
+      } finally {
+        restore()
+      }
+    })
+
+    it("dragging dispatches a debounced :replay_to_version after 150ms", async () => {
+      vi.useFakeTimers()
+      replayToVersionMock.mockResolvedValue({
+        code: "ok",
+        markings: [],
+        replay_state: { version: 2, derived_at: "2026-05-29T01:00:00Z" },
+        available_max_version: 5,
+        snapshot_floor: 0
+      })
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        const slider = screen.getByTestId("timeline-slider")
+        fireEvent.change(slider, { target: { value: "1" } })
+        fireEvent.change(slider, { target: { value: "2" } })
+        // Before debounce window: no dispatch yet.
+        expect(replayToVersionMock).not.toHaveBeenCalled()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(160)
+        })
+        // Only the last value should hit the server.
+        expect(replayToVersionMock).toHaveBeenCalledTimes(1)
+        expect(replayToVersionMock).toHaveBeenCalledWith({ version: 2 })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("step-forward button dispatches immediately without debounce", async () => {
+      replayToVersionMock.mockResolvedValueOnce({
+        code: "ok",
+        markings: [],
+        replay_state: { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        available_max_version: 3,
+        snapshot_floor: 0
+      })
+      const restore = mutateReplay(null, { min: 0, max: 3 })
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        // value starts at liveVersion=3; step back once to v2, dispatch fires now.
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("timeline-step-back"))
+        })
+        expect(replayToVersionMock).toHaveBeenCalledWith({ version: 2 })
+      } finally {
+        restore()
+      }
+    })
+
+    it("renders the REPLAY chip + Markings replay banner when summary.replay_state is set", () => {
+      const restore = mutateReplay(
+        { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        { min: 0, max: 3 }
+      )
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        const chip = screen.getByTestId("state-badge-replay")
+        expect(chip.textContent).toMatch(/REPLAY/)
+        expect(chip.textContent).toMatch(/v1/)
+        expect(screen.getByTestId("markings-replay-banner")).toBeDefined()
+      } finally {
+        restore()
+      }
+    })
+
+    it("Return to live button dispatches :exit_replay", async () => {
+      const restore = mutateReplay(
+        { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        { min: 0, max: 3 }
+      )
+      exitReplayMock.mockResolvedValueOnce({ code: "ok" })
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("timeline-exit-replay"))
+        })
+        expect(exitReplayMock).toHaveBeenCalledOnce()
+      } finally {
+        restore()
       }
     })
   })

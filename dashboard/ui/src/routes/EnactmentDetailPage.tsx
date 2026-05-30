@@ -19,6 +19,7 @@ import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
 import NetDiagram from "../components/NetDiagram"
+import TimelineScrubber from "../components/TimelineScrubber"
 
 const ENACTMENT_DETAIL_STORE =
   "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore" as const
@@ -120,14 +121,101 @@ function DetailContent({
   enactmentId: string
 }) {
   const snapshot = useMusubiSnapshot(detail)
+  const toasts = useKumoToastManager()
 
   const summary: EnactmentSummary | undefined = snapshot.summary
-  const markings: readonly MarkingRow[] = snapshot.markings ?? []
+  const liveMarkings: readonly MarkingRow[] = snapshot.markings ?? []
   const workitems: readonly WorkitemRow[] = snapshot.workitems ?? []
   const occurrences: readonly OccurrenceRow[] = snapshot.occurrences ?? []
   const telemetry: readonly TelemetryEntry[] = snapshot.telemetry ?? []
   const transitions: readonly string[] = snapshot.transitions ?? []
   const diagram: DiagramPayload | null = snapshot.diagram ?? null
+
+  const replayState = summary?.replay_state ?? null
+  const versionRange: ColouredFlowDashboardWeb.Views.VersionRange =
+    summary?.version_range ?? { min: 0, max: summary?.version ?? 0 }
+
+  const replayCmd = useMusubiCommand(detail, "replay_to_version")
+  const exitReplayCmd = useMusubiCommand(detail, "exit_replay")
+
+  // Derived markings live client-side so the live `:markings` stream keeps
+  // its mount-time-accurate behavior. Cleared on exit-replay.
+  const [derivedMarkings, setDerivedMarkings] = useState<readonly MarkingRow[]>([])
+
+  // When the server clears replay_state (e.g., exit_replay), drop any
+  // cached derived rows so the Markings tab snaps back to live.
+  useEffect(() => {
+    if (replayState === null) setDerivedMarkings([])
+  }, [replayState])
+
+  const onScrub = useCallback(
+    (version: number) => {
+      void dispatchWithReply<ReplayToVersionCode>(
+        replayCmd.dispatch as unknown as (
+          payload: Record<string, unknown>
+        ) => Promise<{ code?: string } & Record<string, unknown>>,
+        { version },
+        {
+          onReply: (code, reply) => {
+            if (code === "ok") {
+              const r = reply as ReplayToVersionReply
+              setDerivedMarkings(r.markings ?? [])
+            } else if (code === "invalid_version") {
+              const r = reply as ReplayToVersionReply
+              const floor = r.snapshot_floor ?? versionRange.min
+              const cap = r.available_max_version ?? versionRange.max
+              toasts.add({
+                variant: "info",
+                title: "Version out of range",
+                description: `Pick a version between v${floor} and v${cap}.`,
+                timeout: 4000
+              })
+            } else {
+              toasts.add({
+                variant: "error",
+                title: "Replay failed",
+                description: "Runner rejected the replay request.",
+                timeout: 6000
+              })
+            }
+          },
+          onUnexpected: (cause) => {
+            toasts.add({
+              variant: "error",
+              title: "Replay failed",
+              description: cause instanceof Error ? cause.message : "Unknown error.",
+              timeout: 6000
+            })
+          }
+        }
+      )
+    },
+    [replayCmd.dispatch, toasts, versionRange.min, versionRange.max]
+  )
+
+  const onExitReplay = useCallback(() => {
+    void dispatchWithReply<"ok">(
+      exitReplayCmd.dispatch as (payload: Record<string, unknown>) => Promise<
+        { code?: string } & Record<string, unknown>
+      >,
+      {},
+      {
+        onReply: () => {
+          setDerivedMarkings([])
+        },
+        onUnexpected: (cause) => {
+          toasts.add({
+            variant: "error",
+            title: "Exit replay failed",
+            description: cause instanceof Error ? cause.message : "Unknown error.",
+            timeout: 6000
+          })
+        }
+      }
+    )
+  }, [exitReplayCmd.dispatch, toasts])
+
+  const markings: readonly MarkingRow[] = replayState ? derivedMarkings : liveMarkings
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
   // Pending inspect target driven by NetDiagram node click. Cleared by
@@ -157,7 +245,7 @@ function DetailContent({
         byline={
           <div className="flex flex-wrap items-center gap-2">
             <code className="text-xs text-cf-ink-muted">{enactmentId}</code>
-            <StateBadge state={state} />
+            <StateBadge state={state} replayState={replayState} />
           </div>
         }
         subtitle={
@@ -166,6 +254,15 @@ function DetailContent({
             : undefined
         }
         actions={<ActionBar detail={detail} state={state} />}
+      />
+
+      <TimelineScrubber
+        range={versionRange}
+        liveVersion={summary?.version ?? 0}
+        replayState={replayState}
+        onScrub={onScrub}
+        onExit={onExitReplay}
+        isPending={replayCmd.isPending || exitReplayCmd.isPending}
       />
 
       {state === "exception" ? (
@@ -226,7 +323,13 @@ function DetailContent({
           </div>
 
           <div className="flex flex-col gap-4">
-            {activeTab === "markings" && <MarkingsTab rows={markings} />}
+            {activeTab === "markings" && (
+              <MarkingsTab
+                rows={markings}
+                replayState={replayState}
+                isPending={replayCmd.isPending}
+              />
+            )}
             {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
             {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
             {activeTab === "telemetry" && (
@@ -257,7 +360,27 @@ function DetailContent({
 // Status + summary
 // ---------------------------------------------------------------------------
 
-function StateBadge({ state }: { state: "running" | "exception" | "terminated" }) {
+function StateBadge({
+  state,
+  replayState
+}: {
+  state: "running" | "exception" | "terminated"
+  replayState: ColouredFlowDashboardWeb.Views.ReplayState | null
+}) {
+  // While in replay mode, the status pill replaces the live indicator so
+  // operators never confuse a derived view with current state.
+  if (replayState) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full border border-cf-accent/50 bg-cf-accent-soft px-2 py-0.5 text-xs font-medium text-cf-accent"
+        data-testid="state-badge-replay"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-cf-accent" />
+        REPLAY · v{replayState.version}
+      </span>
+    )
+  }
+
   if (state === "exception") {
     return (
       <span
@@ -293,6 +416,15 @@ type RetryEnactmentCode =
   | "not_exception"
   | "already_terminated"
   | "runner_error"
+type ReplayToVersionCode = "ok" | "invalid_version" | "runner_error"
+
+interface ReplayToVersionReply extends Record<string, unknown> {
+  code?: ReplayToVersionCode
+  markings?: readonly MarkingRow[]
+  replay_state?: ColouredFlowDashboardWeb.Views.ReplayState | null
+  available_max_version?: number | null
+  snapshot_floor?: number | null
+}
 
 function ActionBar({
   detail,
@@ -531,15 +663,40 @@ function ActionBar({
 // Tabs
 // ---------------------------------------------------------------------------
 
-function MarkingsTab({ rows }: { rows: readonly MarkingRow[] }) {
+function MarkingsTab({
+  rows,
+  replayState,
+  isPending
+}: {
+  rows: readonly MarkingRow[]
+  replayState: ColouredFlowDashboardWeb.Views.ReplayState | null
+  isPending: boolean
+}) {
   return (
-    <div className="flex flex-col gap-3" data-testid="markings-tab">
-      <Banner
-        variant="alert"
-        title="Markings are mount-time-accurate"
-        description="Live workitem events do not refresh this view. Click Take snapshot in the action bar, then reload this page to refresh the markings after recent activity."
-        data-testid="markings-stale-banner"
-      />
+    <div
+      className={`flex flex-col gap-3 transition-opacity ${
+        isPending ? "opacity-50" : "opacity-100"
+      }`}
+      data-testid="markings-tab"
+      data-replay={replayState ? "true" : "false"}
+    >
+      {replayState ? (
+        <div data-testid="markings-replay-banner">
+          <Banner
+            variant="alert"
+            title={`Showing derived markings at version v${replayState.version}`}
+            description="Live updates paused. Click Return to live in the timeline scrubber to resume."
+          />
+        </div>
+      ) : (
+        <div data-testid="markings-stale-banner">
+          <Banner
+            variant="alert"
+            title="Markings are mount-time-accurate"
+            description="Live workitem events do not refresh this view. Click Take snapshot in the action bar, then reload this page to refresh the markings after recent activity."
+          />
+        </div>
+      )}
       {rows.length === 0 ? (
         <Banner
           variant="default"
