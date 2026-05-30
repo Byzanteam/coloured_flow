@@ -43,8 +43,8 @@ interface NavItem {
 
 const PRIMARY_NAV: readonly NavItem[] = [
   { to: "/", label: "Inbox", icon: TrayIcon, end: true },
-  { to: "/flows", label: "Flows", icon: GraphIcon, end: false },
   { to: "/enactments", label: "Enactments", icon: ListChecksIcon, end: false },
+  { to: "/flows", label: "Flows", icon: GraphIcon, end: false },
   { to: "/telemetry", label: "Telemetry", icon: PulseIcon, end: false }
 ]
 

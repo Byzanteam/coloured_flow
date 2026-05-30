@@ -17,6 +17,7 @@ const {
   const summary = {
     enactment_id: "en-aaaa",
     flow_topic_id: "topic-x",
+    flow_name: "Approval Demo",
     state: "running" as const,
     version: 3,
     markings_count: 1,
@@ -253,6 +254,29 @@ describe("EnactmentDetailPage", () => {
     renderRoute(<EnactmentDetailPage />)
     expect(screen.getByTestId("net-diagram-card")).toBeDefined()
     expect(screen.getByTestId("net-diagram-stub")).toBeDefined()
+  })
+
+  it("renders the H1 as `<flow name> · <short id>` when the summary carries flow_name", () => {
+    renderRoute(<EnactmentDetailPage />)
+    expect(
+      screen.getByRole("heading", { level: 1, name: /Approval Demo · en-aaa/i })
+    ).toBeDefined()
+    // Byline still carries the full UUID so operators can copy it verbatim.
+    expect(screen.getByText("en-aaaa")).toBeDefined()
+  })
+
+  it("falls back to a generic 'Enactment' H1 when flow_name is null", () => {
+    const snap = vi.mocked(useMusubiSnapshot)
+    snap.mockReturnValue({
+      ...sampleSnapshot,
+      summary: { ...sampleSnapshot.summary, flow_name: null }
+    })
+    try {
+      renderRoute(<EnactmentDetailPage />)
+      expect(screen.getByRole("heading", { level: 1, name: "Enactment" })).toBeDefined()
+    } finally {
+      snap.mockReturnValue(sampleSnapshot)
+    }
   })
 
   it("renders the Colour sets panel from the snapshot diagram", async () => {

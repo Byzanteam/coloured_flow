@@ -378,7 +378,7 @@ function DetailContent({
   return (
     <section className="flex flex-col gap-6">
       <PageHeader
-        title="Enactment"
+        title={detailTitle(summary?.flow_name ?? null, enactmentId)}
         breadcrumbs={detailBreadcrumbs(enactmentId)}
         byline={
           <div className="flex flex-wrap items-center gap-2">
@@ -1472,6 +1472,17 @@ function detailBreadcrumbs(enactmentId: string) {
     { label: "Enactments", to: "/enactments" },
     { label: shortEnactmentId(enactmentId) }
   ] as const
+}
+
+// When the flow name has loaded, surface it in the H1 alongside a short id
+// so operators get information density before they read the byline. When it
+// hasn't loaded yet (initial mount, or the store could not resolve a name)
+// fall back to the generic "Enactment" title.
+function detailTitle(flowName: string | null, enactmentId: string): string {
+  if (flowName && flowName !== "") {
+    return `${flowName} · ${shortEnactmentId(enactmentId)}`
+  }
+  return "Enactment"
 }
 
 function shortEnactmentId(id: string): string {

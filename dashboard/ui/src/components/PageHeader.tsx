@@ -56,7 +56,7 @@ export default function PageHeader({
 
   return (
     <div className="flex flex-col gap-2">
-      {breadcrumbs && breadcrumbs.length > 0 ? (
+      {breadcrumbs && breadcrumbs.length > 1 ? (
         <BreadcrumbTrail items={breadcrumbs} />
       ) : null}
       <header className="flex flex-wrap items-start justify-between gap-4">

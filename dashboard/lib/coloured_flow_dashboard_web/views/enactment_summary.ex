@@ -31,6 +31,7 @@ defmodule ColouredFlowDashboardWeb.Views.EnactmentSummary do
   state do
     field :enactment_id, String.t()
     field :flow_topic_id, String.t() | nil
+    field :flow_name, String.t() | nil
     field :state, :running | :exception | :terminated
     field :version, integer()
     field :markings_count, integer()

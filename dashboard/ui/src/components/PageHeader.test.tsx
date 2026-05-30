@@ -38,16 +38,13 @@ describe("PageHeader", () => {
     expect(screen.queryByTestId("page-header-breadcrumbs")).toBeNull()
   })
 
-  it("renders a single-crumb breadcrumb without separator", () => {
+  it("drops the breadcrumbs row when there is only a single crumb (duplicates the H1)", () => {
     renderWithRouter(
       <PageHeader title="Inbox" breadcrumbs={[{ label: "Inbox" }]} />
     )
-    const trail = screen.getByTestId("page-header-breadcrumbs")
-    const nav = within(trail).getByRole("navigation", { name: /breadcrumb/i })
-    // No separator path renders when there is only one crumb.
-    expect(nav.querySelectorAll("svg").length).toBe(0)
-    expect(within(trail).getAllByText("Inbox").length).toBeGreaterThan(0)
-    expect(within(trail).queryByRole("link")).toBeNull()
+    expect(screen.queryByTestId("page-header-breadcrumbs")).toBeNull()
+    // H1 still renders so callers can keep passing breadcrumbs unconditionally.
+    expect(screen.getByRole("heading", { name: "Inbox" })).not.toBeNull()
   })
 
   it("renders a two-crumb breadcrumb with a React Router link for the first crumb", () => {

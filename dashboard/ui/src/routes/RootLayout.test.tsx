@@ -64,7 +64,7 @@ describe("RootLayout", () => {
     window.localStorage.clear()
   })
 
-  it("renders Inbox / Flows / Enactments / Telemetry nav links and omits Settings", () => {
+  it("renders Inbox / Enactments / Flows / Telemetry nav links in that order and omits Settings", () => {
     renderLayout()
 
     expect(screen.getByRole("link", { name: /inbox/i })).toBeTruthy()
@@ -74,6 +74,16 @@ describe("RootLayout", () => {
     expect(screen.getByRole("link", { name: /telemetry/i })).toBeTruthy()
     expect(screen.queryByText(/settings/i)).toBeNull()
     expect(screen.queryByText(/Soon/i)).toBeNull()
+
+    // Operator mental model: enactments (running instances) come before
+    // flows (definitions). Order matters — assert the sidebar respects it.
+    const labels = screen
+      .getAllByRole("link")
+      .map((link) => link.textContent?.trim())
+      .filter((label): label is string =>
+        Boolean(label && /^(Inbox|Enactments|Flows|Telemetry)$/.test(label))
+      )
+    expect(labels).toEqual(["Inbox", "Enactments", "Flows", "Telemetry"])
   })
 
   it("Telemetry nav targets /telemetry", () => {

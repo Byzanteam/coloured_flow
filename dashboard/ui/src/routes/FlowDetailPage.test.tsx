@@ -229,7 +229,7 @@ describe("FlowDetailPage", () => {
     expect(screen.getByText(/2 places · 1 transition/)).toBeDefined()
   })
 
-  it("renders breadcrumbs with a Flows link and the current flow name", async () => {
+  it("renders breadcrumbs with a Flows link and the short flow id (H1 holds the name)", async () => {
     loadSnapshot([makeFlow()])
     primeDetail(makeDetail())
     await act(async () => {
@@ -239,7 +239,11 @@ describe("FlowDetailPage", () => {
     const link = crumbs.querySelector('a[href="/flows"]') as HTMLAnchorElement | null
     expect(link).not.toBeNull()
     expect(link?.textContent).toBe("Flows")
-    expect(crumbs.textContent).toMatch(/Approval Demo/)
+    // Tail crumb is the short id, not the flow name — H1 carries the name.
+    expect(crumbs.textContent).toMatch(/flow-1/)
+    expect(crumbs.textContent).not.toMatch(/Approval Demo/)
+    // The byline echoes the short id parallel to EnactmentDetail's pattern.
+    expect(screen.getByTestId("flow-detail-id-byline").textContent).toContain("flow-1")
   })
 
   it("dispatches :fetch_flow_detail on mount and mounts NetDiagram with the reply payload", async () => {

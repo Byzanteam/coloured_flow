@@ -275,6 +275,7 @@ declare namespace ColouredFlowDashboardWeb {
     interface EnactmentSummary {
       enactment_id: string
       flow_topic_id: string | null
+      flow_name: string | null
       state: "running" | "exception" | "terminated"
       version: number
       markings_count: number

@@ -162,7 +162,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlowDashboardWeb.Views.VersionRange
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
 
-  import Ecto.Query, only: [where: 3]
+  import Ecto.Query, only: [from: 2, where: 3]
 
   require Logger
 
@@ -312,6 +312,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     } = seed_world(enactment_id)
 
     flow_topic_id = resolve_flow_topic_id(enactment_id, flow_cache)
+    flow_name = resolve_flow_name(enactment_id, flow_cache)
     transitions = resolve_transitions(enactment_id, flow_cache)
     last_occurrence_at = last_occurrence_at(occurrences)
     marking_index = build_marking_index(markings)
@@ -330,6 +331,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     summary = %EnactmentSummary{
       enactment_id: enactment_id,
       flow_topic_id: flow_topic_id,
+      flow_name: flow_name,
       state: state_kind,
       version: version,
       markings_count: length(markings),
@@ -1097,6 +1099,70 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           :error -> nil
         end
     end
+  end
+
+  # Mirrors `FlowCatalogStore.seeded_name_for/1` / `EnactmentListStore.@seed_by_cpnet`
+  # so the detail page can render the operator-facing flow name in its H1.
+  # Default (Ecto) backend reads `Schemas.Flow.name` for the joined row;
+  # InMemory backend matches the cpnet against the four seeded modules.
+  # Returns `nil` when neither path can resolve a name — the page falls
+  # back to a generic "Enactment" title.
+  @seeded_flow_modules [
+    ColouredFlowDashboard.Seeds.ApprovalFlow,
+    ColouredFlowDashboard.Seeds.IncidentTriageFlow,
+    ColouredFlowDashboard.Seeds.PiAgentFlow,
+    ColouredFlowDashboard.Seeds.TrafficLightFlow
+  ]
+
+  defp resolve_flow_name(enactment_id, flow_cache)
+       when is_binary(enactment_id) and is_atom(flow_cache) do
+    case Storage.__storage__() do
+      ColouredFlow.Runner.Storage.InMemory ->
+        resolve_flow_name_in_memory(enactment_id, flow_cache)
+
+      _default ->
+        resolve_flow_name_default(enactment_id)
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp resolve_flow_name_default(enactment_id) do
+    if repo_configured?() do
+      query =
+        from(e in Schemas.Enactment,
+          join: f in Schemas.Flow,
+          on: f.id == e.flow_id,
+          where: e.id == ^enactment_id,
+          select: f.name
+        )
+
+      case ColouredFlowDashboard.Repo.one(query) do
+        nil -> nil
+        name when is_binary(name) -> name
+      end
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp resolve_flow_name_in_memory(enactment_id, flow_cache) do
+    case :ets.whereis(flow_cache) do
+      :undefined ->
+        nil
+
+      _table ->
+        case TelemetryBridge.lookup_cpnet(enactment_id, flow_cache) do
+          {:ok, %ColouredPetriNet{} = cpnet} -> seeded_name_for(cpnet)
+          :error -> nil
+        end
+    end
+  end
+
+  defp seeded_name_for(%ColouredPetriNet{} = cpnet) do
+    Enum.find_value(@seeded_flow_modules, fn mod ->
+      if mod.cpnet() == cpnet, do: mod.__cpn__(:name)
+    end)
   end
 
   # ---------------------------------------------------------------------------

@@ -250,7 +250,7 @@ function DetailBody({ catalog, flowId }: { catalog: CatalogProxy; flowId: string
         title={displayName}
         breadcrumbs={[
           { label: "Flows", to: "/flows" },
-          { label: displayName }
+          { label: shortId(flowId) }
         ]}
         subtitle={
           <span className="text-xs text-cf-ink-muted">
@@ -261,7 +261,13 @@ function DetailBody({ catalog, flowId }: { catalog: CatalogProxy; flowId: string
           </span>
         }
         byline={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <code
+              className="text-xs text-cf-ink-muted"
+              data-testid="flow-detail-id-byline"
+            >
+              {shortId(flowId)}
+            </code>
             {displayVersion ? (
               <Badge variant="outline" className="text-[10px]">
                 v{displayVersion}
