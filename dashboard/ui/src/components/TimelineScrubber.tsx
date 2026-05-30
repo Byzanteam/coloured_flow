@@ -297,7 +297,7 @@ export default function TimelineScrubber({
         <label className="flex items-center gap-1.5">
           <span className="sr-only">Playback speed</span>
           <select
-            className="h-7 rounded-md border border-cf-border bg-cf-surface px-2 text-xs text-cf-ink tabular-nums focus:border-cf-accent focus:outline-none disabled:opacity-50"
+            className="h-8 rounded-md border border-cf-border bg-cf-surface px-2 text-xs font-medium text-cf-ink tabular-nums transition-colors hover:border-cf-border-strong disabled:cursor-not-allowed disabled:opacity-50"
             value={speed}
             onChange={(event) => setSpeed(event.target.value as SpeedKey)}
             disabled={disabled}

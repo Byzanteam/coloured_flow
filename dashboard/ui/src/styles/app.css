@@ -187,10 +187,12 @@ body {
 
 /* Global focus ring fallback. Kumo primitives ship their own focus styles,
  * but native controls (range / select / anchors) need an explicit ring so
- * keyboard operators can always tell where focus sits in either palette. */
+ * keyboard operators can always tell where focus sits in either palette.
+ * `border-radius` is intentionally omitted — `outline` already follows the
+ * element's own radius in every modern engine, and forcing 4px here would
+ * morph rounded-full pills into squared corners on focus. */
 *:focus-visible {
   outline: 2px solid var(--color-cf-accent-ink);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 

@@ -258,15 +258,6 @@ function DetailContent({
         actions={<ActionBar detail={detail} state={state} />}
       />
 
-      <TimelineScrubber
-        range={versionRange}
-        liveVersion={summary?.version ?? 0}
-        replayState={replayState}
-        onScrub={onScrub}
-        onExit={onExitReplay}
-        isPending={replayCmd.isPending || exitReplayCmd.isPending}
-      />
-
       {state === "exception" ? (
         <div data-testid="detail-exception-banner">
           <Banner
@@ -276,6 +267,16 @@ function DetailContent({
           />
         </div>
       ) : null}
+
+      <TimelineScrubber
+        range={versionRange}
+        liveVersion={summary?.version ?? 0}
+        replayState={replayState}
+        onScrub={onScrub}
+        onExit={onExitReplay}
+        isPending={replayCmd.isPending || exitReplayCmd.isPending}
+      />
+
 
       {embed ? null : (
         <MetricsRow
@@ -966,6 +967,14 @@ function TelemetryRow({
       <Table.Row
         data-testid={`telemetry-row-${row.id}`}
         onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            onToggle()
+          }
+        }}
+        tabIndex={0}
+        role="button"
         aria-expanded={expanded}
         className="cursor-pointer"
       >

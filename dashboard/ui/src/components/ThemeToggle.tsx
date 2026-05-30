@@ -75,22 +75,25 @@ export default function ThemeToggle() {
   }, [theme])
 
   const next: Theme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark"
-  const label =
+  const ariaLabel =
     theme === "dark"
-      ? "Switch to light theme"
+      ? "Switch theme to light"
       : theme === "light"
-        ? "Use system theme"
-        : "Switch to dark theme"
+        ? "Switch theme to system"
+        : "Switch theme to dark"
+  // Title carries the full cycle (current → next, in order) so a hovering
+  // operator can predict every click without trial-and-error.
+  const title = `Theme: ${theme}. Cycle: system → dark → light → system. Click for ${next}.`
 
   return (
     <button
       type="button"
       onClick={() => setTheme(next)}
-      aria-label={label}
-      title={label}
+      aria-label={ariaLabel}
+      title={title}
       data-testid="theme-toggle"
       data-theme-current={theme}
-      className="flex items-center gap-2 rounded-md border border-cf-border bg-cf-surface px-2.5 py-1.5 text-xs text-cf-ink-muted hover:text-cf-ink"
+      className="flex items-center gap-2 rounded-md border border-cf-border bg-cf-surface px-2.5 py-1.5 text-xs text-cf-ink-muted transition-colors hover:text-cf-ink"
     >
       {theme === "dark" ? (
         <SunIcon size={14} weight="bold" aria-hidden />
