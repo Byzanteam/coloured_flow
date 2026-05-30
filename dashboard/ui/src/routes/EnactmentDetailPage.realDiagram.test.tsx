@@ -61,11 +61,7 @@ const { sampleSnapshot } = vi.hoisted(() => {
 })
 
 vi.mock("../musubi", () => ({
-  useMusubiRoot: vi.fn().mockReturnValue({
-    status: "ready",
-    store: { __mock: "detail-proxy" },
-    error: null
-  }),
+  useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "detail-proxy" }),
   useMusubiSnapshot: vi.fn().mockReturnValue(sampleSnapshot),
   useMusubiCommand: vi.fn().mockReturnValue({
     dispatch: vi.fn(),

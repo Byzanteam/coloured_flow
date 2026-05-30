@@ -133,11 +133,7 @@ vi.mock("../components/NetDiagram", () => ({
 }))
 
 vi.mock("../musubi", () => ({
-  useMusubiRoot: vi.fn().mockReturnValue({
-    status: "ready",
-    store: { __mock: "detail-proxy" },
-    error: null
-  }),
+  useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "detail-proxy" }),
   useMusubiSnapshot: vi.fn().mockReturnValue(sampleSnapshot),
   useMusubiCommand: vi.fn().mockImplementation((_proxy: unknown, name: string) => {
     const dispatch =

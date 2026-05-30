@@ -9,7 +9,7 @@ import { Toasty } from "@cloudflare/kumo"
 // ---------------------------------------------------------------------------
 //
 // The Inbox page consumes the musubi react surface (`useMusubiSnapshot`,
-// `useMusubiRoot`, `useMusubiCommand`). We stub those so the test renders
+// `useMusubiRootSuspense`, `useMusubiCommand`). We stub those so the test renders
 // synchronously without a real socket.
 
 type OutputVar = ColouredFlowDashboardWeb.Views.OutputVar
@@ -88,11 +88,7 @@ function loadSnapshot(row: WorkitemRow) {
 }
 
 vi.mock("../musubi", () => ({
-  useMusubiRoot: vi.fn().mockReturnValue({
-    status: "ready",
-    store: { __mock: "inbox-proxy" },
-    error: null
-  }),
+  useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "inbox-proxy" }),
   useMusubiSnapshot: (...args: unknown[]) => snapshotMock(...args),
   useMusubiCommand: () => ({
     dispatch: dispatchMock,

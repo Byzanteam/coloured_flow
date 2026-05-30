@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  Component,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from "react"
 import { useParams } from "react-router-dom"
 import {
   Badge,
@@ -12,9 +20,9 @@ import {
   Text,
   useKumoToastManager
 } from "@cloudflare/kumo"
-import type { MusubiRootMount } from "@musubi/react"
+import type { StoreProxy } from "@musubi/react"
 
-import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
+import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
@@ -34,8 +42,7 @@ type BindingCandidate = ColouredFlowDashboardWeb.Views.BindingCandidate
 type TransitionDebugInfo = ColouredFlowDashboardWeb.Views.TransitionDebugInfo
 type EnactmentSummary = ColouredFlowDashboardWeb.Views.EnactmentSummary
 
-type DetailRootMount = MusubiRootMount<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
-type DetailProxy = NonNullable<Extract<DetailRootMount, { status: "ready" }>["store"]>
+type DetailProxy = StoreProxy<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
 
 type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 
@@ -47,10 +54,6 @@ const TAB_ITEMS = [
   { value: "debug", label: "Debug" }
 ] as const
 
-// `useMusubiRoot` (commit-phase effect) instead of `useMusubiRootSuspense`
-// (render-phase throw + setTimeout(0) orphan sweep) — the latter spin-loops
-// against React 19 passive-effect scheduling on @musubi/react@0.6.0.
-// See `InboxPage.tsx` for the full analysis.
 export default function EnactmentDetailPage() {
   const { id } = useParams<"id">()
 
@@ -67,25 +70,39 @@ export default function EnactmentDetailPage() {
     )
   }
 
-  return <DetailRoot enactmentId={id} />
+  return (
+    <DetailBoundary enactmentId={id} fallback={<DetailFallback enactmentId={id} />}>
+      <DetailRoot enactmentId={id} />
+    </DetailBoundary>
+  )
 }
 
 function DetailRoot({ enactmentId }: { enactmentId: string }) {
-  const root = useMusubiRoot({
+  const detail = useMusubiRootSuspense({
     module: ENACTMENT_DETAIL_STORE,
     id: enactmentId,
     params: { id: enactmentId }
   })
 
-  if (root.status === "error") {
-    return <DetailError enactmentId={enactmentId} message={root.error.message} />
+  return <DetailContent detail={detail} enactmentId={enactmentId} />
+}
+
+type DetailBoundaryProps = { enactmentId: string; fallback: ReactNode; children: ReactNode }
+type DetailBoundaryState = { error: Error | null }
+
+class DetailBoundary extends Component<DetailBoundaryProps, DetailBoundaryState> {
+  state: DetailBoundaryState = { error: null }
+
+  static getDerivedStateFromError(error: unknown): DetailBoundaryState {
+    return { error: error instanceof Error ? error : new Error(String(error)) }
   }
 
-  if (root.status !== "ready") {
-    return <DetailFallback enactmentId={enactmentId} />
+  render() {
+    if (this.state.error) {
+      return <DetailError enactmentId={this.props.enactmentId} message={this.state.error.message} />
+    }
+    return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>
   }
-
-  return <DetailContent detail={root.store} enactmentId={enactmentId} />
 }
 
 function DetailFallback({ enactmentId }: { enactmentId: string }) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { Component, type ReactNode, Suspense, useEffect, useMemo, useState } from "react"
 import {
   Banner,
   Button,
@@ -13,8 +13,8 @@ import {
 } from "@cloudflare/kumo"
 import { TrayIcon } from "@phosphor-icons/react"
 import { Link } from "react-router-dom"
-import type { MusubiRootMount } from "@musubi/react"
-import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
+import type { StoreProxy } from "@musubi/react"
+import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
@@ -24,31 +24,37 @@ const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
 type WorkitemRow = ColouredFlowDashboardWeb.Views.WorkitemRow
 type OutputVar = ColouredFlowDashboardWeb.Views.OutputVar
-type InboxRootMount = MusubiRootMount<typeof INBOX_STORE, Musubi.Stores>
-type InboxProxy = NonNullable<Extract<InboxRootMount, { status: "ready" }>["store"]>
+type InboxProxy = StoreProxy<typeof INBOX_STORE, Musubi.Stores>
 
-// The page deliberately avoids `useMusubiRootSuspense` — @musubi/react@0.6.0
-// schedules an orphan-sweep on every Suspense throw that races React 19's
-// passive-effect flush. When the sweep wins, it tears down the mount, the
-// re-render re-suspends, and the page spins at ~50% CPU pushing
-// mount/unmount/mount/unmount over the WS. `useMusubiRoot` mounts inside a
-// commit-phase effect and has no sweep, so the loop is impossible.
 export default function InboxPage() {
-  const root = useMusubiRoot({ module: INBOX_STORE, id: "default" })
-
-  if (root.status === "error") {
-    return <InboxShell><InboxError message={root.error.message} /></InboxShell>
-  }
-
-  if (root.status !== "ready") {
-    return <InboxShell><InboxFallback /></InboxShell>
-  }
-
   return (
     <InboxShell>
-      <InboxContent inbox={root.store} />
+      <StoreBoundary fallback={<InboxFallback />}>
+        <InboxRoot />
+      </StoreBoundary>
     </InboxShell>
   )
+}
+
+function InboxRoot() {
+  const inbox = useMusubiRootSuspense({ module: INBOX_STORE, id: "default" })
+  return <InboxContent inbox={inbox} />
+}
+
+type StoreBoundaryProps = { fallback: ReactNode; children: ReactNode }
+type StoreBoundaryState = { error: Error | null }
+
+class StoreBoundary extends Component<StoreBoundaryProps, StoreBoundaryState> {
+  state: StoreBoundaryState = { error: null }
+
+  static getDerivedStateFromError(error: unknown): StoreBoundaryState {
+    return { error: error instanceof Error ? error : new Error(String(error)) }
+  }
+
+  render() {
+    if (this.state.error) return <InboxError message={this.state.error.message} />
+    return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>
+  }
 }
 
 function InboxShell({ children }: { children: React.ReactNode }) {

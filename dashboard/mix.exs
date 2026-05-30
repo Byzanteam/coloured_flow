@@ -29,7 +29,7 @@ defmodule ColouredFlowDashboard.MixProject do
   defp deps do
     [
       {:coloured_flow, path: ".."},
-      {:musubi, "~> 0.6"},
+      {:musubi, "~> 0.6.1"},
       {:phoenix, "~> 1.8.5"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
