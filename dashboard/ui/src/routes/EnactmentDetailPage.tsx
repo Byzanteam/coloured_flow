@@ -335,7 +335,7 @@ function DetailContent({
           className="flex min-w-0 flex-col gap-4 lg:basis-2/5 lg:flex-1"
           data-testid="detail-tabs-pane"
         >
-          <div className="border-b border-cf-border">
+          <div className="overflow-x-auto border-b border-cf-border">
             <Tabs
               variant="underline"
               tabs={TAB_ITEMS as unknown as Array<{ value: string; label: string }>}
