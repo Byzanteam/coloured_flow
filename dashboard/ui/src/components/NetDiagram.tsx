@@ -61,10 +61,13 @@ export default function NetDiagram({ diagram, enactmentState = "running" }: NetD
   if (isEmpty) {
     return (
       <div
-        className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-cf-ink-muted"
+        className="flex h-full min-h-[320px] flex-col items-center justify-center gap-1 px-6 text-center"
         data-testid="net-diagram-empty"
       >
-        Net definition unavailable yet — the bridge will populate it shortly.
+        <span className="text-sm text-cf-ink-muted">Waiting for net definition</span>
+        <span className="text-xs text-cf-ink-faint">
+          The diagram appears once the first telemetry event lands.
+        </span>
       </div>
     )
   }
@@ -82,7 +85,7 @@ export default function NetDiagram({ diagram, enactmentState = "running" }: NetD
         defaultEdgeOptions={{ style: DEFAULT_EDGE_STYLE, markerEnd: DEFAULT_MARKER }}
         proOptions={{ hideAttribution: true }}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.12, minZoom: 0.4, maxZoom: 1.5 }}
       >
         <Background gap={18} size={1} color="var(--color-cf-border)" />
         <Controls showInteractive={false} />
@@ -109,7 +112,14 @@ function buildGraph(
 
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: "LR", nodesep: 80, ranksep: 120, marginx: 20, marginy: 20 })
+  const tight = places.length + transitions.length <= 6
+  g.setGraph({
+    rankdir: "LR",
+    nodesep: tight ? 48 : 80,
+    ranksep: tight ? 72 : 120,
+    marginx: 20,
+    marginy: 20
+  })
 
   for (const place of places) {
     g.setNode(placeId(place.name), { width: PLACE_W, height: PLACE_H })
@@ -199,8 +209,8 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
       title={tooltip}
       className="relative flex h-[96px] w-[96px] items-center justify-center rounded-full border bg-cf-surface text-center shadow-sm"
       style={{
-        borderColor: "var(--color-cf-border)",
-        borderWidth: 1.5
+        borderColor: hasTokens ? "var(--color-cf-accent)" : "var(--color-cf-border)",
+        borderWidth: hasTokens ? 2 : 1.5
       }}
       data-testid={`place-node-${data.name}`}
     >
@@ -211,6 +221,14 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
         isConnectable={false}
       />
       <div className="flex flex-col items-center gap-0.5 px-2">
+        {hasTokens ? (
+          <span
+            className="text-lg font-semibold leading-none tabular-nums text-cf-accent-ink"
+            data-testid={`place-tokens-${data.name}`}
+          >
+            {data.tokens_count}
+          </span>
+        ) : null}
         <span className="max-w-[80px] truncate text-xs font-medium text-cf-ink">
           {truncate(data.name, 12)}
         </span>
@@ -220,15 +238,6 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
           </span>
         ) : null}
       </div>
-      {hasTokens ? (
-        <span
-          className="absolute -right-1 -top-1 inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm"
-          style={{ background: "var(--color-cf-accent)" }}
-          data-testid={`place-tokens-${data.name}`}
-        >
-          {data.tokens_count}
-        </span>
-      ) : null}
       <Handle
         type="source"
         position={Position.Right}
@@ -250,9 +259,13 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
     return null
   }, [data.enactmentState, data.enabled_count])
 
+  const pulseColor =
+    data.enactmentState === "exception"
+      ? "var(--color-cf-dot-exception)"
+      : "var(--color-cf-accent)"
   const baseShadow = glow ? `0 0 0 4px color-mix(in oklab, ${glow} 25%, transparent)` : "none"
   const pulseShadow = pulsing
-    ? `0 0 0 6px color-mix(in oklab, var(--color-cf-accent) 30%, transparent)`
+    ? `0 0 0 6px color-mix(in oklab, ${pulseColor} 32%, transparent)`
     : null
 
   return (

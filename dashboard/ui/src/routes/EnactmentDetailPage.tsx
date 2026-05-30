@@ -150,31 +150,28 @@ function DetailContent({
         actions={<ActionBar detail={detail} />}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <LayerCard.Primary
-          className="overflow-hidden p-0 lg:col-span-3"
-          data-testid="net-diagram-card"
-        >
-          <div className="h-[480px] w-full">
-            <NetDiagram diagram={diagram} enactmentState={state} />
-          </div>
-        </LayerCard.Primary>
-        <div className="flex flex-col gap-3 lg:col-span-2">
-          <MetricsRow
-            items={[
-              { label: "Version", value: summary?.version ?? 0 },
-              { label: "Markings", value: summary?.markings_count ?? 0 },
-              { label: "Live workitems", value: summary?.workitems_count ?? 0 },
-              {
-                label: "Last occurrence",
-                value: summary?.last_occurrence_at
-                  ? formatTimestamp(summary.last_occurrence_at)
-                  : "—"
-              }
-            ]}
-          />
+      <MetricsRow
+        items={[
+          { label: "Version", value: summary?.version ?? 0 },
+          { label: "Markings", value: summary?.markings_count ?? 0 },
+          { label: "Live workitems", value: summary?.workitems_count ?? 0 },
+          {
+            label: "Last occurrence",
+            value: summary?.last_occurrence_at
+              ? formatTimestamp(summary.last_occurrence_at)
+              : "—"
+          }
+        ]}
+      />
+
+      <LayerCard.Primary
+        className="overflow-hidden p-0"
+        data-testid="net-diagram-card"
+      >
+        <div className="h-[440px] w-full">
+          <NetDiagram diagram={diagram} enactmentState={state} />
         </div>
-      </div>
+      </LayerCard.Primary>
 
       <div className="border-b border-cf-border">
         <Tabs
@@ -748,7 +745,7 @@ function DebugTab({
               toasts.add({
                 variant: "info",
                 title: "CPN definition unavailable",
-                description: "Bridge cache has no flow for this enactment yet.",
+                description: "Net definition has not loaded yet. Reload once telemetry arrives.",
                 timeout: 4000
               })
             }
@@ -771,7 +768,7 @@ function DebugTab({
       <Banner
         variant="default"
         title="No transitions to inspect"
-        description="The CPN definition is not yet available. Reload after the bridge caches it."
+        description="Transition list loads after the first telemetry event. Reload once the diagram appears above."
         data-testid="debug-empty"
       />
     )
