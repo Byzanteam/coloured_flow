@@ -9,7 +9,6 @@ defmodule ColouredFlowDashboard.SeedTest do
   # no cross-test `Application.put_env` leak.
   use ColouredFlowDashboard.DataCase, async: false
 
-  alias ColouredFlow.Runner.Enactment.Registry, as: EnactmentRegistry
   alias ColouredFlowDashboard.Seed
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
@@ -56,8 +55,12 @@ defmodule ColouredFlowDashboard.SeedTest do
         assert enactment_id = Seed.enactment_id(flow)
         assert is_binary(enactment_id)
 
-        assert [{_pid, _value}] =
-                 Registry.lookup(EnactmentRegistry, {:enactment, enactment_id})
+        # Look up via the registry's via-tuple instead of importing the
+        # internal Registry module (parity with Seed's `running?/1`).
+        via =
+          {:via, Registry, {ColouredFlow.Runner.Enactment.Registry, {:enactment, enactment_id}}}
+
+        assert is_pid(GenServer.whereis(via))
       end
     end
 

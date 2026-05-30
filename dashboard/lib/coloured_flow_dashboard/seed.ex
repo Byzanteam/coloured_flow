@@ -49,8 +49,7 @@ defmodule ColouredFlowDashboard.Seed do
   `enactment_id/1` extractor.
   """
 
-  alias ColouredFlow.Runner.Enactment.Registry
-  alias ColouredFlow.Runner.Enactment.Supervisor, as: EnactmentSupervisor
+  alias ColouredFlow.Runner
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.InMemory
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
@@ -126,18 +125,22 @@ defmodule ColouredFlowDashboard.Seed do
     with {:ok, flow_ref} <- insert_flow(flow_module),
          {:ok, enactment_id} <-
            insert_enactment(flow_ref, flow_module.__cpn__(:initial_markings)),
-         {:ok, _pid} <- EnactmentSupervisor.start_enactment(enactment_id) do
+         {:ok, _pid} <- Runner.start_enactment(enactment_id) do
       :persistent_term.put({__MODULE__, flow_module}, enactment_id)
       Logger.info("[#{inspect(__MODULE__)}] seeded #{inspect(flow_module)} → #{enactment_id}")
       :ok
     end
   end
 
+  # `GenServer.whereis/1` against the runner's registered via-tuple is the
+  # standard OTP lookup; the registry process name is the only public
+  # surface required and we avoid aliasing the runner's `@moduledoc false`
+  # Registry module.
   defp running?(enactment_id) do
-    case Elixir.Registry.lookup(Registry, {:enactment, enactment_id}) do
-      [] -> false
-      [{_pid, _value} | _rest] -> true
-    end
+    via =
+      {:via, Registry, {ColouredFlow.Runner.Enactment.Registry, {:enactment, enactment_id}}}
+
+    is_pid(GenServer.whereis(via))
   end
 
   # Returns a backend-specific opaque flow reference:

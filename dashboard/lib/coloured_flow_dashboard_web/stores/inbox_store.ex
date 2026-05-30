@@ -147,6 +147,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       |> assign(:workitem_meta, build_meta_index(rows))
       |> assign(:workitem_rows, build_row_index(rows))
       |> assign(:enactment_states, enactment_states)
+      |> assign(:last_seq, %{})
       |> assign(:counts, counts)
       |> stream(:workitems, rows, reset: true)
 
@@ -173,12 +174,39 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
   @impl Musubi.Store
   def handle_info({:cf_event, %Event{} = event}, socket) do
-    {:noreply, route_event(event, socket)}
+    # Per-enactment monotonic seq stamped by `TelemetryBridge` inside the
+    # runner's serialized `:telemetry.execute/3` call. Tasks then fan out
+    # asynchronously so a late `produce_workitems_stop` for the same
+    # enactment could otherwise resurrect a workitem already completed by
+    # a higher-seq event. Drop stale events here.
+    if stale?(event, socket) do
+      {:noreply, socket}
+    else
+      socket = bump_last_seq(socket, event)
+      {:noreply, route_event(event, socket)}
+    end
   end
 
   # Drop unrelated mailbox traffic — Phoenix.PubSub-adjacent stores can also
   # receive `:DOWN` and adapter probe messages.
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  defp stale?(%Event{enactment_id: eid, seq: seq}, socket)
+       when is_binary(eid) and is_integer(seq) and seq > 0 do
+    case Map.get(socket.assigns.last_seq, eid) do
+      nil -> false
+      prev when is_integer(prev) -> seq <= prev
+    end
+  end
+
+  defp stale?(%Event{}, _socket), do: false
+
+  defp bump_last_seq(socket, %Event{enactment_id: eid, seq: seq})
+       when is_binary(eid) and is_integer(seq) and seq > 0 do
+    assign(socket, :last_seq, Map.put(socket.assigns.last_seq, eid, seq))
+  end
+
+  defp bump_last_seq(socket, %Event{}), do: socket
 
   # ---------------------------------------------------------------------------
   # Mount-time seed
@@ -635,28 +663,38 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   defp ensure_map(map) when is_map(map), do: {:ok, map}
   defp ensure_map(_other), do: {:error, :invalid_outputs}
 
+  # Schema-strict — every key in `outputs_map` MUST match a free variable
+  # declared by the transition's `meta.schema`. `OutputSchemaBuilder.coerce_value/2`
+  # passes `nil` schemas through (used by the cpnet-introspection path when
+  # building the form hint), which would silently let an operator submit
+  # outputs the runner then drops. Reject unknown keys here so the SPA can
+  # surface a structured `:unknown_variable` reply and the operator gets
+  # actionable feedback instead of a false success.
   defp coerce_outputs(outputs_map, schema) when is_map(outputs_map) and is_map(schema) do
     Enum.reduce_while(outputs_map, {:ok, []}, fn {key, value}, {:ok, acc} ->
       key_str = to_string(key)
 
-      with {:ok, atom} <- to_existing_atom_safe(key),
-           {:ok, coerced} <- coerce_one(Map.get(schema, key_str), key_str, value) do
-        {:cont, {:ok, [{atom, coerced} | acc]}}
-      else
-        :error ->
-          {:halt, {:error, {:unknown_variable, key_str}}}
-
-        {:error, {:type_mismatch, expected}} ->
-          {:halt, {:error, {:type_mismatch, key_str, expected}}}
-
-        {:error, {:unknown_enum, value}} ->
-          {:halt, {:error, {:unknown_enum, key_str, value}}}
+      case Map.fetch(schema, key_str) do
+        {:ok, %OutputVar{} = var} -> coerce_known_key(key, key_str, value, var, acc)
+        :error -> {:halt, {:error, {:unknown_variable, key_str}}}
       end
     end)
   end
 
-  defp coerce_one(schema_var, _key, value) do
-    OutputSchemaBuilder.coerce_value(schema_var, value)
+  defp coerce_known_key(key, key_str, value, %OutputVar{} = var, acc) do
+    with {:ok, atom} <- to_existing_atom_safe(key),
+         {:ok, coerced} <- OutputSchemaBuilder.coerce_value(var, value) do
+      {:cont, {:ok, [{atom, coerced} | acc]}}
+    else
+      :error ->
+        {:halt, {:error, {:unknown_variable, key_str}}}
+
+      {:error, {:type_mismatch, expected}} ->
+        {:halt, {:error, {:type_mismatch, key_str, expected}}}
+
+      {:error, {:unknown_enum, value}} ->
+        {:halt, {:error, {:unknown_enum, key_str, value}}}
+    end
   end
 
   defp to_existing_atom_safe(key) when is_atom(key), do: {:ok, key}

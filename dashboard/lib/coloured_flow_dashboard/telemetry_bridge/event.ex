@@ -60,6 +60,16 @@ defmodule ColouredFlowDashboard.TelemetryBridge.Event do
     field :enactment_version, non_neg_integer(),
       doc: "Enactment version *after* the originating runner operation."
 
+    field :seq, non_neg_integer(),
+      default: 0,
+      enforce: false,
+      doc:
+        "Per-enactment monotonic dispatch sequence. Allocated synchronously inside " <>
+          "the runner's `:telemetry.execute/3` call so the ordering matches the runner's " <>
+          "GenServer reduction order. Consumers MUST drop events whose `seq` is less " <>
+          "than or equal to the highest seq already applied for the same `enactment_id`. " <>
+          "`0` marks an unscoped or test-constructed event — consumers treat it as always-fresh."
+
     field :occurred_at, DateTime.t(),
       doc: "Server timestamp the event was observed at (DateTime.utc_now/0 fallback)."
 

@@ -75,6 +75,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   @default_pubsub :coloured_flow_dashboard_pubsub
   @default_task_supervisor ColouredFlowDashboard.TaskSupervisor
   @default_flow_cache :coloured_flow_dashboard_telemetry_bridge_flow_cache
+  @default_seq_table :coloured_flow_dashboard_telemetry_bridge_seq
   @default_topic_prefix "cf:"
 
   @enactment_lifecycle_events ~w[start stop terminate exception take_snapshot]a
@@ -90,6 +91,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
           | {:task_supervisor, atom()}
           | {:topic_prefix, String.t()}
           | {:flow_cache, atom()}
+          | {:seq_table, atom()}
           | {:broadcast_fn, broadcast_fn()}
 
   @spec start_link([option()]) :: GenServer.on_start()
@@ -127,25 +129,19 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     task_supervisor = Keyword.get(opts, :task_supervisor, @default_task_supervisor)
     topic_prefix = Keyword.get(opts, :topic_prefix, @default_topic_prefix)
     flow_cache = Keyword.get(opts, :flow_cache, @default_flow_cache)
+    seq_table = Keyword.get(opts, :seq_table, @default_seq_table)
     broadcast_fn = Keyword.get(opts, :broadcast_fn, &Phoenix.PubSub.broadcast/3)
 
     # GenServer owns the ETS table so it dies with us (test cleanup is free).
     # `:public` lets the Task.Supervisor child write to it without going
     # through the GenServer.
-    flow_cache =
-      case :ets.whereis(flow_cache) do
-        :undefined ->
-          :ets.new(flow_cache, [
-            :set,
-            :public,
-            :named_table,
-            read_concurrency: true,
-            write_concurrency: true
-          ])
+    flow_cache = ensure_table(flow_cache)
 
-        _existing ->
-          flow_cache
-      end
+    # Per-enactment monotonic counter. `:ets.update_counter/4` is atomic and
+    # runs inline with the runner's `:telemetry.execute/3` call, so seq
+    # allocation inherits the runner GenServer's reduction order. Tasks then
+    # broadcast asynchronously; consumers use `seq` to drop late events.
+    seq_table = ensure_table(seq_table)
 
     config = %{
       handler_id: handler_id,
@@ -153,6 +149,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
       task_supervisor: task_supervisor,
       topic_prefix: topic_prefix,
       flow_cache: flow_cache,
+      seq_table: seq_table,
       broadcast_fn: broadcast_fn
     }
 
@@ -163,7 +160,23 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
     :ok = :telemetry.attach_many(handler_id, events(), &__MODULE__.handle_event/4, config)
 
-    {:ok, %{handler_id: handler_id, flow_cache: flow_cache}}
+    {:ok, %{handler_id: handler_id, flow_cache: flow_cache, seq_table: seq_table}}
+  end
+
+  defp ensure_table(name) do
+    case :ets.whereis(name) do
+      :undefined ->
+        :ets.new(name, [
+          :set,
+          :public,
+          :named_table,
+          read_concurrency: true,
+          write_concurrency: true
+        ])
+
+      _existing ->
+        name
+    end
   end
 
   @impl GenServer
@@ -191,17 +204,46 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   def handle_event(event_name, measurements, metadata, config) do
     # Defer EVERYTHING — shaping, flow lookup, broadcast — to the task. The
     # only work that runs inline with the runner's `:telemetry.execute/3` is
-    # the `start_child` call itself. Tests assert this ordering by injecting
-    # a blocking `:broadcast_fn`.
+    # the `start_child` call AND the `allocate_seq/2` atomic bump. Tests
+    # assert async-ness by injecting a blocking `:broadcast_fn`; the seq bump
+    # is bounded-time `:ets.update_counter/4` so it preserves the invariant.
+    seq = allocate_seq(metadata, config.seq_table)
+
     Task.Supervisor.start_child(config.task_supervisor, fn ->
-      dispatch(event_name, measurements, metadata, config)
+      dispatch(event_name, measurements, metadata, seq, config)
     end)
 
     :ok
   end
 
-  defp dispatch(event_name, measurements, metadata, config) do
-    case build_broadcasts(event_name, measurements, metadata, config) do
+  # `seq` is per-enactment monotonic. Allocating it inline (before the task
+  # fans out) means two events for the same enactment are stamped in the
+  # runner's serialized telemetry order even if their tasks then race. When
+  # `enactment_id` is missing the event is unscoped — return `0` and skip
+  # the staleness check on the consumer side; such events drop in
+  # `build_broadcasts/4` anyway.
+  defp allocate_seq(metadata, seq_table) do
+    case enactment_id_from_metadata(metadata) do
+      nil -> 0
+      eid -> :ets.update_counter(seq_table, eid, 1, {eid, 0})
+    end
+  end
+
+  defp enactment_id_from_metadata(metadata) do
+    case Map.get(metadata, :enactment_state) do
+      %RunnerEnactment{enactment_id: eid} ->
+        eid
+
+      _other ->
+        case Map.get(metadata, :enactment_id) do
+          eid when is_binary(eid) -> eid
+          _missing -> nil
+        end
+    end
+  end
+
+  defp dispatch(event_name, measurements, metadata, seq, config) do
+    case build_broadcasts(event_name, measurements, metadata, seq, config) do
       [] -> :ok
       broadcasts -> deliver_broadcasts(config, broadcasts)
     end
@@ -217,12 +259,14 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
           :telemetry.event_name(),
           :telemetry.event_measurements(),
           :telemetry.event_metadata(),
+          pos_integer(),
           map()
         ) :: [{String.t(), Event.t()}]
   defp build_broadcasts(
          [:coloured_flow, :runner, :enactment, lifecycle] = event_name,
          measurements,
          metadata,
+         seq,
          config
        )
        when lifecycle in @enactment_lifecycle_events do
@@ -231,7 +275,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
         kind = lifecycle_kind(lifecycle)
         payload = lifecycle_payload(lifecycle, metadata)
 
-        broadcasts(state, kind, occurred_at(measurements), payload, config)
+        broadcasts(state, kind, occurred_at(measurements), payload, seq, config)
 
       _missing ->
         log_missing_state(event_name, metadata)
@@ -243,6 +287,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
          [:coloured_flow, :runner, :enactment, operation, op_event] = event_name,
          measurements,
          metadata,
+         seq,
          config
        )
        when operation in @workitem_operations and op_event in @workitem_op_events do
@@ -251,7 +296,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
         kind = workitem_kind(operation, op_event)
         payload = workitem_payload(operation, op_event, metadata)
 
-        broadcasts(state, kind, occurred_at(measurements), payload, config)
+        broadcasts(state, kind, occurred_at(measurements), payload, seq, config)
 
       _missing ->
         log_missing_state(event_name, metadata)
@@ -259,7 +304,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     end
   end
 
-  defp build_broadcasts(_event_name, _measurements, _metadata, _config), do: []
+  defp build_broadcasts(_event_name, _measurements, _metadata, _seq, _config), do: []
 
   # Compile-time atom tables keep the runtime kind lookup off the
   # `:erlang.binary_to_atom/2` path that credo flags as unsafe.
@@ -271,11 +316,12 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     defp workitem_kind(unquote(op), unquote(ev)), do: unquote(:"#{op}_#{ev}")
   end
 
-  defp broadcasts(%RunnerEnactment{} = state, kind, occurred_at, payload, config) do
+  defp broadcasts(%RunnerEnactment{} = state, kind, occurred_at, payload, seq, config) do
     common = %{
       kind: kind,
       enactment_id: state.enactment_id,
       enactment_version: state.version,
+      seq: seq,
       occurred_at: occurred_at,
       payload: payload,
       markings_summary: markings_summary(state.markings),

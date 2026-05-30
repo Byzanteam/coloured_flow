@@ -471,6 +471,24 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStoreTest do
                })
     end
 
+    # Schema-strict: even an existing atom (e.g. `:x` from `var x :: int()`)
+    # that is NOT part of the transition's free-variable list must be
+    # rejected. Previously such keys slipped through `OutputSchemaBuilder.coerce_value(nil, ...)`
+    # and the runner silently dropped them — the dashboard reported `:ok`
+    # against malformed input.
+    test "unknown_variable when key is an existing atom outside the transition schema", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      # `:x` is loaded by the cpnet via `var x :: int()` so the atom exists,
+      # but the `pass` transition has zero free output vars (schema is `%{}`).
+      assert {:ok, %{code: :unknown_variable, variable: "x"}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{"x" => 42}
+               })
+    end
+
     test "invalid_outputs when outputs is not a map", %{
       page: page,
       workitem_id: workitem_id

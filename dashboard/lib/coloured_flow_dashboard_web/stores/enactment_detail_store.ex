@@ -125,11 +125,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
   alias ColouredFlow.MultiSet
+  alias ColouredFlow.Runner
   alias ColouredFlow.Runner.Enactment, as: RunnerEnactment
   alias ColouredFlow.Runner.Enactment.CatchingUp
-  alias ColouredFlow.Runner.Enactment.Registry, as: EnactmentRegistry
   alias ColouredFlow.Runner.Enactment.Snapshot
-  alias ColouredFlow.Runner.Enactment.Supervisor, as: EnactmentSupervisor
   alias ColouredFlow.Runner.Enactment.Workitem, as: RunnerWorkitem
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.Schemas
@@ -309,6 +308,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:replay_marking_index, nil)
       |> assign(:enabled_workitems, enabled_workitems)
       |> assign(:transition_fired_at, %{})
+      |> assign(:last_seq, 0)
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
       |> stream(:markings, markings, reset: true)
       |> stream(:workitems, workitems, reset: true)
@@ -337,22 +337,44 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   @impl Musubi.Store
   def handle_info({:cf_event, %Event{} = event}, socket) do
-    if event.enactment_id == socket.assigns.enactment_id do
-      socket =
-        event
-        |> route_event(socket)
-        |> append_telemetry(event)
-        |> maybe_refresh_transitions()
-        |> apply_diagram_event(event)
-        |> refresh_diagram()
+    cond do
+      event.enactment_id != socket.assigns.enactment_id ->
+        {:noreply, socket}
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
+      # Per-enactment monotonic seq stamped by `TelemetryBridge` inside the
+      # runner's serialized `:telemetry.execute/3` call. Tasks may then
+      # reorder during fan-out; a late `produce_workitems_stop` arriving
+      # after `complete_workitems_stop` for the same enactment would
+      # otherwise resurrect a finished workitem and roll `summary.version`
+      # backward. Drop stale events here.
+      stale?(event, socket) ->
+        {:noreply, socket}
+
+      true ->
+        socket =
+          socket
+          |> bump_last_seq(event)
+          |> then(&route_event(event, &1))
+          |> append_telemetry(event)
+          |> maybe_refresh_transitions()
+          |> apply_diagram_event(event)
+          |> refresh_diagram()
+
+        {:noreply, socket}
     end
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  defp stale?(%Event{seq: seq}, socket) when is_integer(seq) and seq > 0,
+    do: seq <= socket.assigns.last_seq
+
+  defp stale?(%Event{}, _socket), do: false
+
+  defp bump_last_seq(socket, %Event{seq: seq}) when is_integer(seq) and seq > 0,
+    do: assign(socket, :last_seq, seq)
+
+  defp bump_last_seq(socket, %Event{}), do: socket
 
   # ---------------------------------------------------------------------------
   # Commands
@@ -447,7 +469,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           workitems: state.workitems |> Map.values() |> Enum.map(&workitem_row(&1, enactment_id)),
           occurrences: seed_occurrences(enactment_id),
           version: state.version,
-          state: :running
+          # A live GenServer does NOT imply `:running`. The runner row can be
+          # `:exception` (crash-threshold flip) while a pid still answers
+          # `:sys.get_state/2` between exception write and supervisor
+          # teardown. Reuse the same authoritative read the retry preflight
+          # uses so the badge matches the persisted lifecycle field.
+          state: lifecycle_state(enactment_id)
         }
 
       {:fallback, reason} ->
@@ -460,6 +487,18 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     end
   end
 
+  # Authoritative lifecycle read used by both the mount-time seed and the
+  # `:retry_enactment` preflight. Same code path as
+  # `authoritative_enactment_state/1`, but degraded to `:running` on
+  # `:not_found` / DB errors so a transient outage cannot hide a live
+  # enactment from the detail view.
+  defp lifecycle_state(enactment_id) do
+    case authoritative_enactment_state(enactment_id) do
+      {:ok, state} -> state
+      {:error, _reason} -> :running
+    end
+  end
+
   defp seed_from_storage(enactment_id) do
     if repo_configured?() do
       {markings, version} = read_storage_markings(enactment_id)
@@ -469,7 +508,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         workitems: read_storage_workitems(enactment_id),
         occurrences: seed_occurrences(enactment_id),
         version: version,
-        state: read_storage_state(enactment_id)
+        state: lifecycle_state(enactment_id)
       }
     else
       Logger.warning(
@@ -482,9 +521,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   defp peek_live_enactment(enactment_id) do
-    via = EnactmentRegistry.via_name({:enactment, enactment_id})
-
-    case GenServer.whereis(via) do
+    case GenServer.whereis(enactment_via(enactment_id)) do
       nil -> {:fallback, :no_proc}
       pid when is_pid(pid) -> {:ok, :sys.get_state(pid, @peek_timeout_ms)}
     end
@@ -492,6 +529,17 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     :exit, {:timeout, _info} -> {:fallback, :timeout}
     :exit, {:noproc, _info} -> {:fallback, :no_proc}
     :exit, reason -> {:fallback, {:exit, reason}}
+  end
+
+  # The runner registers enactment GenServers under
+  # `ColouredFlow.Runner.Enactment.Registry` with key `{:enactment, id}`. The
+  # registry process name is public (it's a named child of the runner's
+  # supervision tree); the wrapping `via` tuple is a standard OTP construct.
+  # We use it instead of aliasing the runner's internal `Registry` module so
+  # the dashboard stays off the `@moduledoc false` surface while still being
+  # able to look up running enactments via the public `GenServer.whereis/1`.
+  defp enactment_via(enactment_id) when is_binary(enactment_id) do
+    {:via, Registry, {ColouredFlow.Runner.Enactment.Registry, {:enactment, enactment_id}}}
   end
 
   defp read_storage_markings(enactment_id) do
@@ -521,15 +569,6 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       :end_of_stream -> []
       {workitems, _cursor} -> Enum.map(workitems, &schema_workitem_row(&1, enactment_id))
     end
-  end
-
-  defp read_storage_state(enactment_id) do
-    case ColouredFlowDashboard.Repo.get(Schemas.Enactment, enactment_id) do
-      %Schemas.Enactment{state: state} -> state
-      nil -> :running
-    end
-  rescue
-    _error -> :running
   end
 
   # Storage exposes only `occurrences_stream(enactment_id, from)`, which
@@ -951,7 +990,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp force_terminate_reply(enactment_id, reason) when is_binary(enactment_id) do
     message = if reason == "", do: "operator-triggered", else: reason
 
-    case EnactmentSupervisor.terminate_enactment(enactment_id, message: message) do
+    case Runner.terminate_enactment(enactment_id, message: message) do
       :ok -> %{code: :ok}
     end
   catch
@@ -1411,9 +1450,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   defp take_snapshot_reply(enactment_id) do
-    via = EnactmentRegistry.via_name({:enactment, enactment_id})
-
-    case GenServer.whereis(via) do
+    case GenServer.whereis(enactment_via(enactment_id)) do
       nil ->
         %{code: :not_running}
 
@@ -1442,7 +1479,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp do_retry_enactment(enactment_id) do
     :ok = Storage.retry_enactment(enactment_id, message: "operator-triggered")
 
-    case EnactmentSupervisor.start_enactment(enactment_id) do
+    case Runner.start_enactment(enactment_id) do
       {:ok, _pid} -> %{code: :ok}
       {:error, reason} -> %{code: :runner_error, message: inspect(reason)}
     end

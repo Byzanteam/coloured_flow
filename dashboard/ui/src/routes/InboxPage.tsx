@@ -44,7 +44,11 @@ export default function InboxPage() {
     return <InboxShell><InboxFallback /></InboxShell>
   }
 
-  return <InboxContent inbox={root.store} />
+  return (
+    <InboxShell>
+      <InboxContent inbox={root.store} />
+    </InboxShell>
+  )
 }
 
 function InboxShell({ children }: { children: React.ReactNode }) {
@@ -88,9 +92,7 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
   }, [workitems, drawerRow])
 
   return (
-    <section className="flex flex-col gap-6">
-      <PageHeader title="Inbox" subtitle="Live workitems across every enactment" />
-
+    <>
       {embed ? null : (
         <MetricsRow
           items={[
@@ -114,7 +116,7 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
         row={drawerRow}
         onClose={() => setDrawerRow(null)}
       />
-    </section>
+    </>
   )
 }
 
