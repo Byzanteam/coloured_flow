@@ -21,6 +21,12 @@ config :coloured_flow, ColouredFlow.Runner.Storage,
   storage: ColouredFlow.Runner.Storage.InMemory,
   repo: ColouredFlowDashboard.Repo
 
+# Disable the boot-time enactment resumer in tests. Most tests do not want a
+# real sweep pinging Storage at app start; the dedicated
+# `ColouredFlowDashboard.EnactmentResumerTest` starts the GenServer
+# explicitly with `enabled: true`.
+config :coloured_flow_dashboard, :resume_enactments, false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :coloured_flow_dashboard, ColouredFlowDashboardWeb.Endpoint,

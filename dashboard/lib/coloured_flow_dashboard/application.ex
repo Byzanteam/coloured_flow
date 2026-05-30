@@ -5,9 +5,12 @@ defmodule ColouredFlowDashboard.Application do
   Boots the Phoenix endpoint, the shared `ColouredFlowDashboard.Repo`, the
   Phoenix.PubSub instance named `:coloured_flow_dashboard_pubsub`, the
   `ColouredFlowDashboard.TaskSupervisor` task pool, the
-  `ColouredFlowDashboard.TelemetryBridge` runner-events fan-out, and the
-  `ColouredFlow.Runner.Supervisor` from the parent `coloured_flow` library so
-  enactments come up under our supervision tree.
+  `ColouredFlowDashboard.TelemetryBridge` runner-events fan-out, the
+  `ColouredFlow.Runner.Supervisor` from the parent `coloured_flow` library
+  so enactments come up under our supervision tree, and the one-shot
+  `ColouredFlowDashboard.EnactmentResumer` which adopts already-persisted
+  `:running` enactment rows back into the live Runner supervisor on boot
+  (disabled in tests via the `:resume_enactments` config switch).
 
   When the runner storage is configured to
   `ColouredFlow.Runner.Storage.InMemory` (used in tests), the in-memory ETS
@@ -36,6 +39,7 @@ defmodule ColouredFlowDashboard.Application do
         storage_children() ++
         [
           ColouredFlow.Runner.Supervisor,
+          Supervisor.child_spec(ColouredFlowDashboard.EnactmentResumer, restart: :temporary),
           ColouredFlowDashboardWeb.Endpoint
         ]
 
