@@ -3,8 +3,49 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
+/*
+ * ColouredFlow dashboard tokens. Layered on top of Kumo's `--color-kumo-*`
+ * theme so the Banner / Table / Tabs / Dialog primitives stay on-brand while
+ * the shell (canvas, sidebar, page chrome) uses dashboard-specific surfaces.
+ *
+ * Strategy: restrained. Tinted cool-neutrals (hue 260) + one warm accent
+ * (clay, hue 38) used as ~10% of surface. State signal lives in 8px dots,
+ * never row backgrounds or side stripes.
+ *
+ * Tailwind v4 auto-generates `bg-cf-*`, `text-cf-*`, `border-cf-*` utilities
+ * from `--color-cf-*`. Reference these instead of hex literals.
+ */
+@theme {
+  --color-cf-canvas: oklch(0.975 0.004 260);
+  --color-cf-surface: oklch(0.995 0.002 260);
+  --color-cf-surface-tint: oklch(0.955 0.006 260);
+  --color-cf-border: oklch(0.92 0.006 260);
+  --color-cf-border-strong: oklch(0.86 0.008 260);
+
+  --color-cf-ink: oklch(0.205 0.012 260);
+  --color-cf-ink-muted: oklch(0.52 0.008 260);
+  --color-cf-ink-faint: oklch(0.68 0.006 260);
+
+  --color-cf-accent: oklch(0.56 0.13 38);
+  --color-cf-accent-tint: oklch(0.955 0.024 38);
+  --color-cf-accent-ink: oklch(0.42 0.13 38);
+
+  --color-cf-dot-enabled: oklch(0.66 0.12 150);
+  --color-cf-dot-started: oklch(0.74 0.14 80);
+  --color-cf-dot-terminated: oklch(0.7 0.006 260);
+  --color-cf-dot-exception: oklch(0.62 0.18 22);
+
+  --color-cf-pill-bg: oklch(0.185 0.012 260);
+  --color-cf-pill-ink: oklch(0.985 0.002 260);
+}
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+body {
+  background: var(--color-cf-canvas);
+  color: var(--color-cf-ink);
 }

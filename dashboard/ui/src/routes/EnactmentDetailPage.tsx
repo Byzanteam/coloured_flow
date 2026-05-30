@@ -15,6 +15,8 @@ import type { MusubiRootMount } from "@musubi/react"
 
 import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
+import PageHeader from "../components/PageHeader"
+import MetricsRow from "../components/MetricsRow"
 
 const ENACTMENT_DETAIL_STORE =
   "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore" as const
@@ -49,10 +51,8 @@ export default function EnactmentDetailPage() {
 
   if (!id) {
     return (
-      <section className="flex flex-col gap-4">
-        <Text variant="heading1" as="h1">
-          Enactment
-        </Text>
+      <section className="flex flex-col gap-6">
+        <PageHeader title="Enactment" />
         <Banner
           variant="error"
           title="Missing enactment id"
@@ -85,21 +85,25 @@ function DetailRoot({ enactmentId }: { enactmentId: string }) {
 
 function DetailFallback({ enactmentId }: { enactmentId: string }) {
   return (
-    <section className="flex flex-col gap-4">
-      <Text variant="heading1" as="h1">
-        Enactment {shortId(enactmentId)}
-      </Text>
-      <Text variant="secondary">Loading enactment detail…</Text>
+    <section className="flex flex-col gap-6">
+      <PageHeader
+        title="Enactment"
+        byline={<code className="text-xs text-cf-ink-muted">{enactmentId}</code>}
+      />
+      <LayerCard.Primary className="px-6 py-10">
+        <Text variant="secondary">Loading enactment detail…</Text>
+      </LayerCard.Primary>
     </section>
   )
 }
 
 function DetailError({ enactmentId, message }: { enactmentId: string; message: string }) {
   return (
-    <section className="flex flex-col gap-4">
-      <Text variant="heading1" as="h1">
-        Enactment {shortId(enactmentId)}
-      </Text>
+    <section className="flex flex-col gap-6">
+      <PageHeader
+        title="Enactment"
+        byline={<code className="text-xs text-cf-ink-muted">{enactmentId}</code>}
+      />
       <Banner variant="error" title="Detail unavailable" description={message} />
     </section>
   )
@@ -128,92 +132,79 @@ function DetailContent({
     [occurrences]
   )
 
-  return (
-    <section className="flex flex-col gap-4">
-      <Header summary={summary} enactmentId={enactmentId} />
-      <ActionBar detail={detail} />
+  const state = summary?.state ?? "running"
 
-      <Tabs
-        tabs={TAB_ITEMS as unknown as Array<{ value: string; label: string }>}
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as TabId)}
+  return (
+    <section className="flex flex-col gap-6">
+      <PageHeader
+        title="Enactment"
+        byline={
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="text-xs text-cf-ink-muted">{enactmentId}</code>
+            <StateBadge state={state} />
+          </div>
+        }
+        actions={<ActionBar detail={detail} />}
       />
 
-      {activeTab === "markings" && <MarkingsTab rows={markings} />}
-      {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
-      {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
-      {activeTab === "telemetry" && (
-        <TelemetryTab
-          rows={telemetry}
-          state={summary?.state ?? "running"}
-          lastExceptionBanner={summary?.last_exception_banner ?? null}
+      <MetricsRow
+        items={[
+          { label: "Version", value: summary?.version ?? 0 },
+          { label: "Markings", value: summary?.markings_count ?? 0 },
+          { label: "Live workitems", value: summary?.workitems_count ?? 0 },
+          {
+            label: "Last occurrence",
+            value: summary?.last_occurrence_at
+              ? formatTimestamp(summary.last_occurrence_at)
+              : "—"
+          }
+        ]}
+      />
+
+      <div className="border-b border-cf-border">
+        <Tabs
+          variant="underline"
+          tabs={TAB_ITEMS as unknown as Array<{ value: string; label: string }>}
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as TabId)}
         />
-      )}
-      {activeTab === "debug" && (
-        <DebugTab detail={detail} transitions={transitions} />
-      )}
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {activeTab === "markings" && <MarkingsTab rows={markings} />}
+        {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
+        {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
+        {activeTab === "telemetry" && (
+          <TelemetryTab
+            rows={telemetry}
+            state={state}
+            lastExceptionBanner={summary?.last_exception_banner ?? null}
+          />
+        )}
+        {activeTab === "debug" && (
+          <DebugTab detail={detail} transitions={transitions} />
+        )}
+      </div>
     </section>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Header
+// Status + summary
 // ---------------------------------------------------------------------------
 
-function Header({
-  summary,
-  enactmentId
-}: {
-  summary: EnactmentSummary | undefined
-  enactmentId: string
-}) {
-  const state = summary?.state ?? "running"
-  const version = summary?.version ?? 0
-  const markingsCount = summary?.markings_count ?? 0
-  const workitemsCount = summary?.workitems_count ?? 0
-
-  return (
-    <LayerCard className="flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <Text variant="heading1" as="h1">
-            Enactment
-          </Text>
-          <code className="text-xs">{enactmentId}</code>
-        </div>
-        <StateBadge state={state} />
-      </div>
-      <div className="flex flex-wrap items-center gap-4">
-        <SummaryStat label="Version" value={version} />
-        <SummaryStat label="Markings" value={markingsCount} />
-        <SummaryStat label="Live workitems" value={workitemsCount} />
-        <SummaryStat
-          label="Last occurrence"
-          value={summary?.last_occurrence_at ? formatTimestamp(summary.last_occurrence_at) : "—"}
-        />
-      </div>
-    </LayerCard>
-  )
-}
-
-function SummaryStat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <Text variant="secondary">{label}</Text>
-      <Text variant="body">{value}</Text>
-    </div>
-  )
-}
-
 function StateBadge({ state }: { state: "running" | "exception" | "terminated" }) {
-  switch (state) {
-    case "running":
-      return <Badge variant="info">running</Badge>
-    case "exception":
-      return <Badge variant="warning">exception</Badge>
-    case "terminated":
-      return <Badge variant="neutral">terminated</Badge>
-  }
+  const dotMap = {
+    running: "bg-cf-dot-enabled",
+    exception: "bg-cf-dot-exception",
+    terminated: "bg-cf-dot-terminated"
+  } as const
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-cf-border bg-cf-surface px-2 py-0.5 text-xs text-cf-ink">
+      <span className={`h-1.5 w-1.5 rounded-full ${dotMap[state]}`} />
+      {state}
+    </span>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +312,7 @@ function ActionBar({ detail }: { detail: DetailProxy }) {
   }
 
   return (
-    <LayerCard className="flex flex-wrap items-center justify-end gap-2 p-3">
+    <div className="flex items-center gap-1.5">
       <Button
         variant="secondary"
         size="sm"
@@ -357,7 +348,7 @@ function ActionBar({ detail }: { detail: DetailProxy }) {
             <div className="mt-4 flex flex-col gap-2">
               <Text variant="secondary">Termination reason (optional)</Text>
               <input
-                className="rounded border px-2 py-1"
+                className="rounded-md border border-cf-border bg-cf-surface px-3 py-2 text-sm text-cf-ink placeholder:text-cf-ink-faint focus:border-cf-accent focus:outline-none"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="e.g. stuck workitem, demo reset"
@@ -384,7 +375,7 @@ function ActionBar({ detail }: { detail: DetailProxy }) {
           </Dialog>
         ) : null}
       </Dialog.Root>
-    </LayerCard>
+    </div>
   )
 }
 
@@ -408,28 +399,32 @@ function MarkingsTab({ rows }: { rows: readonly MarkingRow[] }) {
           description="The enactment currently has no tokens on any place."
         />
       ) : (
-        <Table>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>Place</Table.Head>
-              <Table.Head className="text-right">Tokens</Table.Head>
-              <Table.Head>Summary</Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {rows.map((row) => (
-              <Table.Row key={row.place}>
-                <Table.Cell>
-                  <code className="text-xs">{row.place}</code>
-                </Table.Cell>
-                <Table.Cell className="text-right">{row.tokens_count}</Table.Cell>
-                <Table.Cell>
-                  <code className="text-xs">{row.tokens_summary || "—"}</code>
-                </Table.Cell>
+        <LayerCard.Primary className="overflow-hidden p-0">
+          <Table>
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>Place</Table.Head>
+                <Table.Head className="text-right">Tokens</Table.Head>
+                <Table.Head>Summary</Table.Head>
               </Table.Row>
-            ))}
-          </Table.Body>
-        </Table>
+            </Table.Header>
+            <Table.Body>
+              {rows.map((row) => (
+                <Table.Row key={row.place}>
+                  <Table.Cell>
+                    <code className="text-xs text-cf-ink">{row.place}</code>
+                  </Table.Cell>
+                  <Table.Cell className="text-right">{row.tokens_count}</Table.Cell>
+                  <Table.Cell>
+                    <code className="text-xs text-cf-ink-muted">
+                      {row.tokens_summary || "—"}
+                    </code>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        </LayerCard.Primary>
       )}
     </div>
   )
@@ -447,28 +442,44 @@ function WorkitemsTab({ rows }: { rows: readonly WorkitemRow[] }) {
   }
 
   return (
-    <Table>
-      <Table.Header>
-        <Table.Row>
-          <Table.Head>Transition</Table.Head>
-          <Table.Head>State</Table.Head>
-          <Table.Head>Binding</Table.Head>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {rows.map((row) => (
-          <Table.Row key={row.id}>
-            <Table.Cell>{row.transition}</Table.Cell>
-            <Table.Cell>
-              <Badge variant={row.state === "started" ? "warning" : "info"}>{row.state}</Badge>
-            </Table.Cell>
-            <Table.Cell>
-              <code className="text-xs">{row.binding_summary || "—"}</code>
-            </Table.Cell>
+    <LayerCard.Primary className="overflow-hidden p-0">
+      <Table>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>Transition</Table.Head>
+            <Table.Head>State</Table.Head>
+            <Table.Head>Binding</Table.Head>
           </Table.Row>
-        ))}
-      </Table.Body>
-    </Table>
+        </Table.Header>
+        <Table.Body>
+          {rows.map((row) => (
+            <Table.Row key={row.id}>
+              <Table.Cell>
+                <span className="font-medium text-cf-ink">{row.transition}</span>
+              </Table.Cell>
+              <Table.Cell>
+                <WorkitemStateDot state={row.state} />
+              </Table.Cell>
+              <Table.Cell>
+                <code className="text-xs text-cf-ink-muted">
+                  {row.binding_summary || "—"}
+                </code>
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table>
+    </LayerCard.Primary>
+  )
+}
+
+function WorkitemStateDot({ state }: { state: "enabled" | "started" }) {
+  const dot = state === "started" ? "bg-cf-dot-started" : "bg-cf-dot-enabled"
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-cf-ink">
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {state}
+    </span>
   )
 }
 
@@ -484,39 +495,53 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
   }
 
   return (
-    <Table>
-      <Table.Header>
-        <Table.Row>
-          <Table.Head className="text-right">
-            <abbr
-              title="Per-mount stable index; not a persistent identifier. May shift across reloads."
-              className="cursor-help no-underline"
-            >
-              Position
-            </abbr>
-          </Table.Head>
-          <Table.Head>Transition</Table.Head>
-          <Table.Head>Binding</Table.Head>
-          <Table.Head>Outputs</Table.Head>
-          <Table.Head>At</Table.Head>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {rows.map((row) => (
-          <Table.Row key={row.id}>
-            <Table.Cell className="text-right">{row.step_number}</Table.Cell>
-            <Table.Cell>{row.transition}</Table.Cell>
-            <Table.Cell>
-              <code className="text-xs">{row.binding_summary || "—"}</code>
-            </Table.Cell>
-            <Table.Cell>
-              <code className="text-xs">{row.outputs_summary || "—"}</code>
-            </Table.Cell>
-            <Table.Cell>{row.occurred_at ? formatTimestamp(row.occurred_at) : "—"}</Table.Cell>
+    <LayerCard.Primary className="overflow-hidden p-0">
+      <Table>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head className="text-right">
+              <abbr
+                title="Per-mount stable index; not a persistent identifier. May shift across reloads."
+                className="cursor-help no-underline"
+              >
+                Position
+              </abbr>
+            </Table.Head>
+            <Table.Head>Transition</Table.Head>
+            <Table.Head>Binding</Table.Head>
+            <Table.Head>Outputs</Table.Head>
+            <Table.Head>At</Table.Head>
           </Table.Row>
-        ))}
-      </Table.Body>
-    </Table>
+        </Table.Header>
+        <Table.Body>
+          {rows.map((row) => (
+            <Table.Row key={row.id}>
+              <Table.Cell className="text-right tabular-nums text-cf-ink-muted">
+                {row.step_number}
+              </Table.Cell>
+              <Table.Cell>
+                <span className="font-medium text-cf-ink">{row.transition}</span>
+              </Table.Cell>
+              <Table.Cell>
+                <code className="text-xs text-cf-ink-muted">
+                  {row.binding_summary || "—"}
+                </code>
+              </Table.Cell>
+              <Table.Cell>
+                <code className="text-xs text-cf-ink-muted">
+                  {row.outputs_summary || "—"}
+                </code>
+              </Table.Cell>
+              <Table.Cell>
+                <span className="text-xs text-cf-ink-muted">
+                  {row.occurred_at ? formatTimestamp(row.occurred_at) : "—"}
+                </span>
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table>
+    </LayerCard.Primary>
   )
 }
 
@@ -570,26 +595,28 @@ function TelemetryTab({
           description="No telemetry events yet for this enactment."
         />
       ) : (
-        <Table>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>At</Table.Head>
-              <Table.Head>Kind</Table.Head>
-              <Table.Head>Severity</Table.Head>
-              <Table.Head>Summary</Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {orderedRows.map((row) => (
-              <TelemetryRow
-                key={row.id}
-                row={row}
-                expanded={expanded === row.id}
-                onToggle={() => setExpanded(expanded === row.id ? null : row.id)}
-              />
-            ))}
-          </Table.Body>
-        </Table>
+        <LayerCard.Primary className="overflow-hidden p-0">
+          <Table>
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>At</Table.Head>
+                <Table.Head>Kind</Table.Head>
+                <Table.Head>Severity</Table.Head>
+                <Table.Head>Summary</Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {orderedRows.map((row) => (
+                <TelemetryRow
+                  key={row.id}
+                  row={row}
+                  expanded={expanded === row.id}
+                  onToggle={() => setExpanded(expanded === row.id ? null : row.id)}
+                />
+              ))}
+            </Table.Body>
+          </Table>
+        </LayerCard.Primary>
       )}
     </div>
   )
@@ -611,12 +638,14 @@ function TelemetryRow({
         onClick={onToggle}
         className="cursor-pointer"
       >
-        <Table.Cell>{formatTimestamp(row.at)}</Table.Cell>
         <Table.Cell>
-          <Badge variant="neutral">{row.kind}</Badge>
+          <span className="text-xs text-cf-ink-muted">{formatTimestamp(row.at)}</span>
         </Table.Cell>
         <Table.Cell>
-          <SeverityBadge severity={row.severity} />
+          <code className="text-xs text-cf-ink">{row.kind}</code>
+        </Table.Cell>
+        <Table.Cell>
+          <SeverityDot severity={row.severity} />
         </Table.Cell>
         <Table.Cell>{row.summary || "—"}</Table.Cell>
       </Table.Row>
@@ -624,7 +653,7 @@ function TelemetryRow({
         <Table.Row>
           <Table.Cell colSpan={4}>
             <pre
-              className="overflow-x-auto whitespace-pre-wrap rounded border bg-neutral-50 p-2 text-xs"
+              className="overflow-x-auto whitespace-pre-wrap rounded-md border border-cf-border bg-cf-canvas p-3 text-xs text-cf-ink"
               data-testid={`telemetry-payload-${row.id}`}
             >
               {row.payload_json}
@@ -636,15 +665,18 @@ function TelemetryRow({
   )
 }
 
-function SeverityBadge({ severity }: { severity: "info" | "warning" | "error" }) {
-  switch (severity) {
-    case "error":
-      return <Badge variant="error">error</Badge>
-    case "warning":
-      return <Badge variant="warning">warning</Badge>
-    case "info":
-      return <Badge variant="info">info</Badge>
-  }
+function SeverityDot({ severity }: { severity: "info" | "warning" | "error" }) {
+  const dotMap = {
+    info: "bg-cf-dot-enabled",
+    warning: "bg-cf-dot-started",
+    error: "bg-cf-dot-exception"
+  } as const
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-cf-ink">
+      <span className={`h-1.5 w-1.5 rounded-full ${dotMap[severity]}`} />
+      {severity}
+    </span>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -731,8 +763,8 @@ function DebugTab({
   }
 
   return (
-    <div className="flex flex-col gap-3" data-testid="debug-tab">
-      <LayerCard className="flex flex-wrap items-center gap-2 p-3">
+    <div className="flex flex-col gap-4" data-testid="debug-tab">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-cf-border bg-cf-surface p-3">
         <Text variant="secondary">Transition</Text>
         {transitions.map((name) => (
           <Button
@@ -746,7 +778,7 @@ function DebugTab({
             {name}
           </Button>
         ))}
-      </LayerCard>
+      </div>
 
       {info ? <DebugInfoCard info={info} /> : null}
 
@@ -759,28 +791,36 @@ function DebugTab({
             data-testid="debug-no-candidates"
           />
         ) : (
-          <Table>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head>Status</Table.Head>
-                <Table.Head>Binding</Table.Head>
-                <Table.Head>Reason</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {candidates.map((row, index) => (
-                <Table.Row key={`${row.transition}-${index}`}>
-                  <Table.Cell>
-                    <GuardStatusBadge status={row.guard_status} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <code className="text-xs">{row.binding_summary || "—"}</code>
-                  </Table.Cell>
-                  <Table.Cell>{row.reason ?? "—"}</Table.Cell>
+          <LayerCard.Primary className="overflow-hidden p-0">
+            <Table>
+              <Table.Header>
+                <Table.Row>
+                  <Table.Head>Status</Table.Head>
+                  <Table.Head>Binding</Table.Head>
+                  <Table.Head>Reason</Table.Head>
                 </Table.Row>
-              ))}
-            </Table.Body>
-          </Table>
+              </Table.Header>
+              <Table.Body>
+                {candidates.map((row, index) => (
+                  <Table.Row key={`${row.transition}-${index}`}>
+                    <Table.Cell>
+                      <GuardStatusBadge status={row.guard_status} />
+                    </Table.Cell>
+                    <Table.Cell>
+                      <code className="text-xs text-cf-ink-muted">
+                        {row.binding_summary || "—"}
+                      </code>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs text-cf-ink-muted">
+                        {row.reason ?? "—"}
+                      </span>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table>
+          </LayerCard.Primary>
         )
       ) : null}
     </div>
@@ -789,14 +829,17 @@ function DebugTab({
 
 function DebugInfoCard({ info }: { info: TransitionDebugInfo }) {
   return (
-    <LayerCard className="flex flex-wrap items-center gap-3 p-3" data-testid="debug-info-card">
-      <Text variant="secondary">{info.transition}</Text>
+    <div
+      className="flex flex-wrap items-center gap-3 rounded-xl border border-cf-border bg-cf-surface p-3"
+      data-testid="debug-info-card"
+    >
+      <span className="font-medium text-cf-ink">{info.transition}</span>
       <Badge variant="neutral">candidates {info.candidates_count}</Badge>
       <Badge variant="info">enabled {info.enabled_count}</Badge>
       <Badge variant="warning">guard {info.rejected_by_guard_count}</Badge>
       <Badge variant="error">arc_eval {info.rejected_by_arc_eval_count}</Badge>
       <Badge variant="error">marking {info.rejected_by_marking_count}</Badge>
-    </LayerCard>
+    </div>
   )
 }
 
@@ -820,10 +863,6 @@ function GuardStatusBadge({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function shortId(id: string): string {
-  return id.length > 8 ? `${id.slice(0, 8)}…` : id
-}
 
 function formatTimestamp(iso: string): string {
   try {

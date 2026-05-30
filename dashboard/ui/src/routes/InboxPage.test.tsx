@@ -49,6 +49,11 @@ vi.mock("../musubi", () => ({
     error: null,
     data: null,
     reset: vi.fn()
+  }),
+  // The redesigned PageHeader renders a live connection pill via this hook.
+  useMusubiConnectionStatus: vi.fn().mockReturnValue({
+    state: "ready",
+    connection: { __mock: "connection" }
   })
 }))
 

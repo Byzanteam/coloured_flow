@@ -10,9 +10,12 @@ import {
   Textarea,
   useKumoToastManager
 } from "@cloudflare/kumo"
+import { TrayIcon } from "@phosphor-icons/react"
 import type { MusubiRootMount } from "@musubi/react"
 import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
+import PageHeader from "../components/PageHeader"
+import MetricsRow from "../components/MetricsRow"
 
 const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
@@ -30,36 +33,35 @@ export default function InboxPage() {
   const root = useMusubiRoot({ module: INBOX_STORE, id: "default" })
 
   if (root.status === "error") {
-    return <InboxError message={root.error.message} />
+    return <InboxShell><InboxError message={root.error.message} /></InboxShell>
   }
 
   if (root.status !== "ready") {
-    return <InboxFallback />
+    return <InboxShell><InboxFallback /></InboxShell>
   }
 
   return <InboxContent inbox={root.store} />
 }
 
-function InboxFallback() {
+function InboxShell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
-      <Text variant="heading1" as="h1">
-        Inbox
-      </Text>
-      <Text variant="secondary">Loading live workitems…</Text>
+    <section className="flex flex-col gap-6">
+      <PageHeader title="Inbox" subtitle="Live workitems across every enactment" />
+      {children}
     </section>
   )
 }
 
-function InboxError({ message }: { message: string }) {
+function InboxFallback() {
   return (
-    <section className="flex flex-col gap-4">
-      <Text variant="heading1" as="h1">
-        Inbox
-      </Text>
-      <Banner variant="error" title="Inbox unavailable" description={message} />
-    </section>
+    <LayerCard.Primary className="px-6 py-10">
+      <Text variant="secondary">Loading live workitems…</Text>
+    </LayerCard.Primary>
   )
+}
+
+function InboxError({ message }: { message: string }) {
+  return <Banner variant="error" title="Inbox unavailable" description={message} />
 }
 
 function InboxContent({ inbox }: { inbox: InboxProxy }) {
@@ -81,67 +83,24 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
   }, [workitems, drawerRow])
 
   return (
-    <section className="flex flex-col gap-4">
-      <header className="flex items-center justify-between">
-        <Text variant="heading1" as="h1">
-          Inbox
-        </Text>
-        <Text variant="secondary">{workitems.length} live workitems</Text>
-      </header>
+    <section className="flex flex-col gap-6">
+      <PageHeader title="Inbox" subtitle="Live workitems across every enactment" />
 
-      <LayerCard className="flex flex-wrap items-center gap-3 p-4">
-        <CountBadge label="Enabled" value={counts.enabled} tone="info" />
-        <CountBadge label="Started" value={counts.started} tone="warning" />
-        <CountBadge label="Enactments" value={enactmentCount} tone="neutral" />
-      </LayerCard>
+      <MetricsRow
+        items={[
+          { label: "Enabled", value: counts.enabled },
+          { label: "Started", value: counts.started },
+          { label: "Enactments", value: enactmentCount }
+        ]}
+      />
 
-      {workitems.length === 0 ? (
-        <Banner
-          variant="default"
-          title="No live workitems"
-          description="As enactments fire, their pending workitems appear here."
-        />
-      ) : (
-        <Table>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>Transition</Table.Head>
-              <Table.Head>Enactment</Table.Head>
-              <Table.Head>State</Table.Head>
-              <Table.Head>Binding</Table.Head>
-              <Table.Head>Enabled at</Table.Head>
-              <Table.Head className="text-right">Action</Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {workitems.map((row) => (
-              <Table.Row key={row.id}>
-                <Table.Cell>{row.transition}</Table.Cell>
-                <Table.Cell>
-                  <code className="text-xs">{shortId(row.enactment_id)}</code>
-                </Table.Cell>
-                <Table.Cell>
-                  <StateBadge state={row.state} />
-                </Table.Cell>
-                <Table.Cell>
-                  <code className="text-xs">{row.binding_summary || "—"}</code>
-                </Table.Cell>
-                <Table.Cell>{formatTimestamp(row.enabled_at)}</Table.Cell>
-                <Table.Cell className="text-right">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    aria-label={`Open outputs drawer for workitem ${row.id}`}
-                    onClick={() => setDrawerRow(row)}
-                  >
-                    Action ▸
-                  </Button>
-                </Table.Cell>
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table>
-      )}
+      <LayerCard.Primary className="overflow-hidden p-0">
+        {workitems.length === 0 ? (
+          <InboxEmpty />
+        ) : (
+          <InboxTable rows={workitems} onOpen={setDrawerRow} />
+        )}
+      </LayerCard.Primary>
 
       <OutputsDrawer
         inbox={inbox}
@@ -152,19 +111,90 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
   )
 }
 
-type Tone = "info" | "warning" | "neutral"
-
-function CountBadge({ label, value, tone }: { label: string; value: number; tone: Tone }) {
+function InboxEmpty() {
   return (
-    <div className="flex items-center gap-2">
-      <Text variant="secondary">{label}</Text>
-      <Badge variant={tone}>{value}</Badge>
+    <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+      <div className="grid h-10 w-10 place-items-center rounded-full bg-cf-surface-tint text-cf-ink-muted">
+        <TrayIcon size={18} />
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-cf-ink">No live workitems</p>
+        <p className="text-xs text-cf-ink-muted">
+          Pending workitems appear here as enactments fire.
+        </p>
+      </div>
     </div>
   )
 }
 
-function StateBadge({ state }: { state: "enabled" | "started" }) {
-  return <Badge variant={state === "started" ? "warning" : "info"}>{state}</Badge>
+function InboxTable({
+  rows,
+  onOpen
+}: {
+  rows: readonly WorkitemRow[]
+  onOpen: (row: WorkitemRow) => void
+}) {
+  return (
+    <Table>
+      <Table.Header>
+        <Table.Row>
+          <Table.Head>Transition</Table.Head>
+          <Table.Head>Enactment</Table.Head>
+          <Table.Head>State</Table.Head>
+          <Table.Head>Binding</Table.Head>
+          <Table.Head>Enabled at</Table.Head>
+          <Table.Head className="text-right">Action</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {rows.map((row) => (
+          <Table.Row key={row.id}>
+            <Table.Cell>
+              <span className="font-medium text-cf-ink">{row.transition}</span>
+            </Table.Cell>
+            <Table.Cell>
+              <code className="text-xs text-cf-ink-muted">
+                {shortId(row.enactment_id)}
+              </code>
+            </Table.Cell>
+            <Table.Cell>
+              <StateDot state={row.state} />
+            </Table.Cell>
+            <Table.Cell>
+              <code className="text-xs text-cf-ink-muted">
+                {row.binding_summary || "—"}
+              </code>
+            </Table.Cell>
+            <Table.Cell>
+              <span className="text-xs text-cf-ink-muted">
+                {formatTimestamp(row.enabled_at)}
+              </span>
+            </Table.Cell>
+            <Table.Cell className="text-right">
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label={`Open outputs drawer for workitem ${row.id}`}
+                onClick={() => onOpen(row)}
+              >
+                Open
+              </Button>
+            </Table.Cell>
+          </Table.Row>
+        ))}
+      </Table.Body>
+    </Table>
+  )
+}
+
+function StateDot({ state }: { state: "enabled" | "started" }) {
+  const dot = state === "started" ? "bg-cf-dot-started" : "bg-cf-dot-enabled"
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-cf-ink">
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {state}
+    </span>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -315,10 +345,10 @@ function OutputsDrawerBody({
 
       <div className="mt-4 flex flex-col gap-4">
         <DetailRow label="Enactment">
-          <code className="text-xs">{shortId(row.enactment_id)}</code>
+          <code className="text-xs text-cf-ink-muted">{shortId(row.enactment_id)}</code>
         </DetailRow>
         <DetailRow label="State">
-          <StateBadge state={row.state} />
+          <StateDot state={row.state} />
         </DetailRow>
         <DetailRow label="Expected variables">
           <ExpectedVars vars={row.output_vars ?? []} />
