@@ -1,7 +1,10 @@
 defmodule ColouredFlowDashboardWeb.FallbackController do
   @moduledoc """
-  Catch-all for unmatched `/api/*` routes — returns a JSON 404 so the SPA
-  shell only ever leaks back through the browser scope.
+  Catch-all for unmatched `/socket/*` plain-HTTP requests — returns a JSON
+  404 so the SPA shell only ever leaks back through the browser scope.
+  The Phoenix Socket transports are mounted at the endpoint level and run
+  before the router; this controller only handles plain HTTP that did not
+  match a transport.
   """
 
   use ColouredFlowDashboardWeb, :controller

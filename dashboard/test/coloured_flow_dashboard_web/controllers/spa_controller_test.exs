@@ -40,26 +40,4 @@ defmodule ColouredFlowDashboardWeb.SPAControllerTest do
       assert response_content_type(conn, :json)
     end
   end
-
-  describe "/api/* fallback" do
-    test "GET /api/foo returns JSON 404", %{conn: conn} do
-      conn =
-        conn
-        |> put_req_header("accept", "application/json")
-        |> get("/api/foo")
-
-      assert conn.status == 404
-      assert response_content_type(conn, :json)
-      assert Jason.decode!(conn.resp_body) == %{"errors" => %{"detail" => "Not Found"}}
-    end
-
-    test "POST /api/anything returns JSON 404", %{conn: conn} do
-      conn =
-        conn
-        |> put_req_header("accept", "application/json")
-        |> post("/api/anything", %{})
-
-      assert conn.status == 404
-    end
-  end
 end

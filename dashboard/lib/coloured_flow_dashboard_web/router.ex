@@ -19,14 +19,6 @@ defmodule ColouredFlowDashboardWeb.Router do
     match :*, "/*path", FallbackController, :not_found
   end
 
-  scope "/api", ColouredFlowDashboardWeb do
-    pipe_through :api
-
-    # Any unmatched /api/* path returns JSON 404 instead of falling through
-    # to the SPA shell. `match :*` covers every verb.
-    match :*, "/*path", FallbackController, :not_found
-  end
-
   scope "/", ColouredFlowDashboardWeb do
     pipe_through :browser
 

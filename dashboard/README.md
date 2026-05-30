@@ -62,9 +62,20 @@ telemetry events; the main `lib/coloured_flow/**` tree stays untouched.
 
 ```sh
 cd dashboard
-mix setup           # deps + DB migrate
+mix deps.get
+mix ecto.setup      # create DB + migrate + run priv/repo/seeds.exs
 mix phx.server      # boots Phoenix on :4000 (or PORT env)
 ```
+
+`mix phx.server` no longer auto-seeds. Booting against a fresh database
+brings the app up with zero flows and zero enactments; populate them via
+`mix ecto.setup` (one-shot) or `mix run priv/repo/seeds.exs` (re-runs
+against an existing DB). Both are idempotent — a second invocation
+reuses the existing rows rather than inserting duplicates.
+
+`mix ecto.reset` drops and recreates the dev DB end-to-end. To wipe the
+seed rows without losing the schema, use `mix cf.dashboard.reset_seed_db`
+(MIX_ENV=dev only) and then re-run the seeds script.
 
 The application uses the same Postgres database as the parent
 `coloured_flow` test suite. `Repo` is `ColouredFlowDashboard.Repo`;
@@ -75,14 +86,10 @@ The application uses the same Postgres database as the parent
 ```sh
 cd dashboard/ui
 pnpm install
-pnpm dev           # Vite on :4103, proxies /socket + /api to Phoenix :4000
+pnpm dev           # Vite on :4103, proxies /socket to Phoenix :4000
 ```
 
-### Seed demo flows
-
-`config :coloured_flow_dashboard, :seed_flows, true` (enabled in
-`dev.exs`, disabled in `test.exs` / `prod.exs`) inserts four demo flows
-on boot:
+### Demo flows seeded by `priv/repo/seeds.exs`
 
 | Flow                         | Role                                              |
 | ---------------------------- | ------------------------------------------------- |

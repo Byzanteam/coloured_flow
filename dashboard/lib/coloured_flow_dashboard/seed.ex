@@ -1,9 +1,9 @@
 defmodule ColouredFlowDashboard.Seed do
   @moduledoc """
-  Boots the demo flows on app start so an operator hitting `/` sees a live
-  workitem immediately (and Phase 9's end-to-end story is observable).
+  Inserts and starts the demo flows used by the dashboard's operator /
+  drawer / replay stories.
 
-  Currently seeds four demo flows:
+  Seeds four flows:
 
     * `ColouredFlowDashboard.Seeds.ApprovalFlow` — drives the binary-output
       drawer demo.
@@ -16,31 +16,24 @@ defmodule ColouredFlowDashboard.Seed do
       markings + atom-union colour sets, adapted from the
       `examples/pi_agent.livemd` ReAct net.
 
-  ## Gating
+  ## Invocation
 
-    * `config :coloured_flow_dashboard, :seed_flows, true` enables. Default
-      `false` (set explicitly in `config/prod.exs` for the audit trail and
-      omitted in `config/test.exs` so test suites stay quiet). Tests that
-      need the seed pass `Seed.run(enabled: true)` directly instead of
-      mutating the shared `:seed_flows` runtime config (per repo convention
-      on `Application.put_env`).
-    * `config :coloured_flow, ColouredFlow.Runner.Storage, repo: ...` must
-      be wired before `run/0` is invoked; otherwise the seed short-circuits
-      with a `:warning` log so the dashboard still boots.
+  Seeding is intentionally NOT wired into `Application.start/2` — booting
+  the OTP app must not side-effect the shared dev DB. Operators populate
+  the dev DB explicitly via the Ecto convention:
 
-  ## Idempotency
+      mix ecto.setup                  # create + migrate + run seeds
+      mix run priv/repo/seeds.exs     # re-run seeds against an existing DB
 
-  Within a single BEAM the seed runs at most once per flow: the resulting
-  enactment id is stashed in `:persistent_term` keyed by the flow module.
-  A second call observes the term, checks the registry, and skips.
+  `priv/repo/seeds.exs` is a thin wrapper that calls `run/1`.
 
-  Across BEAM restarts the term is gone, so `do_seed/1` falls back to
-  database lookups against `Schemas.Flow` (by `__cpn__(:name)`) and
-  `Schemas.Enactment` (by `flow_id`). If a row exists from a prior boot it
-  is reused — no fresh insert — and the runner's `start_enactment/1`
-  re-spawns the GenServer (replaying from snapshot/occurrences). This is
-  why the live dev DB does not accumulate one extra `Schemas.Flow` /
-  `Schemas.Enactment` row per `mix phx.server` boot.
+  ## Idempotency (DB is the source of truth)
+
+  Both `insert_flow/1` and `insert_enactment/2` look up existing rows by
+  `Schemas.Flow.name` / `Schemas.Enactment.flow_id` before inserting. A
+  second invocation of `run/1` against the same database reuses the rows
+  and re-spawns the runner GenServers — no duplicate rows accumulate per
+  invocation.
 
   ## Public-API deviation
 
@@ -77,77 +70,49 @@ defmodule ColouredFlowDashboard.Seed do
   alias ColouredFlowDashboard.Seeds.PiAgentFlow
   alias ColouredFlowDashboard.Seeds.TrafficLightFlow
 
+  require InMemory
   require Logger
 
   @seeded_flows [ApprovalFlow, IncidentTriageFlow, TrafficLightFlow, PiAgentFlow]
 
   @doc """
-  Insert + start every demo flow. Idempotent.
+  Insert + start every demo flow. Idempotent against the Default (Postgres)
+  backend — second invocation reuses rows.
 
-  ## Options
-
-    * `:enabled` — boolean override. Defaults to
-      `Application.get_env(:coloured_flow_dashboard, :seed_flows, false)`.
-      Tests pass `enabled: true` directly instead of mutating the shared
-      `:seed_flows` runtime config key (which would leak across the suite).
+  Options are accepted for backward compatibility with existing test
+  callers (`Seed.run(enabled: true)`); they are ignored. The function
+  always seeds when called.
   """
   @spec run(keyword()) :: :ok
-  def run(opts \\ []) do
-    enabled? =
-      Keyword.get_lazy(opts, :enabled, fn ->
-        Application.get_env(:coloured_flow_dashboard, :seed_flows, false)
-      end)
-
-    if enabled? do
-      Enum.each(@seeded_flows, &seed_flow/1)
-    end
-
+  def run(_opts \\ []) do
+    Enum.each(@seeded_flows, &seed_flow/1)
     :ok
   end
 
   @doc """
-  Returns the persistent_term enactment id for a seeded flow, or `nil` when
-  the flow has not been seeded in this BEAM. Used by tests + the inbox to
-  link the demo workitem back to its enactment.
+  Returns the enactment id that the seeded `flow_module` was registered
+  under, or `nil` if it has not been seeded against the current storage
+  backend.
+
+  Resolves via DB lookup — no in-process cache. On the Default backend it
+  joins `Schemas.Enactment ↔ Schemas.Flow` by `__cpn__(:name)`. On the
+  InMemory backend it walks the ETS `flow` table comparing the cached
+  `ColouredPetriNet` definition and then resolves the first matching
+  enactment.
   """
   @spec enactment_id(module()) :: String.t() | nil
   def enactment_id(flow_module) do
-    :persistent_term.get({__MODULE__, flow_module}, nil)
+    case Storage.__storage__() do
+      InMemory -> in_memory_enactment_id(flow_module)
+      _default -> default_enactment_id(flow_module)
+    end
   end
 
   defp seed_flow(flow_module) do
-    case enactment_id(flow_module) do
-      nil ->
-        do_seed(flow_module)
-
-      id when is_binary(id) ->
-        if running?(id) do
-          :ok
-        else
-          do_seed(flow_module)
-        end
-    end
-  rescue
-    # Storage may not be configured (Repo missing in a host that mounted
-    # the dashboard without wiring it). Log + swallow so the OTP boot
-    # sequence continues — the dashboard's other supervised children
-    # still come up.
-    error ->
-      Logger.warning(fn ->
-        "[#{inspect(__MODULE__)}] seed for #{inspect(flow_module)} failed: " <>
-          Exception.message(error)
-      end)
-
-      :ok
-  end
-
-  defp do_seed(flow_module) do
     with {:ok, flow_ref, flow_status} <- insert_flow(flow_module),
          {:ok, enactment_id, enactment_status} <-
            insert_enactment(flow_ref, flow_module.__cpn__(:initial_markings)),
          {:ok, _pid} <- Runner.start_enactment(enactment_id) do
-      :persistent_term.put({__MODULE__, flow_module}, enactment_id)
-
       verb =
         if flow_status == :reused and enactment_status == :reused do
           "reused"
@@ -160,17 +125,6 @@ defmodule ColouredFlowDashboard.Seed do
     end
   end
 
-  # `GenServer.whereis/1` against the runner's registered via-tuple is the
-  # standard OTP lookup; the registry process name is the only public
-  # surface required and we avoid aliasing the runner's `@moduledoc false`
-  # Registry module.
-  defp running?(enactment_id) do
-    via =
-      {:via, Registry, {ColouredFlow.Runner.Enactment.Registry, {:enactment, enactment_id}}}
-
-    is_pid(GenServer.whereis(via))
-  end
-
   # Returns a backend-specific opaque flow reference plus an `:inserted |
   # :reused` status. `{:in_memory, flow_record}` (`InMemory.insert_enactment!/2`
   # wants the record) or `{:default, uuid_string}` (Default backend keys on
@@ -180,8 +134,13 @@ defmodule ColouredFlowDashboard.Seed do
 
     case Storage.__storage__() do
       InMemory ->
-        flow = InMemory.insert_flow!(cpnet)
-        {:ok, {:in_memory, flow}, :inserted}
+        case find_in_memory_flow(cpnet) do
+          {:ok, existing} ->
+            {:ok, {:in_memory, existing}, :reused}
+
+          :error ->
+            {:ok, {:in_memory, InMemory.insert_flow!(cpnet)}, :inserted}
+        end
 
       _default ->
         name = flow_module.__cpn__(:name)
@@ -199,9 +158,16 @@ defmodule ColouredFlowDashboard.Seed do
   end
 
   defp insert_enactment({:in_memory, flow_record}, initial_markings) do
-    require InMemory
-    enactment = InMemory.insert_enactment!(flow_record, initial_markings)
-    {:ok, InMemory.enactment(enactment, :id), :inserted}
+    flow_id = InMemory.flow(flow_record, :id)
+
+    case find_in_memory_enactment_by_flow(flow_id) do
+      {:ok, existing} ->
+        {:ok, InMemory.enactment(existing, :id), :reused}
+
+      :error ->
+        enactment = InMemory.insert_enactment!(flow_record, initial_markings)
+        {:ok, InMemory.enactment(enactment, :id), :inserted}
+    end
   end
 
   defp insert_enactment({:default, flow_id}, initial_markings) do
@@ -217,5 +183,54 @@ defmodule ColouredFlowDashboard.Seed do
       %Schemas.Enactment{} = existing ->
         {:ok, existing.id, :reused}
     end
+  end
+
+  defp default_enactment_id(flow_module) do
+    name = flow_module.__cpn__(:name)
+
+    query =
+      from e in Schemas.Enactment,
+        join: f in Schemas.Flow,
+        on: e.flow_id == f.id,
+        where: f.name == ^name,
+        select: e.id,
+        limit: 1
+
+    Repo.one(query)
+  end
+
+  defp in_memory_enactment_id(flow_module) do
+    cpnet = flow_module.cpnet()
+
+    with {:ok, flow_record} <- find_in_memory_flow(cpnet),
+         flow_id = InMemory.flow(flow_record, :id),
+         {:ok, enactment_record} <- find_in_memory_enactment_by_flow(flow_id) do
+      InMemory.enactment(enactment_record, :id)
+    else
+      :error -> nil
+    end
+  end
+
+  defp find_in_memory_flow(cpnet) do
+    find_in_table(Module.safe_concat(InMemory, "Flow"), fn record ->
+      InMemory.flow(record, :definition) == cpnet
+    end)
+  end
+
+  defp find_in_memory_enactment_by_flow(flow_id) do
+    find_in_table(Module.safe_concat(InMemory, "Enactment"), fn record ->
+      InMemory.enactment(record, :flow_id) == flow_id
+    end)
+  end
+
+  # `:ets.tab2list/1` raises `ArgumentError` when the named table does not
+  # exist yet (InMemory GenServer not started). Treat as "no seed".
+  defp find_in_table(table, predicate) do
+    case table |> :ets.tab2list() |> Enum.find(predicate) do
+      nil -> :error
+      record -> {:ok, record}
+    end
+  rescue
+    ArgumentError -> :error
   end
 end

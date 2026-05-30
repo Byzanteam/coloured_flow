@@ -6,7 +6,6 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
   use ColouredFlowDashboard.DataCase, async: false
 
   alias ColouredFlow.Runner.Storage.InMemory
-  alias ColouredFlowDashboard.Seed
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Stores.FlowCatalogStore
@@ -17,12 +16,6 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
 
   setup context do
     topic = "cf-test-#{discriminator(context)}:flows"
-
-    # Carry-over from `SeedTest`: scrub any `:persistent_term` left by an
-    # earlier suite so this test's run/1 path is independent. We do not
-    # actually seed via `Seed.run/1` here, but the test's :start_enactment
-    # paths share the same registry namespace.
-    cleanup_seed_persistent_terms()
 
     {:ok, topic: topic}
   end
@@ -230,18 +223,5 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
     InMemory |> Module.safe_concat("Enactment") |> :ets.tab2list() |> length()
   rescue
     _error -> 0
-  end
-
-  defp cleanup_seed_persistent_terms do
-    for flow <- [
-          ColouredFlowDashboard.Seeds.ApprovalFlow,
-          ColouredFlowDashboard.Seeds.IncidentTriageFlow,
-          ColouredFlowDashboard.Seeds.PiAgentFlow,
-          ColouredFlowDashboard.Seeds.TrafficLightFlow
-        ] do
-      :persistent_term.erase({Seed, flow})
-    end
-
-    :ok
   end
 end

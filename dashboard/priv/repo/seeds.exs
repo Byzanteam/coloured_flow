@@ -2,10 +2,12 @@
 #
 #     mix run priv/repo/seeds.exs
 #
-# Inside the script, you can read and write to any of your
-# repositories directly:
+# Inserts and starts the four demo flows used by the dashboard's operator,
+# drawer, replay, and presentation stories. Idempotent: a second run
+# reuses existing `Schemas.Flow` / `Schemas.Enactment` rows rather than
+# inserting duplicates.
 #
-#     ColouredFlowDashboard.Repo.insert!(%ColouredFlowDashboard.SomeSchema{})
-#
-# We recommend using the bang functions (`insert!`, `update!`
-# and so on) as they will fail if something goes wrong.
+# See `ColouredFlowDashboard.Seed` for the cross-backend insert details
+# and the public-API deviation notice.
+
+ColouredFlowDashboard.Seed.run()

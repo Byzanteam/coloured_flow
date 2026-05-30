@@ -13,6 +13,10 @@ defmodule ColouredFlowDashboard.Application do
   `ColouredFlow.Runner.Storage.InMemory` (used in tests), the in-memory ETS
   store is started ahead of `Runner.Supervisor` so enactments can resolve
   their flows.
+
+  Demo flows are NOT seeded on boot; populate the dev database explicitly via
+  `mix ecto.setup` (which runs `priv/repo/seeds.exs`) or
+  `mix run priv/repo/seeds.exs`.
   """
 
   use Application
@@ -37,17 +41,7 @@ defmodule ColouredFlowDashboard.Application do
 
     opts = [strategy: :one_for_one, name: ColouredFlowDashboard.Supervisor]
 
-    case Supervisor.start_link(children, opts) do
-      {:ok, _pid} = ok ->
-        # Seeds run *after* the supervision tree is up so
-        # `Runner.Enactment.Supervisor` is ready to receive children. Failure
-        # to seed logs a warning but does not block boot.
-        :ok = ColouredFlowDashboard.Seed.run()
-        ok
-
-      other ->
-        other
-    end
+    Supervisor.start_link(children, opts)
   end
 
   @impl Application

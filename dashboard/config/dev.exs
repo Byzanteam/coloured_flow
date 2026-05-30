@@ -52,11 +52,6 @@ config :coloured_flow_dashboard, ColouredFlowDashboardWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :coloured_flow_dashboard, dev_routes: true
 
-# Insert + start the seeded demo flows (currently `approval`) on app boot
-# so an operator hitting `/` sees a live workitem immediately. Disabled
-# by default in production via `config/prod.exs`.
-config :coloured_flow_dashboard, :seed_flows, true
-
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
