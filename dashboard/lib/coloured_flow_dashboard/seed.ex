@@ -3,10 +3,18 @@ defmodule ColouredFlowDashboard.Seed do
   Boots the demo flows on app start so an operator hitting `/` sees a live
   workitem immediately (and Phase 9's end-to-end story is observable).
 
-  Currently seeds `ColouredFlowDashboard.Seeds.ApprovalFlow` (drives the
-  binary-output drawer demo) and `ColouredFlowDashboard.Seeds.IncidentTriageFlow`
-  (drives the M5 enum + boolean + string structured form). Future demo flows
-  (`traffic_light`, `pi_agent`) plug in alongside.
+  Currently seeds four demo flows:
+
+    * `ColouredFlowDashboard.Seeds.ApprovalFlow` — drives the binary-output
+      drawer demo.
+    * `ColouredFlowDashboard.Seeds.IncidentTriageFlow` — drives the M5
+      enum + boolean + string structured form.
+    * `ColouredFlowDashboard.Seeds.TrafficLightFlow` — eight-place / six-
+      transition choreography from the canonical CPN example. Exercises
+      the React Flow layout + replay timeline on a non-trivial diagram.
+    * `ColouredFlowDashboard.Seeds.PiAgentFlow` — multi-token list-valued
+      markings + atom-union colour sets, adapted from the
+      `examples/pi_agent.livemd` ReAct net.
 
   ## Gating
 
@@ -47,10 +55,12 @@ defmodule ColouredFlowDashboard.Seed do
   alias ColouredFlow.Runner.Storage.InMemory
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
+  alias ColouredFlowDashboard.Seeds.PiAgentFlow
+  alias ColouredFlowDashboard.Seeds.TrafficLightFlow
 
   require Logger
 
-  @seeded_flows [ApprovalFlow, IncidentTriageFlow]
+  @seeded_flows [ApprovalFlow, IncidentTriageFlow, TrafficLightFlow, PiAgentFlow]
 
   @doc """
   Insert + start every demo flow. Idempotent.

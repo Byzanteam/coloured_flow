@@ -149,7 +149,13 @@ import { MusubiCommandError } from "@musubi/react"
 import InboxPage from "./InboxPage"
 
 function renderWithProviders(children: ReactNode) {
-  return render(<Toasty>{children}</Toasty>)
+  // PageHeader now reads `useSearchParams` (embed-mode hook), so every
+  // InboxPage render needs a Router context. MemoryRouter is the cheapest.
+  return render(
+    <MemoryRouter>
+      <Toasty>{children}</Toasty>
+    </MemoryRouter>
+  )
 }
 
 function renderWithRouter(children: ReactNode) {

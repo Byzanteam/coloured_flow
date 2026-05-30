@@ -20,6 +20,7 @@ import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
 import NetDiagram from "../components/NetDiagram"
 import TimelineScrubber from "../components/TimelineScrubber"
+import { useEmbedMode } from "../hooks/useEmbedMode"
 
 const ENACTMENT_DETAIL_STORE =
   "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore" as const
@@ -122,6 +123,7 @@ function DetailContent({
 }) {
   const snapshot = useMusubiSnapshot(detail)
   const toasts = useKumoToastManager()
+  const { embed } = useEmbedMode()
 
   const summary: EnactmentSummary | undefined = snapshot.summary
   const liveMarkings: readonly MarkingRow[] = snapshot.markings ?? []
@@ -275,19 +277,21 @@ function DetailContent({
         </div>
       ) : null}
 
-      <MetricsRow
-        items={[
-          { label: "Version", value: summary?.version ?? 0 },
-          { label: "Markings", value: summary?.markings_count ?? 0 },
-          { label: "Live workitems", value: summary?.workitems_count ?? 0 },
-          {
-            label: "Last occurrence",
-            value: summary?.last_occurrence_at
-              ? formatTimestamp(summary.last_occurrence_at)
-              : "—"
-          }
-        ]}
-      />
+      {embed ? null : (
+        <MetricsRow
+          items={[
+            { label: "Version", value: summary?.version ?? 0 },
+            { label: "Markings", value: summary?.markings_count ?? 0 },
+            { label: "Live workitems", value: summary?.workitems_count ?? 0 },
+            {
+              label: "Last occurrence",
+              value: summary?.last_occurrence_at
+                ? formatTimestamp(summary.last_occurrence_at)
+                : "—"
+            }
+          ]}
+        />
+      )}
 
       {/* Immutable requirement: left = diagram, right = tabs. Stack on
           screens narrower than lg (1024px) so the diagram doesn't crush

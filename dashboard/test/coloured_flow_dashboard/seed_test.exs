@@ -13,8 +13,10 @@ defmodule ColouredFlowDashboard.SeedTest do
   alias ColouredFlowDashboard.Seed
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
+  alias ColouredFlowDashboard.Seeds.PiAgentFlow
+  alias ColouredFlowDashboard.Seeds.TrafficLightFlow
 
-  @flows [ApprovalFlow, IncidentTriageFlow]
+  @flows [ApprovalFlow, IncidentTriageFlow, TrafficLightFlow, PiAgentFlow]
 
   setup do
     snapshots =

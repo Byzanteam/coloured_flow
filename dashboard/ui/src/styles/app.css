@@ -56,6 +56,75 @@ body {
   color: var(--color-cf-ink);
 }
 
+/*
+ * Dark mode. The OKLCH palette is mirrored across the lightness axis: ink
+ * tones rise into the ~0.9 band, canvases drop into the ~0.18-0.22 band.
+ * Accent + state-dot chroma is held near light-mode lightness so the dots
+ * still register as the same signals. Two activation paths:
+ *
+ *   - `:root[data-theme="dark"]` — manual user pick (persisted by ThemeToggle).
+ *   - `@media (prefers-color-scheme: dark)` for visitors who haven't set a
+ *     manual preference (no `data-theme` attribute present).
+ *
+ * `[data-theme="light"]` short-circuits both so a user forcing light wins
+ * over OS dark mode.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-cf-canvas: oklch(0.185 0.012 260);
+    --color-cf-surface: oklch(0.225 0.012 260);
+    --color-cf-surface-tint: oklch(0.265 0.012 260);
+    --color-cf-border: oklch(0.32 0.012 260);
+    --color-cf-border-strong: oklch(0.42 0.012 260);
+
+    --color-cf-ink: oklch(0.965 0.004 260);
+    --color-cf-ink-muted: oklch(0.78 0.006 260);
+    --color-cf-ink-faint: oklch(0.58 0.006 260);
+
+    --color-cf-accent: oklch(0.74 0.13 38);
+    --color-cf-accent-tint: oklch(0.32 0.05 38);
+    --color-cf-accent-ink: oklch(0.86 0.12 38);
+
+    --color-cf-dot-enabled: oklch(0.78 0.16 150);
+    --color-cf-dot-started: oklch(0.84 0.16 80);
+    --color-cf-dot-terminated: oklch(0.6 0.006 260);
+    --color-cf-dot-exception: oklch(0.72 0.18 22);
+
+    --color-cf-exception-bg: oklch(0.3 0.07 22);
+    --color-cf-exception-ink: oklch(0.9 0.12 22);
+
+    --color-cf-pill-bg: oklch(0.965 0.004 260);
+    --color-cf-pill-ink: oklch(0.205 0.012 260);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-cf-canvas: oklch(0.185 0.012 260);
+  --color-cf-surface: oklch(0.225 0.012 260);
+  --color-cf-surface-tint: oklch(0.265 0.012 260);
+  --color-cf-border: oklch(0.32 0.012 260);
+  --color-cf-border-strong: oklch(0.42 0.012 260);
+
+  --color-cf-ink: oklch(0.965 0.004 260);
+  --color-cf-ink-muted: oklch(0.78 0.006 260);
+  --color-cf-ink-faint: oklch(0.58 0.006 260);
+
+  --color-cf-accent: oklch(0.74 0.13 38);
+  --color-cf-accent-tint: oklch(0.32 0.05 38);
+  --color-cf-accent-ink: oklch(0.86 0.12 38);
+
+  --color-cf-dot-enabled: oklch(0.78 0.16 150);
+  --color-cf-dot-started: oklch(0.84 0.16 80);
+  --color-cf-dot-terminated: oklch(0.6 0.006 260);
+  --color-cf-dot-exception: oklch(0.72 0.18 22);
+
+  --color-cf-exception-bg: oklch(0.3 0.07 22);
+  --color-cf-exception-ink: oklch(0.9 0.12 22);
+
+  --color-cf-pill-bg: oklch(0.965 0.004 260);
+  --color-cf-pill-ink: oklch(0.205 0.012 260);
+}
+
 /* Timeline scrubber range input. Native `<input type=range>` chrome is reset
  * so the slider reads as a Kumo primitive (hairline track + accent-ink thumb)
  * in every browser, not the OS default volume knob. */
@@ -115,3 +184,13 @@ body {
 .cf-timeline-slider:not(:disabled):active::-moz-range-thumb {
   transform: scale(1.15);
 }
+
+/* Global focus ring fallback. Kumo primitives ship their own focus styles,
+ * but native controls (range / select / anchors) need an explicit ring so
+ * keyboard operators can always tell where focus sits in either palette. */
+*:focus-visible {
+  outline: 2px solid var(--color-cf-accent-ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+

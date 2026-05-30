@@ -6,6 +6,10 @@ import {
   TrayIcon
 } from "@phosphor-icons/react"
 
+import { useEmbedMode } from "../hooks/useEmbedMode"
+import ThemeToggle from "../components/ThemeToggle"
+import InboxNotifier from "../components/InboxNotifier"
+
 // Sidebar shell. Restrained: white surface on a soft canvas, no border,
 // brand chip top-left, a primary nav block, a hairline-separated secondary
 // block, an operator identity card at the bottom-left. The live connection
@@ -35,10 +39,36 @@ const SECONDARY_NAV: readonly SecondaryItem[] = [
 ]
 
 export default function RootLayout() {
+  const { embed, exit } = useEmbedMode()
+
+  if (embed) {
+    return (
+      <div className="relative h-full bg-cf-canvas" data-embed="true">
+        <InboxNotifier />
+        <button
+          type="button"
+          onClick={exit}
+          className="absolute right-4 top-4 z-10 inline-flex h-7 items-center gap-1.5 rounded-full border border-cf-border bg-cf-surface px-3 text-xs text-cf-ink-muted shadow-sm hover:text-cf-ink"
+          data-testid="exit-embed"
+        >
+          Exit embed
+        </button>
+        <main className="h-full overflow-auto px-6 py-6">
+          <Outlet />
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className="grid h-full grid-cols-[16rem_1fr] bg-cf-canvas">
+    <div
+      className="grid h-full grid-cols-[16rem_1fr] bg-cf-canvas"
+      data-embed="false"
+    >
+      <InboxNotifier />
       <aside className="flex flex-col gap-7 bg-cf-surface px-5 py-7">
         <BrandChip />
+        <ThemeToggle />
         <nav aria-label="Primary" className="flex flex-col gap-0.5">
           {PRIMARY_NAV.map((item) => (
             <PrimaryNavItem key={item.to} item={item} />
