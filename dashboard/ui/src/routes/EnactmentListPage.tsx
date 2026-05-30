@@ -42,7 +42,7 @@ export default function EnactmentListPage() {
 function ListRoot() {
   const store = useMusubiRootSuspense({
     module: ENACTMENT_LIST_STORE,
-    id: "default"
+    id: "enactment-list"
   })
   return <ListContent store={store} />
 }

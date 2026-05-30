@@ -55,17 +55,17 @@ export default function PageHeader({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1">
       {breadcrumbs && breadcrumbs.length > 1 ? (
         <BreadcrumbTrail items={breadcrumbs} />
       ) : null}
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-cf-ink">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-col">
+          <h1 className="text-xl font-semibold leading-tight tracking-tight text-cf-ink">
             {title}
           </h1>
-          {subtitle ? <p className="text-sm text-cf-ink-muted">{subtitle}</p> : null}
-          {byline ? <div className="pt-1">{byline}</div> : null}
+          {subtitle ? <p className="mt-1 text-sm text-cf-ink-muted">{subtitle}</p> : null}
+          {byline ? <div className="mt-1">{byline}</div> : null}
         </div>
         <div className="flex items-center gap-2">
           <ConnectionPill />

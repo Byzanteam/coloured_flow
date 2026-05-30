@@ -414,12 +414,8 @@ function DetailContent({
         onSpeedChange={setSpeed}
       />
 
-      {embed ? null : (
-        <ColourSetsPanel colourSets={diagram.colour_sets ?? []} />
-      )}
-
-      {/* Left = diagram, right = metrics + tabs. Stack on screens
-          narrower than lg (1024px) so the diagram doesn't crush on
+      {/* Left = diagram, right = metrics + colour sets + tabs. Stack on
+          screens narrower than lg (1024px) so the diagram doesn't crush on
           mobile. */}
       <div
         className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:min-h-[640px]"
@@ -458,6 +454,9 @@ function DetailContent({
                 }
               ]}
             />
+          )}
+          {embed ? null : (
+            <ColourSetsPanel colourSets={diagram?.colour_sets ?? []} />
           )}
           <div className="overflow-x-auto border-b border-cf-border">
             <Tabs

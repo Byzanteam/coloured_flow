@@ -8,17 +8,22 @@ import {
   type CSSProperties
 } from "react"
 import {
+  BaseEdge,
   Background,
+  ControlButton,
   Controls,
   Handle,
   MarkerType,
   Position,
   ReactFlow,
+  useReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps
 } from "@xyflow/react"
-import dagre from "@dagrejs/dagre"
+import ELK, { type ElkNode, type ElkExtendedEdge, type ElkPoint } from "elkjs/lib/elk.bundled.js"
+import { ArrowsCounterClockwiseIcon } from "@phosphor-icons/react"
 import { Badge, Surface } from "@cloudflare/kumo"
 
 type NetDiagramPayload = ColouredFlowDashboardWeb.Views.NetDiagram
@@ -31,22 +36,8 @@ type EnactmentState = "running" | "exception" | "terminated"
 interface NetDiagramProps {
   diagram: NetDiagramPayload | null | undefined
   enactmentState?: EnactmentState
-  /**
-   * Fires when the operator clicks a transition node. Used by the detail page
-   * to switch to the Debug tab and pre-filter the binding inspector to the
-   * clicked transition.
-   */
   onSelectTransition?: (name: string) => void
-  /**
-   * Edges whose stroke should fill from source to target with the accent
-   * color, signalling that their transition just fired. Ids match
-   * `arc-${orientation}-${place}-${transition}-${index}`.
-   */
   firingEdgeIds?: ReadonlySet<string>
-  /**
-   * Duration of the firing fill animation. Scales with timeline playback
-   * speed (4× → 150ms, 1× → 600ms, 0.25× → 2400ms). Default 600.
-   */
   firingDurationMs?: number
 }
 
@@ -56,13 +47,17 @@ const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
 
 const PLACE_NODE = "cf-place"
 const TRANSITION_NODE = "cf-transition"
+const ORTHO_EDGE = "ortho"
 
-const PLACE_CIRCLE = 72
+// Compact node footprint — A.2 of the polish pass. Place is a 16px circle
+// (1rem) inside a 48px outer wrapper that also holds the external label
+// underneath. Transitions are 32px tall, width clamps to label length.
+const PLACE_CIRCLE = 16
 const PLACE_LABEL_GAP = 32
-const PLACE_W = 96
+const PLACE_W = 48
 const PLACE_H = PLACE_CIRCLE + PLACE_LABEL_GAP
-const TRANSITION_H = 40
-const TRANSITION_MIN_W = 64
+const TRANSITION_H = 32
+const TRANSITION_MIN_W = 56
 const TRANSITION_MAX_W = 200
 const TRANSITION_CHAR_PX = 7
 const TRANSITION_PAD_PX = 24
@@ -84,6 +79,10 @@ type TransitionNodeData = DiagramTransition & {
 
 type PlaceNode = Node<PlaceNodeData, typeof PLACE_NODE>
 type TransitionNode = Node<TransitionNodeData, typeof TRANSITION_NODE>
+
+type OrthoEdgeData = {
+  points: ReadonlyArray<ElkPoint>
+} & Record<string, unknown>
 
 const DEFAULT_EDGE_STYLE = {
   stroke: "var(--color-cf-border-strong)",
@@ -109,6 +108,11 @@ const ENABLED_MARKER = {
   color: "var(--color-cf-accent-tint)"
 }
 
+// Single ELK instance reused across renders — constructing one allocates the
+// fake-worker bundle (~200 kB), so we share it. ELK.layout is async; concurrent
+// callers each get their own promise back, so reuse is safe.
+const elk = new ELK()
+
 export default function NetDiagram({
   diagram,
   enactmentState = "running",
@@ -116,9 +120,11 @@ export default function NetDiagram({
   firingEdgeIds = EMPTY_FIRING_SET,
   firingDurationMs = DEFAULT_FIRING_DURATION_MS
 }: NetDiagramProps) {
+  const layout = useElkLayout(diagram)
+
   const { nodes, edges, isEmpty } = useMemo(
-    () => buildGraph(diagram, enactmentState, firingEdgeIds, firingDurationMs),
-    [diagram, enactmentState, firingEdgeIds, firingDurationMs]
+    () => buildGraph(diagram, enactmentState, firingEdgeIds, firingDurationMs, layout),
+    [diagram, layout, enactmentState, firingEdgeIds, firingDurationMs]
   )
 
   const handleNodeClick = useCallback(
@@ -151,6 +157,7 @@ export default function NetDiagram({
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={Boolean(onSelectTransition)}
@@ -158,25 +165,171 @@ export default function NetDiagram({
         defaultEdgeOptions={{ style: DEFAULT_EDGE_STYLE, markerEnd: DEFAULT_MARKER }}
         proOptions={{ hideAttribution: true }}
         fitView
-        fitViewOptions={{ padding: 0.12, minZoom: 0.4, maxZoom: 1.5 }}
+        minZoom={0.1}
+        maxZoom={1.5}
+        fitViewOptions={{ padding: 0.12, minZoom: 0.1, maxZoom: 1.5 }}
         onNodeClick={onSelectTransition ? handleNodeClick : undefined}
       >
         <Background gap={18} size={1} color="var(--color-cf-border)" />
-        <Controls showInteractive={false} />
+        <DiagramControls />
       </ReactFlow>
     </div>
   )
 }
 
+function DiagramControls() {
+  const { setViewport } = useReactFlow()
+  const onReset = useCallback(() => {
+    setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 200 })
+  }, [setViewport])
+
+  return (
+    <Controls showInteractive={false}>
+      <ControlButton
+        onClick={onReset}
+        title="Reset zoom"
+        aria-label="Reset zoom"
+        data-testid="net-diagram-reset-zoom"
+      >
+        <ArrowsCounterClockwiseIcon size={14} />
+      </ControlButton>
+    </Controls>
+  )
+}
+
 // ---------------------------------------------------------------------------
-// Layout
+// Layout (ELK orthogonal routing)
 // ---------------------------------------------------------------------------
+
+type Layout = {
+  // node id → top-left x,y
+  positions: Map<string, { x: number; y: number }>
+  // arc index → polyline points (start + bends + end), absolute graph coords
+  edgePoints: Map<number, ReadonlyArray<ElkPoint>>
+}
+
+const EMPTY_LAYOUT: Layout = {
+  positions: new Map(),
+  edgePoints: new Map()
+}
+
+function useElkLayout(diagram: NetDiagramPayload | null | undefined): Layout {
+  const [layout, setLayout] = useState<Layout>(EMPTY_LAYOUT)
+
+  const places = diagram?.places ?? []
+  const transitions = diagram?.transitions ?? []
+  const arcs = diagram?.arcs ?? []
+
+  // Stable signature so re-renders with structurally identical inputs reuse
+  // the existing layout instead of re-running ELK (~80ms on traffic_light).
+  const signature = useMemo(
+    () => layoutSignature(places, transitions, arcs),
+    [places, transitions, arcs]
+  )
+
+  useEffect(() => {
+    if (places.length === 0 && transitions.length === 0) {
+      setLayout(EMPTY_LAYOUT)
+      return
+    }
+
+    let cancelled = false
+    const transitionW = computeTransitionWidth(transitions)
+    const graph: ElkNode = {
+      id: "root",
+      layoutOptions: {
+        "elk.algorithm": "layered",
+        "elk.direction": "DOWN",
+        "elk.layered.edgeRouting": "ORTHOGONAL",
+        // Tuned for CPN bipartite structure: places + transitions alternate
+        // layers, so generous inter-layer spacing keeps both types readable.
+        "elk.layered.spacing.nodeNodeBetweenLayers": "55",
+        "elk.spacing.nodeNode": "32",
+        "elk.spacing.edgeNode": "16",
+        "elk.spacing.edgeEdge": "12",
+        "elk.padding": "[top=20,left=20,right=20,bottom=20]"
+      },
+      children: [
+        ...places.map((p) => ({
+          id: placeId(p.name),
+          width: PLACE_W,
+          height: PLACE_H
+        })),
+        ...transitions.map((t) => ({
+          id: transitionId(t.name),
+          width: transitionW,
+          height: TRANSITION_H
+        }))
+      ],
+      edges: arcs.map((arc, index) => {
+        const [from, to] = arcEndpoints(arc)
+        return {
+          id: arcEdgeId(arc, index),
+          sources: [from],
+          targets: [to]
+        } satisfies ElkExtendedEdge
+      })
+    }
+
+    elk
+      .layout(graph)
+      .then((laidOut) => {
+        if (cancelled) return
+        const positions = new Map<string, { x: number; y: number }>()
+        for (const child of laidOut.children ?? []) {
+          positions.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 })
+        }
+        const edgePoints = new Map<number, ReadonlyArray<ElkPoint>>()
+        const elkEdges = (laidOut.edges ?? []) as ElkExtendedEdge[]
+        arcs.forEach((arc, index) => {
+          const id = arcEdgeId(arc, index)
+          const elkEdge = elkEdges.find((e) => e.id === id)
+          const section = elkEdge?.sections?.[0]
+          if (!section) return
+          const points: ElkPoint[] = [
+            section.startPoint,
+            ...(section.bendPoints ?? []),
+            section.endPoint
+          ]
+          edgePoints.set(index, points)
+        })
+        setLayout({ positions, edgePoints })
+      })
+      .catch(() => {
+        if (!cancelled) setLayout(EMPTY_LAYOUT)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // signature collapses logically-equal diagrams; the underlying arrays
+    // are intentionally not deps so a parent re-rendering with the same
+    // structure doesn't re-layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature])
+
+  return layout
+}
+
+function layoutSignature(
+  places: ReadonlyArray<DiagramPlace>,
+  transitions: ReadonlyArray<DiagramTransition>,
+  arcs: ReadonlyArray<DiagramArc>
+): string {
+  const p = places.map((x) => x.name).join("|")
+  const t = transitions.map((x) => x.name).join("|")
+  const a = arcs
+    .map((x) => `${x.orientation}:${x.place}->${x.transition}`)
+    .join("|")
+  return `${p}#${t}#${a}`
+}
 
 export function buildGraph(
   diagram: NetDiagramPayload | null | undefined,
   enactmentState: EnactmentState,
   firingEdgeIds: ReadonlySet<string> = EMPTY_FIRING_SET,
-  firingDurationMs: number = DEFAULT_FIRING_DURATION_MS
+  firingDurationMs: number = DEFAULT_FIRING_DURATION_MS,
+  layout: Layout = EMPTY_LAYOUT
 ): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
   const places = diagram?.places ?? []
   const transitions = diagram?.transitions ?? []
@@ -193,41 +346,13 @@ export function buildGraph(
     if (t.enabled_count > 0) enabledTransitions.add(t.name)
   }
 
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  const tight = places.length + transitions.length <= 6
-  g.setGraph({
-    rankdir: "TB",
-    nodesep: tight ? 50 : 80,
-    ranksep: tight ? 80 : 140,
-    edgesep: tight ? 20 : 30,
-    marginx: 30,
-    marginy: 30,
-    ranker: "tight-tree"
-  })
-
-  for (const place of places) {
-    g.setNode(placeId(place.name), { width: PLACE_W, height: PLACE_H })
-  }
-  for (const transition of transitions) {
-    g.setNode(transitionId(transition.name), {
-      width: transitionW,
-      height: TRANSITION_H
-    })
-  }
-  for (const arc of arcs) {
-    const [from, to] = arcEndpoints(arc)
-    g.setEdge(from, to)
-  }
-
-  dagre.layout(g)
-
-  const placeNodes: PlaceNode[] = places.map((place) => {
-    const pos = g.node(placeId(place.name))
+  const placeNodes: PlaceNode[] = places.map((place, index) => {
+    const id = placeId(place.name)
+    const pos = layout.positions.get(id) ?? fallbackPos(index, 0)
     return {
-      id: placeId(place.name),
+      id,
       type: PLACE_NODE,
-      position: { x: pos.x - PLACE_W / 2, y: pos.y - PLACE_H / 2 },
+      position: pos,
       data: { ...place } as PlaceNodeData,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
@@ -236,12 +361,13 @@ export function buildGraph(
     }
   })
 
-  const transitionNodes: TransitionNode[] = transitions.map((transition) => {
-    const pos = g.node(transitionId(transition.name))
+  const transitionNodes: TransitionNode[] = transitions.map((transition, index) => {
+    const id = transitionId(transition.name)
+    const pos = layout.positions.get(id) ?? fallbackPos(index, 1)
     return {
-      id: transitionId(transition.name),
+      id,
       type: TRANSITION_NODE,
-      position: { x: pos.x - transitionW / 2, y: pos.y - TRANSITION_H / 2 },
+      position: pos,
       data: { ...transition, enactmentState, width: transitionW } as TransitionNodeData,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
@@ -251,7 +377,7 @@ export function buildGraph(
   })
 
   const edges: Edge[] = arcs.map((arc, index) => {
-    const id = `arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`
+    const id = arcEdgeId(arc, index)
     const [from, to] = arcEndpoints(arc)
     const isFiring = firingEdgeIds.has(id)
     const isEnabledInput =
@@ -264,8 +390,6 @@ export function buildGraph(
     let className: string | undefined
 
     if (isFiring) {
-      // CSS custom property piped to `.cf-edge-firing` keyframes so animation
-      // cadence matches the timeline playback speed.
       style = { ...DEFAULT_EDGE_STYLE, ["--cf-edge-duration" as string]: `${firingDurationMs}ms` }
       className = "cf-edge-firing"
     } else if (isEnabledInput) {
@@ -276,14 +400,16 @@ export function buildGraph(
       style = DEFAULT_EDGE_STYLE
     }
 
+    const points = layout.edgePoints.get(index)
     const edge: Edge = {
       id,
       source: from,
       target: to,
-      type: "smoothstep",
+      type: points ? ORTHO_EDGE : "smoothstep",
       animated: false,
       style,
-      markerEnd
+      markerEnd,
+      data: points ? ({ points } as OrthoEdgeData) : undefined
     }
     if (className) edge.className = className
     return edge
@@ -292,14 +418,39 @@ export function buildGraph(
   return { nodes: [...placeNodes, ...transitionNodes], edges, isEmpty: false }
 }
 
+function fallbackPos(index: number, lane: number): { x: number; y: number } {
+  // Pre-layout / failed-layout fallback: simple grid so nodes don't all
+  // pile at (0,0) before ELK resolves.
+  return { x: lane * 240 + (index % 4) * 60, y: Math.floor(index / 4) * 80 }
+}
+
 function arcEndpoints(arc: DiagramArc): [string, string] {
   return arc.orientation === "p_to_t"
     ? [placeId(arc.place), transitionId(arc.transition)]
     : [transitionId(arc.transition), placeId(arc.place)]
 }
 
+function arcEdgeId(arc: DiagramArc, index: number): string {
+  return `arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`
+}
+
 const placeId = (name: string) => `p:${name}`
 const transitionId = (name: string) => `t:${name}`
+
+// ---------------------------------------------------------------------------
+// Custom edge: orthogonal polyline driven by ELK-computed bend points
+// ---------------------------------------------------------------------------
+
+function OrthogonalEdgeImpl({ data, markerEnd, style }: EdgeProps) {
+  const points = (data as OrthoEdgeData | undefined)?.points
+  if (!points || points.length < 2) return null
+  const d = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ")
+  return <BaseEdge path={d} markerEnd={markerEnd} style={style} />
+}
+
+const OrthogonalEdge = memo(OrthogonalEdgeImpl)
 
 // ---------------------------------------------------------------------------
 // Custom node renderers
@@ -333,13 +484,13 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
         >
           <Handle
             type="target"
-            position={Position.Left}
+            position={Position.Top}
             style={PLACE_HANDLE_STYLE}
             isConnectable={false}
           />
           <Handle
             type="source"
-            position={Position.Right}
+            position={Position.Bottom}
             style={PLACE_HANDLE_STYLE}
             isConnectable={false}
           />
@@ -347,11 +498,11 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
         {hasTokens ? (
           <span
             data-testid={`place-token-badge-${data.name}`}
-            className="absolute -right-1 -top-1"
+            className="absolute -right-1.5 -top-1.5"
           >
             <Badge
               variant="primary"
-              className="inline-flex size-5 items-center justify-center rounded-full bg-cf-accent-tint p-0 text-[11px] font-semibold leading-none tabular-nums text-cf-accent-ink shadow-sm"
+              className="inline-flex size-3 items-center justify-center rounded-full bg-cf-accent-tint p-0 text-[8px] font-semibold leading-none tabular-nums text-cf-accent-ink shadow-sm"
             >
               {data.tokens_count}
             </Badge>
@@ -360,9 +511,9 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
       </div>
       <div
         data-testid={`place-label-${data.name}`}
-        className="mt-1 flex w-[120px] flex-col items-center leading-tight"
+        className="mt-1 flex w-[96px] flex-col items-center leading-tight"
       >
-        <span className="max-w-full truncate font-mono text-xs font-medium text-cf-ink">
+        <span className="max-w-full truncate font-mono text-[11px] font-medium text-cf-ink">
           {data.name}
         </span>
         {data.colour_set ? (
@@ -405,7 +556,7 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
   return (
     <Surface
       as="div"
-      className="flex items-center justify-center rounded-md border bg-cf-surface text-center shadow-sm"
+      className="flex items-center justify-center rounded-md border bg-cf-surface px-3 py-1.5 text-center shadow-sm"
       style={{
         width: data.width,
         height: TRANSITION_H,
@@ -423,16 +574,16 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={Position.Top}
         style={PLACE_HANDLE_STYLE}
         isConnectable={false}
       />
-      <span className="truncate px-4 font-mono text-xs font-medium text-cf-ink">
+      <span className="truncate font-mono text-xs font-medium text-cf-ink">
         {data.name}
       </span>
       <Handle
         type="source"
-        position={Position.Right}
+        position={Position.Bottom}
         style={PLACE_HANDLE_STYLE}
         isConnectable={false}
       />
@@ -445,6 +596,10 @@ const TransitionNodeView = memo(TransitionNodeViewImpl)
 const NODE_TYPES = {
   [PLACE_NODE]: PlaceNodeView,
   [TRANSITION_NODE]: TransitionNodeView
+} as const
+
+const EDGE_TYPES = {
+  [ORTHO_EDGE]: OrthogonalEdge
 } as const
 
 // ---------------------------------------------------------------------------
@@ -466,4 +621,3 @@ function usePulseOnChange(value: string | null): boolean {
 
   return pulsing
 }
-

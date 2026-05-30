@@ -10,6 +10,7 @@ import {
   GraphIcon,
   type Icon,
   ListChecksIcon,
+  ListIcon,
   PulseIcon,
   TrayIcon
 } from "@phosphor-icons/react"
@@ -119,12 +120,28 @@ export default function RootLayout() {
               <SidebarFooterContent />
             </Sidebar.Footer>
           </Sidebar>
-          <main className="flex-1 overflow-auto px-10 py-8">
+          <main className="relative flex-1 overflow-auto px-10 py-8">
+            <MobileSidebarTrigger />
             <Outlet />
           </main>
         </div>
       </SidebarProvider>
     </LinkProvider>
+  )
+}
+
+function MobileSidebarTrigger() {
+  const { toggleSidebar } = useSidebar()
+  return (
+    <button
+      type="button"
+      onClick={toggleSidebar}
+      aria-label="Open navigation"
+      data-testid="mobile-sidebar-trigger"
+      className="fixed left-3 top-3 z-50 inline-flex h-9 w-9 items-center justify-center rounded-md border border-cf-border bg-cf-surface text-cf-ink shadow-sm md:hidden"
+    >
+      <ListIcon size={18} />
+    </button>
   )
 }
 

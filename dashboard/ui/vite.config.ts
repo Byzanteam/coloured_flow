@@ -17,10 +17,21 @@ export default defineConfig({
         // cache stability across product redeploys, not lazy loading. If a
         // route is later moved behind React.lazy, the matching chunk
         // becomes a real on-demand fetch for free.
-        manualChunks: {
-          "vendor-react": ["react", "react-dom", "react/jsx-runtime", "react-router-dom"],
-          "vendor-diagram": ["@xyflow/react", "@dagrejs/dagre"],
-          "vendor-chrome": ["@cloudflare/kumo", "@phosphor-icons/react"]
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (
+              id.includes("/react/") ||
+              id.includes("/react-dom/") ||
+              id.includes("/react-router-dom/") ||
+              id.includes("/react-router/")
+            )
+              return "vendor-react"
+            if (id.includes("/@xyflow/")) return "vendor-diagram"
+            if (id.includes("/elkjs/")) return "vendor-elk"
+            if (id.includes("/@cloudflare/kumo") || id.includes("/@phosphor-icons/"))
+              return "vendor-chrome"
+          }
+          return undefined
         }
       }
     }
