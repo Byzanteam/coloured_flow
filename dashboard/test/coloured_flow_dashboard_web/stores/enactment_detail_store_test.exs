@@ -1045,11 +1045,13 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
       end
     end
 
-    test "summary.version_range floor is the snapshot version, max tracks events", %{
+    test "summary.version_range.min is invariantly 0, max tracks events", %{
       page: page
     } do
       summary = Musubi.Testing.assigns(page).summary
-      # InMemory storage takes no snapshots, so the floor is 0.
+      # `min: 0` lets the scrubber reach the initial marking regardless of
+      # the persisted snapshot floor — replay reconstructs v0 from
+      # `Storage.get_initial_markings/1`.
       assert summary.version_range.min == 0
       assert summary.version_range.max >= 1
     end

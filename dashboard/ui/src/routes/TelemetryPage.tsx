@@ -8,6 +8,7 @@ import {
   Table,
   Text
 } from "@cloudflare/kumo"
+import { CodeHighlighted } from "@cloudflare/kumo/code"
 import { PulseIcon } from "@phosphor-icons/react"
 import { Link } from "react-router-dom"
 
@@ -18,6 +19,7 @@ import ListControls from "../components/ListControls"
 import ListPagination from "../components/ListPagination"
 import { useEmbedMode } from "../hooks/useEmbedMode"
 import { useListSearchParams } from "../hooks/useListSearchParams"
+import { prettyJson } from "../lib/prettyJson"
 
 const TELEMETRY_FEED_STORE = "ColouredFlowDashboardWeb.Stores.TelemetryFeedStore" as const
 
@@ -373,9 +375,9 @@ function TelemetryDetailBlock({ label, json }: { label: string; json: string }) 
       <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
         {label}
       </span>
-      <pre className="max-h-48 overflow-auto rounded-md bg-cf-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-cf-ink">
-        {prettyJson(json)}
-      </pre>
+      <div className="max-h-48 overflow-auto">
+        <CodeHighlighted code={prettyJson(json)} lang="json" />
+      </div>
     </div>
   )
 }
@@ -400,11 +402,3 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-function prettyJson(raw: string): string {
-  if (!raw) return ""
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
-}

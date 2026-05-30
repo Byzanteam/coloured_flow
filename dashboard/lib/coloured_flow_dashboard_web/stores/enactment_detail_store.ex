@@ -317,11 +317,16 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     marking_index = build_marking_index(markings)
     enabled_workitems = seed_enabled_workitems(workitems)
     diagram = build_diagram(enactment_id, flow_cache, marking_index, enabled_workitems, %{})
-    snapshot_floor = read_snapshot_floor(enactment_id)
     cpnet = cached_cpnet(enactment_id, flow_cache)
     workitems = Enum.map(workitems, &stamp_output_vars(&1, cpnet))
     workitem_meta = build_workitem_meta(workitems, enactment_id)
 
+    # `min: 0` is invariant — the dashboard always reconstructs v0 (the
+    # initial marking, BEFORE any occurrence fires) by replaying zero
+    # occurrences against `Storage.get_initial_markings/1`. The persisted
+    # snapshot floor is unrelated to scrubbing reach; for any target
+    # < snapshot_version, `derive_replay/2` bypasses the snapshot and
+    # replays from initial markings instead.
     summary = %EnactmentSummary{
       enactment_id: enactment_id,
       flow_topic_id: flow_topic_id,
@@ -332,7 +337,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       last_occurrence_at: last_occurrence_at,
       last_exception_banner: nil,
       replay_state: nil,
-      version_range: %VersionRange{min: snapshot_floor, max: max(version, snapshot_floor)}
+      version_range: %VersionRange{min: 0, max: max(version, 0)}
     }
 
     socket =
@@ -470,7 +475,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
               markings: marking_rows,
               replay_state: replay_state,
               available_max_version: socket.assigns.summary.version_range.max,
-              snapshot_floor: socket.assigns.summary.version_range.min
+              snapshot_floor: current_snapshot_floor(socket.assigns.enactment_id)
             }
 
             {:reply, reply, socket}
@@ -491,7 +496,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           markings: [],
           replay_state: nil,
           available_max_version: socket.assigns.summary.version_range.max,
-          snapshot_floor: socket.assigns.summary.version_range.min
+          snapshot_floor: current_snapshot_floor(socket.assigns.enactment_id)
         }
 
         {:reply, reply, socket}
@@ -667,7 +672,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp last_occurrence_at([]), do: nil
   defp last_occurrence_at([%OccurrenceRow{occurred_at: at} | _rest]), do: at
 
-  defp read_snapshot_floor(enactment_id) do
+  # Persisted snapshot floor, surfaced only as a diagnostic in command
+  # replies. `version_range.min` is invariantly 0; this value lets the SPA
+  # show "snapshot floor at vK" hints when relevant.
+  defp current_snapshot_floor(enactment_id) do
     if repo_configured?() do
       case Storage.read_enactment_snapshot(enactment_id) do
         {:ok, %Snapshot{version: version}} -> version
@@ -683,17 +691,17 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp coerce_version(v) when is_integer(v) and v >= 0, do: {:ok, v}
   defp coerce_version(_other), do: :error
 
-  # `derive_replay/2` reads the nearest snapshot ≤ target_version and
-  # replays the persisted occurrence stream up to (and including) the
-  # target. The live `Runner.Enactment` GenServer is NOT touched — this
+  # `derive_replay/2` reconstructs the marking at `target_version` by
+  # replaying the persisted occurrence stream against the nearest ≤
+  # base. The live `Runner.Enactment` GenServer is NOT touched — this
   # path uses only `Storage.read_enactment_snapshot/1` +
-  # `Storage.occurrences_stream/2` + `CatchingUp.apply/2`, all of which
-  # are read-only public surfaces.
+  # `Storage.get_initial_markings/1` + `Storage.occurrences_stream/2` +
+  # `CatchingUp.apply/2`, all of which are read-only public surfaces.
   #
-  # When `target_version < snapshot_version`, we cannot reconstruct the
-  # state without keeping older snapshots, so we surface `:below_floor`
-  # for the caller to convert into `:invalid_version` + a snapshot_floor
-  # the SPA can display.
+  # For `target_version ≥ snapshot_version` the persisted snapshot is
+  # the fast path. For any earlier target — including v0 — the base
+  # MUST drop back to the initial markings, otherwise the snapshot
+  # floor would hide the initial state from the scrubber.
   defp derive_replay(socket, target_version)
        when is_integer(target_version) and target_version >= 0 do
     enactment_id = socket.assigns.enactment_id
@@ -712,48 +720,46 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   defp do_derive_replay(enactment_id, target_version) do
-    {initial_markings, snapshot_version} =
+    # Pick the nearest base ≤ target_version. The persisted snapshot is the
+    # fast path for target ≥ snapshot_version; for any earlier target we
+    # MUST start from `Storage.get_initial_markings/1` and replay 1..target
+    # against `occurrences_stream(eid, 0)`, otherwise the snapshot floor
+    # would hide the initial state from the scrubber.
+    {initial_markings, base_version} =
       case Storage.read_enactment_snapshot(enactment_id) do
-        {:ok, %Snapshot{markings: markings, version: version}} -> {markings, version}
-        _other -> {Storage.get_initial_markings(enactment_id), 0}
+        {:ok, %Snapshot{markings: markings, version: version}}
+        when target_version >= version ->
+          {markings, version}
+
+        _other ->
+          {Storage.get_initial_markings(enactment_id), 0}
       end
 
-    if target_version < snapshot_version do
-      {:error, :below_floor, %{snapshot_floor: snapshot_version}}
-    else
-      step_count = target_version - snapshot_version
+    step_count = target_version - base_version
 
-      occurrences =
-        enactment_id
-        |> Storage.occurrences_stream(snapshot_version)
-        |> Stream.take(step_count)
+    occurrences =
+      enactment_id
+      |> Storage.occurrences_stream(base_version)
+      |> Stream.take(step_count)
 
-      {_steps, derived} = CatchingUp.apply(initial_markings, occurrences)
-      marking_rows = Enum.map(derived, &marking_row/1)
-      marking_index = build_marking_index(marking_rows)
+    {_steps, derived} = CatchingUp.apply(initial_markings, occurrences)
+    marking_rows = Enum.map(derived, &marking_row/1)
+    marking_index = build_marking_index(marking_rows)
 
-      replay_state = %ReplayState{
-        version: target_version,
-        derived_at: DateTime.to_iso8601(DateTime.utc_now())
-      }
+    replay_state = %ReplayState{
+      version: target_version,
+      derived_at: DateTime.to_iso8601(DateTime.utc_now())
+    }
 
-      {:ok, marking_rows, replay_state, marking_index}
-    end
+    {:ok, marking_rows, replay_state, marking_index}
   rescue
     error -> {:error, :runner_error, %{message: Exception.message(error)}}
-  end
-
-  defp replay_error_fields(:below_floor, %{snapshot_floor: floor}, socket) do
-    %{
-      available_max_version: socket.assigns.summary.version_range.max,
-      snapshot_floor: floor
-    }
   end
 
   defp replay_error_fields(:above_max, %{available_max_version: max}, socket) do
     %{
       available_max_version: max,
-      snapshot_floor: socket.assigns.summary.version_range.min
+      snapshot_floor: current_snapshot_floor(socket.assigns.enactment_id)
     }
   end
 
@@ -762,7 +768,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       code: :runner_error,
       message: Map.get(info, :message, ""),
       available_max_version: socket.assigns.summary.version_range.max,
-      snapshot_floor: socket.assigns.summary.version_range.min
+      snapshot_floor: current_snapshot_floor(socket.assigns.enactment_id)
     }
   end
 

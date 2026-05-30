@@ -21,17 +21,18 @@ import {
   Text,
   useKumoToastManager
 } from "@cloudflare/kumo"
+import { CodeHighlighted } from "@cloudflare/kumo/code"
 import type { StoreProxy } from "@musubi/react"
 
 import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
-import MetricsRow from "../components/MetricsRow"
 import NetDiagram from "../components/NetDiagram"
 import ColourSetsPanel from "../components/ColourSetsPanel"
 import OutputsDrawer from "../components/OutputsDrawer"
 import TimelineScrubber, { type SpeedKey } from "../components/TimelineScrubber"
 import { useEmbedMode } from "../hooks/useEmbedMode"
+import { prettyJson } from "../lib/prettyJson"
 
 const ENACTMENT_DETAIL_STORE =
   "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore" as const
@@ -423,13 +424,13 @@ function DetailContent({
           data-testid="detail-tabs-pane"
         >
           {embed ? null : (
-            <MetricsRow
+            <MetricsPills
               items={[
-                { label: "Version", value: summary?.version ?? 0 },
+                { label: "Version", value: `v${summary?.version ?? 0}` },
                 { label: "Markings", value: summary?.markings_count ?? 0 },
                 { label: "Live workitems", value: summary?.workitems_count ?? 0 },
                 {
-                  label: "Last occurrence",
+                  label: "Last occ",
                   value: summary?.last_occurrence_at
                     ? formatTimestamp(summary.last_occurrence_at)
                     : "—"
@@ -485,6 +486,47 @@ function DetailContent({
         onClose={() => setDrawerRow(null)}
       />
     </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Metrics pill row
+// ---------------------------------------------------------------------------
+
+interface MetricPill {
+  label: string
+  value: ReactNode
+}
+
+/**
+ * Compact metric strip for the detail page's constrained right column. Each
+ * pill renders an uppercase label and a monospaced single-line value. Wraps
+ * on narrow screens. Other surfaces (InboxPage / EnactmentList / FlowCatalog
+ * / TelemetryPage) keep the shared `MetricsRow` cards because they have
+ * full-width room.
+ */
+function MetricsPills({ items }: { items: readonly MetricPill[] }) {
+  if (items.length === 0) return null
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1.5"
+      data-testid="metrics-pills"
+    >
+      {items.map((item) => (
+        <span
+          key={item.label}
+          className="inline-flex items-center gap-1.5 rounded-full border border-cf-border bg-cf-surface px-2.5 py-1"
+        >
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-faint">
+            {item.label}
+          </span>
+          <span className="font-mono text-xs tabular-nums text-cf-ink">
+            {item.value}
+          </span>
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -1153,12 +1195,9 @@ function TelemetryRow({
       {expanded ? (
         <Table.Row>
           <Table.Cell colSpan={6}>
-            <pre
-              className="overflow-x-auto whitespace-pre-wrap rounded-md border border-cf-border bg-cf-canvas p-3 text-xs text-cf-ink"
-              data-testid={`telemetry-payload-${row.id}`}
-            >
-              {row.payload_json}
-            </pre>
+            <div data-testid={`telemetry-payload-${row.id}`}>
+              <CodeHighlighted code={prettyJson(row.payload_json)} lang="json" />
+            </div>
           </Table.Cell>
         </Table.Row>
       ) : null}

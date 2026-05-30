@@ -1,6 +1,7 @@
 import { Component, type ReactNode, Suspense, use } from "react"
 import { RouterProvider } from "react-router-dom"
 import { Banner, Button, Toasty } from "@cloudflare/kumo"
+import { ShikiProvider } from "@cloudflare/kumo/code"
 
 import { MusubiProvider, connect, socket } from "./musubi"
 import { router } from "./routes/router"
@@ -15,9 +16,11 @@ function ConnectedApp() {
   const connection = use(connectionPromise)
   return (
     <MusubiProvider connection={connection}>
-      <Toasty>
-        <RouterProvider router={router} />
-      </Toasty>
+      <ShikiProvider engine="javascript" languages={["json"]}>
+        <Toasty>
+          <RouterProvider router={router} />
+        </Toasty>
+      </ShikiProvider>
     </MusubiProvider>
   )
 }

@@ -1,3 +1,26 @@
+import React from "react"
+import { vi } from "vitest"
+
+// `@cloudflare/kumo/code` pulls in Shiki via dynamic imports inside a
+// `useEffect`. Under jsdom that resolves at unpredictable timing and the
+// component's `useShikiHighlighter` hook throws when no ShikiProvider is
+// in the tree. Tests don't care about syntax-highlighted output — they
+// assert on the JSON payload content. Stub both exports so the surfaces
+// render the code as plain text (a `<pre data-testid="code-highlighted">`)
+// and ShikiProvider is a transparent passthrough.
+vi.mock("@cloudflare/kumo/code", () => {
+  return {
+    ShikiProvider: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+    CodeHighlighted: ({ code }: { code: string }) =>
+      React.createElement(
+        "pre",
+        { "data-testid": "code-highlighted" },
+        code
+      )
+  }
+})
+
 // JSDOM lacks ResizeObserver. Kumo's Tabs component (and any Kumo primitive
 // backed by Base UI) relies on it to measure indicator geometry. Stub a noop
 // so the Tabs render does not throw inside `useEffect`.
