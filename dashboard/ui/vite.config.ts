@@ -16,7 +16,20 @@ export default defineConfig({
   build: {
     outDir: "../priv/static",
     emptyOutDir: true,
-    assetsDir: "assets"
+    assetsDir: "assets",
+    rollupOptions: {
+      output: {
+        // Split heavy third-party deps off the app chunk so the SPA bundle
+        // stays cache-friendly when only product code changes. React + ReactDOM
+        // sit in their own chunk because they're touched every page; the
+        // diagram and chrome bundles load conditionally with their routes.
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react/jsx-runtime", "react-router-dom"],
+          "vendor-diagram": ["@xyflow/react", "@dagrejs/dagre"],
+          "vendor-chrome": ["@cloudflare/kumo", "@phosphor-icons/react"]
+        }
+      }
+    }
   },
   server: {
     port: 4103,

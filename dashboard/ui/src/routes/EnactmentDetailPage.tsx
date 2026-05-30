@@ -17,10 +17,12 @@ import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
+import NetDiagram from "../components/NetDiagram"
 
 const ENACTMENT_DETAIL_STORE =
   "ColouredFlowDashboardWeb.Stores.EnactmentDetailStore" as const
 
+type DiagramPayload = ColouredFlowDashboardWeb.Views.NetDiagram
 type MarkingRow = ColouredFlowDashboardWeb.Views.MarkingRow
 type WorkitemRow = ColouredFlowDashboardWeb.Views.WorkitemRow
 type OccurrenceRow = ColouredFlowDashboardWeb.Views.OccurrenceRow
@@ -124,6 +126,7 @@ function DetailContent({
   const occurrences: readonly OccurrenceRow[] = snapshot.occurrences ?? []
   const telemetry: readonly TelemetryEntry[] = snapshot.telemetry ?? []
   const transitions: readonly string[] = snapshot.transitions ?? []
+  const diagram: DiagramPayload | null = snapshot.diagram ?? null
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
 
@@ -147,19 +150,31 @@ function DetailContent({
         actions={<ActionBar detail={detail} />}
       />
 
-      <MetricsRow
-        items={[
-          { label: "Version", value: summary?.version ?? 0 },
-          { label: "Markings", value: summary?.markings_count ?? 0 },
-          { label: "Live workitems", value: summary?.workitems_count ?? 0 },
-          {
-            label: "Last occurrence",
-            value: summary?.last_occurrence_at
-              ? formatTimestamp(summary.last_occurrence_at)
-              : "—"
-          }
-        ]}
-      />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <LayerCard.Primary
+          className="overflow-hidden p-0 lg:col-span-3"
+          data-testid="net-diagram-card"
+        >
+          <div className="h-[480px] w-full">
+            <NetDiagram diagram={diagram} enactmentState={state} />
+          </div>
+        </LayerCard.Primary>
+        <div className="flex flex-col gap-3 lg:col-span-2">
+          <MetricsRow
+            items={[
+              { label: "Version", value: summary?.version ?? 0 },
+              { label: "Markings", value: summary?.markings_count ?? 0 },
+              { label: "Live workitems", value: summary?.workitems_count ?? 0 },
+              {
+                label: "Last occurrence",
+                value: summary?.last_occurrence_at
+                  ? formatTimestamp(summary.last_occurrence_at)
+                  : "—"
+              }
+            ]}
+          />
+        </div>
+      </div>
 
       <div className="border-b border-cf-border">
         <Tabs

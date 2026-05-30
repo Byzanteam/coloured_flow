@@ -44,6 +44,32 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
     outputs_summary: ""
   }
 
+  const diagram = {
+    places: [
+      {
+        name: "pending",
+        colour_set: "trigger_t",
+        tokens_count: 1,
+        tokens_summary: "1×true"
+      },
+      { name: "decided", colour_set: "outcome", tokens_count: 0, tokens_summary: "" }
+    ],
+    transitions: [
+      {
+        name: "approve",
+        enabled_count: 1,
+        rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
+        rejected_by_marking_count: 0,
+        last_fired_at: null as string | null
+      }
+    ],
+    arcs: [
+      { place: "pending", transition: "approve", orientation: "p_to_t" as const },
+      { place: "decided", transition: "approve", orientation: "t_to_p" as const }
+    ]
+  }
+
   const telemetryEntry = {
     id: "en-aaaa-1",
     kind: "produce_workitems_stop" as const,
@@ -60,6 +86,7 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
     sampleSnapshot: {
       summary,
       transitions: ["approve"],
+      diagram,
       markings: [marking],
       workitems: [workitem],
       occurrences: [occurrence],
@@ -67,6 +94,13 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
     }
   }
 })
+
+// NetDiagram pulls in `@xyflow/react`, which requires DOM measurement APIs
+// that jsdom does not implement. Mount-stub it so this page-level test
+// stays focused on the layout shell; NetDiagram has its own component test.
+vi.mock("../components/NetDiagram", () => ({
+  default: () => <div data-testid="net-diagram-stub" />
+}))
 
 vi.mock("../musubi", () => ({
   useMusubiRoot: vi.fn().mockReturnValue({
@@ -154,6 +188,12 @@ describe("EnactmentDetailPage", () => {
     takeSnapshotMock.mockReset()
     forceTerminateMock.mockReset()
     inspectTransitionMock.mockReset()
+  })
+
+  it("renders the net diagram card with NetDiagram mounted inside", () => {
+    renderRoute(<EnactmentDetailPage />)
+    expect(screen.getByTestId("net-diagram-card")).toBeDefined()
+    expect(screen.getByTestId("net-diagram-stub")).toBeDefined()
   })
 
   it("renders the header with summary stats", () => {

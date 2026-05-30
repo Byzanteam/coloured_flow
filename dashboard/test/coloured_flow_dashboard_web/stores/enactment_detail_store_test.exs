@@ -593,6 +593,82 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe "net diagram derivation" do
+    test "mount with seeded approval flow derives places, transitions, arcs",
+         %{topic_prefix: topic_prefix} do
+      Seed.run(enabled: true)
+      enactment_id = Seed.enactment_id(ApprovalFlow)
+      flow_cache = flow_cache_for_seed()
+      _warm = TelemetryBridge.lookup_cpnet(enactment_id, flow_cache)
+
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+      diagram = Musubi.Testing.assigns(page).diagram
+
+      place_names = Enum.map(diagram.places, & &1.name)
+      assert "pending" in place_names
+      assert "decided" in place_names
+
+      transition_names = Enum.map(diagram.transitions, & &1.name)
+      assert "approve" in transition_names
+      assert Enum.all?(diagram.transitions, &(&1.enabled_count >= 0))
+      assert Enum.all?(diagram.transitions, &is_nil(&1.last_fired_at))
+
+      orientations =
+        diagram.arcs
+        |> Enum.map(& &1.orientation)
+        |> Enum.uniq()
+        |> Enum.sort()
+
+      assert orientations == [:p_to_t, :t_to_p]
+    end
+
+    test "complete_workitems_stop updates the matching transition's last_fired_at",
+         %{enactment_id: eid, topic: topic, topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      :ets.new(flow_cache, [:set, :public, :named_table])
+
+      cpnet = synthetic_cpnet()
+      :ets.insert(flow_cache, {eid, "flow-id", cpnet})
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      assert Enum.map(Musubi.Testing.assigns(page).diagram.transitions, & &1.last_fired_at) ==
+               [nil]
+
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event_for(:produce_workitems_stop, eid, wi_id, "pass", 1))
+
+      assigns = Musubi.Testing.assigns(page)
+      [transition] = assigns.diagram.transitions
+      assert transition.enabled_count == 1
+      assert transition.last_fired_at == nil
+
+      broadcast!(
+        topic,
+        build_workitem_event_for(:complete_workitems_stop, eid, wi_id, "pass", 2)
+      )
+
+      assigns = Musubi.Testing.assigns(page)
+      [transition] = assigns.diagram.transitions
+      assert transition.last_fired_at != nil
+      assert transition.enabled_count == 0
+    end
+
+    test "diagram is empty when bridge cache has no flow", %{
+      enactment_id: eid,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      assert :ets.whereis(flow_cache) == :undefined
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+      diagram = Musubi.Testing.assigns(page).diagram
+
+      assert diagram.places == []
+      assert diagram.transitions == []
+      assert diagram.arcs == []
+    end
+  end
+
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,
@@ -665,6 +741,65 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
           }
         ]
       }
+    }
+  end
+
+  defp build_workitem_event_for(kind, enactment_id, workitem_id, transition_name, version) do
+    %Event{
+      topic: {:enactment, enactment_id},
+      kind: kind,
+      enactment_id: enactment_id,
+      enactment_version: version,
+      occurred_at: DateTime.utc_now(),
+      payload: %{
+        operation: operation_of(kind),
+        workitems: [
+          %RunnerWorkitem{
+            id: workitem_id,
+            state: workitem_state(kind),
+            binding_element: %BindingElement{
+              transition: transition_name,
+              binding: [{:x, 1}],
+              to_consume: []
+            }
+          }
+        ]
+      }
+    }
+  end
+
+  defp workitem_state(:produce_workitems_stop), do: :enabled
+  defp workitem_state(:start_workitems_stop), do: :started
+  defp workitem_state(:withdraw_workitems_stop), do: :completed
+  defp workitem_state(:complete_workitems_stop), do: :completed
+
+  defp synthetic_cpnet do
+    %ColouredFlow.Definition.ColouredPetriNet{
+      colour_sets: [%ColouredFlow.Definition.ColourSet{name: :int, type: {:integer, []}}],
+      places: [
+        %ColouredFlow.Definition.Place{name: "src", colour_set: :int},
+        %ColouredFlow.Definition.Place{name: "dst", colour_set: :int}
+      ],
+      transitions: [
+        ColouredFlow.Builder.DefinitionHelper.build_transition!(name: "pass", guard: "true")
+      ],
+      arcs: [
+        ColouredFlow.Builder.DefinitionHelper.build_arc!(
+          label: "in",
+          place: "src",
+          transition: "pass",
+          orientation: :p_to_t,
+          expression: "bind {1, x}"
+        ),
+        ColouredFlow.Builder.DefinitionHelper.build_arc!(
+          label: "out",
+          place: "dst",
+          transition: "pass",
+          orientation: :t_to_p,
+          expression: "{1, x}"
+        )
+      ],
+      variables: [%ColouredFlow.Definition.Variable{name: :x, colour_set: :int}]
     }
   end
 

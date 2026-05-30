@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cloudflare/kumo": "^2.3.0",
+    "@dagrejs/dagre": "^3.0.0",
     "@musubi/client": "workspace:*",
     "@musubi/react": "workspace:*",
     "@phosphor-icons/react": "^2.1.7",

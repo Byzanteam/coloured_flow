@@ -130,6 +130,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlowDashboardWeb.Views.BindingCandidate
   alias ColouredFlowDashboardWeb.Views.EnactmentSummary
   alias ColouredFlowDashboardWeb.Views.MarkingRow
+  alias ColouredFlowDashboardWeb.Views.NetDiagram
+  alias ColouredFlowDashboardWeb.Views.NetDiagramArc
+  alias ColouredFlowDashboardWeb.Views.NetDiagramPlace
+  alias ColouredFlowDashboardWeb.Views.NetDiagramTransition
   alias ColouredFlowDashboardWeb.Views.OccurrenceRow
   alias ColouredFlowDashboardWeb.Views.TelemetryEntry
   alias ColouredFlowDashboardWeb.Views.TransitionDebugInfo
@@ -156,6 +160,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   state do
     field :summary, ColouredFlowDashboardWeb.Views.EnactmentSummary.t()
     field :transitions, list(String.t())
+    field :diagram, ColouredFlowDashboardWeb.Views.NetDiagram.t()
 
     stream :markings, ColouredFlowDashboardWeb.Views.MarkingRow.t(),
       limit: @workitem_limit,
@@ -228,6 +233,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     flow_topic_id = resolve_flow_topic_id(enactment_id, flow_cache)
     transitions = resolve_transitions(enactment_id, flow_cache)
     last_occurrence_at = last_occurrence_at(occurrences)
+    marking_index = build_marking_index(markings)
+    diagram = build_diagram(enactment_id, flow_cache, marking_index, %{}, %{})
 
     summary = %EnactmentSummary{
       enactment_id: enactment_id,
@@ -248,6 +255,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:flow_cache, flow_cache)
       |> assign(:summary, summary)
       |> assign(:transitions, transitions)
+      |> assign(:diagram, diagram)
+      |> assign(:marking_index, marking_index)
+      |> assign(:transition_counts, %{})
+      |> assign(:transition_fired_at, %{})
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
       |> stream(:markings, markings, reset: true)
       |> stream(:workitems, workitems, reset: true)
@@ -262,6 +273,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     %{
       summary: socket.assigns.summary,
       transitions: socket.assigns.transitions,
+      diagram: socket.assigns.diagram,
       markings: stream(:markings),
       workitems: stream(:workitems),
       occurrences: stream(:occurrences),
@@ -281,6 +293,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         |> route_event(socket)
         |> append_telemetry(event)
         |> maybe_refresh_transitions()
+        |> apply_diagram_event(event)
+        |> refresh_diagram()
 
       {:noreply, socket}
     else
@@ -980,6 +994,142 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     end
   rescue
     _error -> :error
+  end
+
+  # ---------------------------------------------------------------------------
+  # Net diagram
+  # ---------------------------------------------------------------------------
+
+  defp build_marking_index(rows) when is_list(rows) do
+    Map.new(rows, fn %MarkingRow{place: p} = row -> {p, row} end)
+  end
+
+  defp build_diagram(enactment_id, flow_cache, marking_index, transition_counts, fired_at_index) do
+    case lookup_cpnet_safe(enactment_id, flow_cache) do
+      {:ok, cpnet} ->
+        %NetDiagram{
+          places: diagram_places(cpnet, marking_index),
+          transitions: diagram_transitions(cpnet, transition_counts, fired_at_index),
+          arcs: diagram_arcs(cpnet)
+        }
+
+      :error ->
+        %NetDiagram{places: [], transitions: [], arcs: []}
+    end
+  end
+
+  defp diagram_places(cpnet, marking_index) do
+    Enum.map(cpnet.places, fn place ->
+      colour_set = colour_set_to_string(place.colour_set)
+
+      case Map.get(marking_index, place.name) do
+        %MarkingRow{tokens_count: count, tokens_summary: summary} ->
+          %NetDiagramPlace{
+            name: place.name,
+            colour_set: colour_set,
+            tokens_count: count,
+            tokens_summary: summary
+          }
+
+        nil ->
+          %NetDiagramPlace{
+            name: place.name,
+            colour_set: colour_set,
+            tokens_count: 0,
+            tokens_summary: ""
+          }
+      end
+    end)
+  end
+
+  defp diagram_transitions(cpnet, transition_counts, fired_at_index) do
+    Enum.map(cpnet.transitions, fn transition ->
+      counts = Map.get(transition_counts, transition.name, %{})
+
+      %NetDiagramTransition{
+        name: transition.name,
+        enabled_count: Map.get(counts, :enabled_count, 0),
+        rejected_by_guard_count: Map.get(counts, :rejected_by_guard_count, 0),
+        rejected_by_arc_eval_count: Map.get(counts, :rejected_by_arc_eval_count, 0),
+        rejected_by_marking_count: Map.get(counts, :rejected_by_marking_count, 0),
+        last_fired_at: Map.get(fired_at_index, transition.name)
+      }
+    end)
+  end
+
+  defp diagram_arcs(cpnet) do
+    Enum.map(cpnet.arcs, fn arc ->
+      %NetDiagramArc{
+        place: arc.place,
+        transition: arc.transition,
+        orientation: arc.orientation
+      }
+    end)
+  end
+
+  defp colour_set_to_string(nil), do: ""
+  defp colour_set_to_string(name) when is_atom(name), do: Atom.to_string(name)
+  defp colour_set_to_string(name) when is_binary(name), do: name
+  defp colour_set_to_string(other), do: inspect(other)
+
+  # Refresh marking_index from the live `:markings` stream so the diagram
+  # tracks the same per-place counts as the Markings tab. The mount-time
+  # markings are static (see store @moduledoc), but if a future bridge upgrade
+  # streams marking deltas, the stream is already the source of truth.
+  defp apply_diagram_event(socket, %Event{kind: :complete_workitems_stop} = event) do
+    socket
+    |> record_transition_firings(event)
+    |> bump_enabled_counts(event, -1)
+  end
+
+  defp apply_diagram_event(socket, %Event{kind: :produce_workitems_stop} = event) do
+    bump_enabled_counts(socket, event, +1)
+  end
+
+  defp apply_diagram_event(socket, %Event{kind: :withdraw_workitems_stop} = event) do
+    bump_enabled_counts(socket, event, -1)
+  end
+
+  defp apply_diagram_event(socket, %Event{}), do: socket
+
+  defp record_transition_firings(socket, %Event{payload: %{workitems: workitems}, occurred_at: at}) do
+    fired_at_iso = datetime_to_iso(at)
+
+    fired_at_index =
+      Enum.reduce(workitems, socket.assigns.transition_fired_at, fn wi, acc ->
+        Map.put(acc, transition_label(wi.binding_element), fired_at_iso)
+      end)
+
+    assign(socket, :transition_fired_at, fired_at_index)
+  end
+
+  defp record_transition_firings(socket, %Event{}), do: socket
+
+  defp bump_enabled_counts(socket, %Event{payload: %{workitems: workitems}}, delta) do
+    counts =
+      Enum.reduce(workitems, socket.assigns.transition_counts, fn wi, acc ->
+        name = transition_label(wi.binding_element)
+        cur = Map.get(acc, name, %{})
+        next_enabled = max(Map.get(cur, :enabled_count, 0) + delta, 0)
+        Map.put(acc, name, Map.put(cur, :enabled_count, next_enabled))
+      end)
+
+    assign(socket, :transition_counts, counts)
+  end
+
+  defp bump_enabled_counts(socket, %Event{}, _delta), do: socket
+
+  defp refresh_diagram(socket) do
+    diagram =
+      build_diagram(
+        socket.assigns.enactment_id,
+        socket.assigns.flow_cache,
+        socket.assigns.marking_index,
+        socket.assigns.transition_counts,
+        socket.assigns.transition_fired_at
+      )
+
+    assign(socket, :diagram, diagram)
   end
 
   defp take_snapshot_reply(enactment_id) do

@@ -95,6 +95,7 @@ declare namespace Musubi {
       {
         summary: ColouredFlowDashboardWeb.Views.EnactmentSummary
         transitions: string[]
+        diagram: ColouredFlowDashboardWeb.Views.NetDiagram
         markings: Musubi.StreamField<ColouredFlowDashboardWeb.Views.MarkingRow>
         workitems: Musubi.StreamField<ColouredFlowDashboardWeb.Views.WorkitemRow>
         occurrences: Musubi.StreamField<ColouredFlowDashboardWeb.Views.OccurrenceRow>
@@ -181,6 +182,34 @@ declare namespace ColouredFlowDashboardWeb {
       colour_set: string
       tokens_count: number
       tokens_summary: string
+    }
+
+    interface NetDiagram {
+      places: ColouredFlowDashboardWeb.Views.NetDiagramPlace[]
+      transitions: ColouredFlowDashboardWeb.Views.NetDiagramTransition[]
+      arcs: ColouredFlowDashboardWeb.Views.NetDiagramArc[]
+    }
+
+    interface NetDiagramArc {
+      place: string
+      transition: string
+      orientation: "p_to_t" | "t_to_p"
+    }
+
+    interface NetDiagramPlace {
+      name: string
+      colour_set: string
+      tokens_count: number
+      tokens_summary: string
+    }
+
+    interface NetDiagramTransition {
+      name: string
+      enabled_count: number
+      rejected_by_guard_count: number
+      rejected_by_arc_eval_count: number
+      rejected_by_marking_count: number
+      last_fired_at: string | null
     }
 
     interface OccurrenceRow {
