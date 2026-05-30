@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, LayerCard, Text } from "@cloudflare/kumo"
+import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react"
 
 type VersionRange = ColouredFlowDashboardWeb.Views.VersionRange
 type ReplayState = ColouredFlowDashboardWeb.Views.ReplayState
@@ -101,11 +102,11 @@ export default function TimelineScrubber({
       className="flex flex-col gap-3 px-4 py-3"
       data-testid="timeline-scrubber"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Text variant="secondary">Timeline</Text>
           <span
-            className="text-sm text-cf-ink-muted tabular-nums"
+            className="truncate text-sm text-cf-ink tabular-nums"
             data-testid="timeline-caption"
           >
             {caption}
@@ -131,7 +132,7 @@ export default function TimelineScrubber({
           aria-label="Step back one version"
           data-testid="timeline-step-back"
         >
-          ‹
+          <CaretLeftIcon size={14} weight="bold" aria-hidden />
         </Button>
         <input
           type="range"
@@ -146,7 +147,7 @@ export default function TimelineScrubber({
           aria-valuenow={value}
           aria-label="Timeline scrubber"
           data-testid="timeline-slider"
-          className="h-2 w-full cursor-pointer appearance-none rounded-full bg-cf-canvas accent-cf-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="cf-timeline-slider w-full"
         />
         <Button
           variant="secondary"
@@ -156,7 +157,7 @@ export default function TimelineScrubber({
           aria-label="Step forward one version"
           data-testid="timeline-step-forward"
         >
-          ›
+          <CaretRightIcon size={14} weight="bold" aria-hidden />
         </Button>
       </div>
       <div className="flex justify-between text-xs text-cf-ink-faint tabular-nums">

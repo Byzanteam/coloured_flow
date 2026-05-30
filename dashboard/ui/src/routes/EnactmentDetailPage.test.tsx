@@ -316,7 +316,7 @@ describe("EnactmentDetailPage", () => {
     renderRoute(<EnactmentDetailPage />)
     expect(screen.getByText(/Markings are mount-time-accurate/i)).toBeDefined()
     expect(
-      screen.getByText(/Click Take snapshot in the action bar, then reload/i)
+      screen.getByText(/Take snapshot, then reload to refresh/i)
     ).toBeDefined()
   })
 

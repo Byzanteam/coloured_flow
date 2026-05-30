@@ -55,3 +55,63 @@ body {
   background: var(--color-cf-canvas);
   color: var(--color-cf-ink);
 }
+
+/* Timeline scrubber range input. Native `<input type=range>` chrome is reset
+ * so the slider reads as a Kumo primitive (hairline track + accent-ink thumb)
+ * in every browser, not the OS default volume knob. */
+.cf-timeline-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+.cf-timeline-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.cf-timeline-slider:focus-visible {
+  outline: 2px solid var(--color-cf-accent-ink);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
+.cf-timeline-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-cf-border-strong);
+}
+.cf-timeline-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-cf-border-strong);
+  border: 0;
+}
+.cf-timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-cf-accent-ink);
+  border: 2px solid var(--color-cf-surface);
+  margin-top: -5px;
+  box-shadow: 0 1px 2px oklch(0.2 0.012 260 / 0.18);
+  transition: transform 120ms ease-out;
+}
+.cf-timeline-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-cf-accent-ink);
+  border: 2px solid var(--color-cf-surface);
+  box-shadow: 0 1px 2px oklch(0.2 0.012 260 / 0.18);
+  transition: transform 120ms ease-out;
+}
+.cf-timeline-slider:not(:disabled):hover::-webkit-slider-thumb,
+.cf-timeline-slider:not(:disabled):active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.cf-timeline-slider:not(:disabled):hover::-moz-range-thumb,
+.cf-timeline-slider:not(:disabled):active::-moz-range-thumb {
+  transform: scale(1.15);
+}

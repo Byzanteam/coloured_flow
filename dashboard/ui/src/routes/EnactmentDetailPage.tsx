@@ -372,10 +372,10 @@ function StateBadge({
   if (replayState) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-full border border-cf-accent/50 bg-cf-accent-soft px-2 py-0.5 text-xs font-medium text-cf-accent"
+        className="inline-flex items-center gap-1.5 rounded-full border border-cf-accent-ink/50 bg-cf-accent-tint px-2 py-0.5 text-xs font-medium text-cf-accent-ink"
         data-testid="state-badge-replay"
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-cf-accent" />
+        <span className="h-1.5 w-1.5 rounded-full bg-cf-accent-ink" />
         REPLAY · v{replayState.version}
       </span>
     )
@@ -674,26 +674,31 @@ function MarkingsTab({
 }) {
   return (
     <div
-      className={`flex flex-col gap-3 transition-opacity ${
-        isPending ? "opacity-50" : "opacity-100"
+      className={`flex flex-col gap-3 transition-opacity duration-150 ${
+        isPending ? "pointer-events-none opacity-60" : "opacity-100"
       }`}
       data-testid="markings-tab"
       data-replay={replayState ? "true" : "false"}
+      aria-busy={isPending}
     >
       {replayState ? (
         <div data-testid="markings-replay-banner">
           <Banner
-            variant="alert"
-            title={`Showing derived markings at version v${replayState.version}`}
-            description="Live updates paused. Click Return to live in the timeline scrubber to resume."
+            variant="default"
+            title={
+              isPending
+                ? `Loading derived markings at v${replayState.version}…`
+                : `Showing derived markings at v${replayState.version}`
+            }
+            description="Live updates paused. Use Return to live in the timeline scrubber to resume."
           />
         </div>
       ) : (
         <div data-testid="markings-stale-banner">
           <Banner
-            variant="alert"
+            variant="default"
             title="Markings are mount-time-accurate"
-            description="Live workitem events do not refresh this view. Click Take snapshot in the action bar, then reload this page to refresh the markings after recent activity."
+            description="Live workitem events do not refresh this view. Take snapshot, then reload to refresh after recent activity."
           />
         </div>
       )}
