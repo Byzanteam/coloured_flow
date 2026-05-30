@@ -429,16 +429,14 @@ describe("EnactmentDetailPage", () => {
         fireEvent.click(screen.getByRole("tab", { name: /Telemetry/ }))
       })
       await waitFor(() => {
-        // The telemetry tab Banner sources its description from
+        // Page-level exception banner sources its description from
         // `summary.last_exception_banner` — never from the telemetry stream.
-        // M6 also renders a page-level exception banner above the diagram;
-        // both share the "Enactment exception" title.
         expect(screen.getAllByText("Enactment exception").length).toBeGreaterThanOrEqual(1)
         expect(screen.getAllByText("real enactment failure").length).toBeGreaterThanOrEqual(1)
       })
 
-      // Sanity: telemetry banner description does NOT contain the workitem-op
-      // text. The telemetry row's summary cell does — but the banner does not.
+      // Sanity: page banner description does NOT contain the workitem-op text.
+      // The telemetry row's summary cell does — but the banner does not.
       const allMatches = screen.queryAllByText("workitem op blew up")
       // Exactly one match (the telemetry row summary), never two.
       expect(allMatches.length).toBe(1)
@@ -561,8 +559,7 @@ describe("EnactmentDetailPage", () => {
       const restore = mutate("exception", null)
       try {
         renderRoute(<EnactmentDetailPage />)
-        // Page-level banner + telemetry banner both fall back; at least one
-        // renders the fallback string.
+        // Page-level banner falls back to the generic copy.
         expect(screen.getAllByText(/Enactment is in an exception state/).length)
           .toBeGreaterThanOrEqual(1)
       } finally {

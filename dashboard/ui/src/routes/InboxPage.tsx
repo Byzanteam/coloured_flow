@@ -182,7 +182,7 @@ function InboxTable({
                   to={`/enactments/${row.enactment_id}`}
                   aria-label={`Open enactment ${row.enactment_id} detail`}
                   data-testid={`inbox-open-detail-${row.id}`}
-                  className="inline-flex h-7 items-center rounded-md border border-cf-exception-ink/40 bg-cf-exception-bg px-2.5 text-xs font-medium text-cf-exception-ink hover:bg-cf-exception-bg/80"
+                  className="inline-flex h-7 items-center rounded-md border border-cf-exception-ink/60 bg-cf-exception-bg px-2.5 text-xs font-medium text-cf-exception-ink hover:bg-cf-exception-bg/80"
                 >
                   Open detail
                 </Link>
@@ -223,21 +223,21 @@ function EnactmentChip({
   if (state === "exception") {
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-full border border-cf-exception-ink/30 bg-cf-exception-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cf-exception-ink"
+        className="inline-flex items-center gap-1.5 rounded-full border border-cf-exception-ink/50 bg-cf-exception-bg px-2 py-0.5 text-[11px] font-medium text-cf-exception-ink"
         data-testid="inbox-enactment-chip-exception"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-cf-dot-exception" />
-        exception
+        Exception
       </span>
     )
   }
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-cf-border bg-cf-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cf-ink-muted"
+      className="inline-flex items-center gap-1.5 rounded-full border border-cf-border bg-cf-surface px-2 py-0.5 text-[11px] font-medium text-cf-ink-muted"
       data-testid="inbox-enactment-chip-terminated"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-cf-dot-terminated" />
-      terminated
+      Terminated
     </span>
   )
 }

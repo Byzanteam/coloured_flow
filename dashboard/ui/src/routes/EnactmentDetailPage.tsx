@@ -232,8 +232,6 @@ function DetailContent({
             {activeTab === "telemetry" && (
               <TelemetryTab
                 rows={telemetry}
-                state={state}
-                lastExceptionBanner={summary?.last_exception_banner ?? null}
                 onOpenInDebug={(transition) => {
                   setActiveTab("debug")
                   if (transition) setPendingInspect(transition)
@@ -263,7 +261,7 @@ function StateBadge({ state }: { state: "running" | "exception" | "terminated" }
   if (state === "exception") {
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-full border border-cf-exception-ink/30 bg-cf-exception-bg px-2 py-0.5 text-xs font-medium text-cf-exception-ink"
+        className="inline-flex items-center gap-1.5 rounded-full border border-cf-exception-ink/50 bg-cf-exception-bg px-2 py-0.5 text-xs font-medium text-cf-exception-ink"
         data-testid="state-badge-exception"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-cf-dot-exception" />
@@ -451,7 +449,7 @@ function ActionBar({
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       {state === "exception" ? (
         <Button
           variant="primary"
@@ -701,13 +699,9 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
 
 function TelemetryTab({
   rows,
-  state,
-  lastExceptionBanner: bannerFromSummary,
   onOpenInDebug
 }: {
   rows: readonly TelemetryEntry[]
-  state: "running" | "exception" | "terminated"
-  lastExceptionBanner: string | null
   onOpenInDebug: (transition: string | null) => void
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -717,12 +711,8 @@ function TelemetryTab({
     () => (errorsOnly ? rows.filter((row) => row.severity === "error") : rows.slice()),
     [errorsOnly, rows]
   )
-  const lastExceptionBanner = useMemo(() => {
-    if (state !== "exception") return null
-    return bannerFromSummary ?? "Enactment is in an exception state."
-  }, [bannerFromSummary, state])
 
-  if (rows.length === 0 && !lastExceptionBanner) {
+  if (rows.length === 0) {
     return (
       <Banner
         variant="default"
@@ -735,15 +725,6 @@ function TelemetryTab({
 
   return (
     <div className="flex flex-col gap-3" data-testid="telemetry-tab">
-      {lastExceptionBanner ? (
-        <Banner
-          variant="error"
-          title="Enactment exception"
-          description={lastExceptionBanner}
-          data-testid="telemetry-exception-banner"
-        />
-      ) : null}
-
       <div className="flex items-center justify-between gap-3 px-1">
         <Text variant="secondary">
           {visibleRows.length} of {rows.length} event{rows.length === 1 ? "" : "s"}
