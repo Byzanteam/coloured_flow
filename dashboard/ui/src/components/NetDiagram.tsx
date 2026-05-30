@@ -57,14 +57,29 @@ const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
 const PLACE_NODE = "cf-place"
 const TRANSITION_NODE = "cf-transition"
 
+const PLACE_CIRCLE = 72
+const PLACE_LABEL_GAP = 32
 const PLACE_W = 96
-const PLACE_H = 96
-const TRANSITION_W = 128
-const TRANSITION_H = 56
+const PLACE_H = PLACE_CIRCLE + PLACE_LABEL_GAP
+const TRANSITION_H = 40
+const TRANSITION_MIN_W = 64
+const TRANSITION_MAX_W = 200
+const TRANSITION_CHAR_PX = 7
+const TRANSITION_PAD_PX = 24
+
+function computeTransitionWidth(transitions: ReadonlyArray<DiagramTransition>): number {
+  let maxLen = 0
+  for (const t of transitions) {
+    if (t.name.length > maxLen) maxLen = t.name.length
+  }
+  const raw = maxLen * TRANSITION_CHAR_PX + TRANSITION_PAD_PX
+  return Math.max(TRANSITION_MIN_W, Math.min(TRANSITION_MAX_W, raw))
+}
 
 type PlaceNodeData = DiagramPlace & Record<string, unknown>
 type TransitionNodeData = DiagramTransition & {
   enactmentState: EnactmentState
+  width: number
 } & Record<string, unknown>
 
 type PlaceNode = Node<PlaceNodeData, typeof PLACE_NODE>
@@ -159,6 +174,8 @@ export function buildGraph(
     return { nodes: [], edges: [], isEmpty: true }
   }
 
+  const transitionW = computeTransitionWidth(transitions)
+
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
   const tight = places.length + transitions.length <= 6
@@ -177,7 +194,7 @@ export function buildGraph(
   }
   for (const transition of transitions) {
     g.setNode(transitionId(transition.name), {
-      width: TRANSITION_W,
+      width: transitionW,
       height: TRANSITION_H
     })
   }
@@ -207,8 +224,8 @@ export function buildGraph(
     return {
       id: transitionId(transition.name),
       type: TRANSITION_NODE,
-      position: { x: pos.x - TRANSITION_W / 2, y: pos.y - TRANSITION_H / 2 },
-      data: { ...transition, enactmentState } as TransitionNodeData,
+      position: { x: pos.x - transitionW / 2, y: pos.y - TRANSITION_H / 2 },
+      data: { ...transition, enactmentState, width: transitionW } as TransitionNodeData,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       draggable: true,
@@ -265,49 +282,62 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
   const hasTokens = data.tokens_count > 0
   const tooltip = data.tokens_summary || `${data.tokens_count} token(s)`
   return (
-    <Surface
-      as="div"
-      title={tooltip}
-      className="relative flex h-[96px] w-[96px] items-center justify-center rounded-full border bg-cf-surface text-center shadow-sm"
-      style={{
-        borderColor: hasTokens ? "var(--color-cf-accent)" : "var(--color-cf-border)",
-        borderWidth: hasTokens ? 2 : 1.5
-      }}
-      data-testid={`place-node-${data.name}`}
+    <div
+      className="flex flex-col items-center"
+      style={{ width: PLACE_W, height: PLACE_H }}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={PLACE_HANDLE_STYLE}
-        isConnectable={false}
-      />
-      <div className="flex flex-col items-center gap-0.5 px-2">
+      <div className="relative" style={{ width: PLACE_CIRCLE, height: PLACE_CIRCLE }}>
+        <Surface
+          as="div"
+          title={tooltip}
+          className="flex h-full w-full items-center justify-center rounded-full border bg-cf-surface shadow-sm"
+          style={{
+            borderColor: hasTokens ? "var(--color-cf-accent)" : "var(--color-cf-border)",
+            borderWidth: hasTokens ? 2 : 1.5
+          }}
+          data-testid={`place-node-${data.name}`}
+        >
+          <Handle
+            type="target"
+            position={Position.Left}
+            style={PLACE_HANDLE_STYLE}
+            isConnectable={false}
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            style={PLACE_HANDLE_STYLE}
+            isConnectable={false}
+          />
+        </Surface>
         {hasTokens ? (
-          <span data-testid={`place-tokens-${data.name}`} className="contents">
+          <span
+            data-testid={`place-token-badge-${data.name}`}
+            className="absolute -right-1 -top-1"
+          >
             <Badge
               variant="primary"
-              className="bg-cf-accent-tint px-2 py-0 text-base font-semibold leading-none tabular-nums text-cf-accent-ink"
+              className="inline-flex size-5 items-center justify-center rounded-full bg-cf-accent-tint p-0 text-[11px] font-semibold leading-none tabular-nums text-cf-accent-ink shadow-sm"
             >
               {data.tokens_count}
             </Badge>
           </span>
         ) : null}
-        <span className="max-w-[80px] truncate text-xs font-medium text-cf-ink">
-          {truncate(data.name, 12)}
+      </div>
+      <div
+        data-testid={`place-label-${data.name}`}
+        className="mt-1 flex w-[120px] flex-col items-center leading-tight"
+      >
+        <span className="max-w-full truncate font-mono text-xs font-medium text-cf-ink">
+          {data.name}
         </span>
         {data.colour_set ? (
-          <span className="max-w-[80px] truncate text-[10px] uppercase tracking-wide text-cf-ink-faint">
-            {truncate(data.colour_set, 12)}
+          <span className="max-w-full truncate font-mono text-[10px] text-cf-ink-muted">
+            {data.colour_set}
           </span>
         ) : null}
       </div>
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={PLACE_HANDLE_STYLE}
-        isConnectable={false}
-      />
-    </Surface>
+    </div>
   )
 }
 
@@ -341,8 +371,10 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
   return (
     <Surface
       as="div"
-      className="flex h-[56px] w-[128px] items-center justify-center rounded-md border bg-cf-surface text-center shadow-sm"
+      className="flex items-center justify-center rounded-md border bg-cf-surface text-center shadow-sm"
       style={{
+        width: data.width,
+        height: TRANSITION_H,
         borderColor: "var(--color-cf-border)",
         borderWidth: 1.5,
         boxShadow: pulseShadow ?? baseShadow,
@@ -361,8 +393,8 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
         style={PLACE_HANDLE_STYLE}
         isConnectable={false}
       />
-      <span className="max-w-[112px] truncate px-2 text-xs font-medium text-cf-ink">
-        {truncate(data.name, 16)}
+      <span className="truncate px-4 font-mono text-xs font-medium text-cf-ink">
+        {data.name}
       </span>
       <Handle
         type="source"
@@ -401,7 +433,3 @@ function usePulseOnChange(value: string | null): boolean {
   return pulsing
 }
 
-function truncate(value: string, max: number): string {
-  if (value.length <= max) return value
-  return `${value.slice(0, max - 1)}…`
-}

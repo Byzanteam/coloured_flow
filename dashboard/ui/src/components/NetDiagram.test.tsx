@@ -56,8 +56,47 @@ describe("NetDiagram", () => {
 
   it("shows a token badge only when the place has tokens", () => {
     render(<NetDiagram diagram={baseDiagram()} />)
-    expect(screen.getByTestId("place-tokens-pending")).toBeDefined()
-    expect(screen.queryByTestId("place-tokens-decided")).toBeNull()
+    expect(screen.getByTestId("place-token-badge-pending")).toBeDefined()
+    expect(screen.queryByTestId("place-token-badge-decided")).toBeNull()
+  })
+
+  it("renders place name + colset stacked outside the circle", () => {
+    render(<NetDiagram diagram={baseDiagram()} />)
+    const pendingLabel = screen.getByTestId("place-label-pending")
+    expect(pendingLabel.textContent).toContain("pending")
+    expect(pendingLabel.textContent).toContain("trigger_t")
+    const decidedLabel = screen.getByTestId("place-label-decided")
+    expect(decidedLabel.textContent).toContain("decided")
+    expect(decidedLabel.textContent).toContain("outcome")
+  })
+
+  it("renders the transition name inside the rectangle and sizes width by longest name", () => {
+    const diagram = baseDiagram()
+    diagram.transitions = [
+      {
+        name: "approve",
+        enabled_count: 0,
+        rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
+        rejected_by_marking_count: 0,
+        last_fired_at: null
+      },
+      {
+        name: "submit_for_review",
+        enabled_count: 0,
+        rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
+        rejected_by_marking_count: 0,
+        last_fired_at: null
+      }
+    ]
+    render(<NetDiagram diagram={diagram} />)
+    const a = screen.getByTestId("transition-node-approve") as HTMLElement
+    const b = screen.getByTestId("transition-node-submit_for_review") as HTMLElement
+    expect(a.style.width).toBe(b.style.width)
+    expect(a.style.width).not.toBe("")
+    expect(a.textContent).toContain("approve")
+    expect(b.textContent).toContain("submit_for_review")
   })
 
   it("applies the enabled glow data attribute when enabled_count > 0", () => {
