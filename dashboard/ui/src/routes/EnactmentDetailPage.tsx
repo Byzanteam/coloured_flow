@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
 import {
   Badge,
@@ -129,6 +129,17 @@ function DetailContent({
   const diagram: DiagramPayload | null = snapshot.diagram ?? null
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
+  // Pending inspect target driven by NetDiagram node click. Cleared by
+  // DebugTab once the dispatch fires so re-clicking the same transition
+  // re-inspects.
+  const [pendingInspect, setPendingInspect] = useState<string | null>(null)
+
+  const onSelectTransition = useCallback((name: string) => {
+    setActiveTab("debug")
+    setPendingInspect(name)
+  }, [])
+
+  const onInspectConsumed = useCallback(() => setPendingInspect(null), [])
 
   const orderedOccurrences = useMemo(
     () => [...occurrences].sort((a, b) => b.step_number - a.step_number),
@@ -164,38 +175,60 @@ function DetailContent({
         ]}
       />
 
-      <LayerCard.Primary
-        className="overflow-hidden p-0"
-        data-testid="net-diagram-card"
+      {/* Immutable requirement: left = diagram, right = tabs. Stack on
+          screens narrower than lg (1024px) so the diagram doesn't crush
+          on mobile. */}
+      <div
+        className="flex flex-col gap-6 lg:flex-row lg:items-start"
+        data-testid="detail-split"
       >
-        <div className="h-[440px] w-full">
-          <NetDiagram diagram={diagram} enactmentState={state} />
+        <LayerCard.Primary
+          className="overflow-hidden p-0 lg:basis-3/5 lg:flex-shrink-0"
+          data-testid="net-diagram-card"
+        >
+          <div className="h-[440px] w-full lg:h-[560px]">
+            <NetDiagram
+              diagram={diagram}
+              enactmentState={state}
+              onSelectTransition={onSelectTransition}
+            />
+          </div>
+        </LayerCard.Primary>
+
+        <div
+          className="flex min-w-0 flex-col gap-4 lg:basis-2/5 lg:flex-1"
+          data-testid="detail-tabs-pane"
+        >
+          <div className="border-b border-cf-border">
+            <Tabs
+              variant="underline"
+              tabs={TAB_ITEMS as unknown as Array<{ value: string; label: string }>}
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as TabId)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-4">
+            {activeTab === "markings" && <MarkingsTab rows={markings} />}
+            {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
+            {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
+            {activeTab === "telemetry" && (
+              <TelemetryTab
+                rows={telemetry}
+                state={state}
+                lastExceptionBanner={summary?.last_exception_banner ?? null}
+              />
+            )}
+            {activeTab === "debug" && (
+              <DebugTab
+                detail={detail}
+                transitions={transitions}
+                pendingInspect={pendingInspect}
+                onInspectConsumed={onInspectConsumed}
+              />
+            )}
+          </div>
         </div>
-      </LayerCard.Primary>
-
-      <div className="border-b border-cf-border">
-        <Tabs
-          variant="underline"
-          tabs={TAB_ITEMS as unknown as Array<{ value: string; label: string }>}
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as TabId)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-4">
-        {activeTab === "markings" && <MarkingsTab rows={markings} />}
-        {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
-        {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
-        {activeTab === "telemetry" && (
-          <TelemetryTab
-            rows={telemetry}
-            state={state}
-            lastExceptionBanner={summary?.last_exception_banner ?? null}
-          />
-        )}
-        {activeTab === "debug" && (
-          <DebugTab detail={detail} transitions={transitions} />
-        )}
       </div>
     </section>
   )
@@ -706,10 +739,14 @@ interface InspectReply extends Record<string, unknown> {
 
 function DebugTab({
   detail,
-  transitions
+  transitions,
+  pendingInspect,
+  onInspectConsumed
 }: {
   detail: DetailProxy
   transitions: readonly string[]
+  pendingInspect?: string | null
+  onInspectConsumed?: () => void
 }) {
   const inspect = useMusubiCommand(detail, "inspect_transition")
   const toasts = useKumoToastManager()
@@ -719,7 +756,7 @@ function DebugTab({
   const [candidates, setCandidates] = useState<readonly BindingCandidate[]>([])
   const [lastCode, setLastCode] = useState<InspectCode | null>(null)
 
-  const onInspect = async (transition: string) => {
+  const onInspect = useCallback(async (transition: string) => {
     setSelected(transition)
     await dispatchWithReply<InspectCode>(
       inspect.dispatch as unknown as (payload: Record<string, unknown>) => Promise<InspectReply>,
@@ -761,7 +798,16 @@ function DebugTab({
         }
       }
     )
-  }
+  }, [inspect.dispatch, toasts])
+
+  // When the parent passes a `pendingInspect` (e.g. from a NetDiagram node
+  // click), auto-fire the inspector for that transition then signal the
+  // parent to clear the request.
+  useEffect(() => {
+    if (!pendingInspect) return
+    void onInspect(pendingInspect)
+    onInspectConsumed?.()
+  }, [pendingInspect, onInspect, onInspectConsumed])
 
   if (transitions.length === 0) {
     return (

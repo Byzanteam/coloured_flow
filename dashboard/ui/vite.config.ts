@@ -20,9 +20,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Split heavy third-party deps off the app chunk so the SPA bundle
-        // stays cache-friendly when only product code changes. React + ReactDOM
-        // sit in their own chunk because they're touched every page; the
-        // diagram and chrome bundles load conditionally with their routes.
+        // stays cache-friendly when only product code changes. Routes are
+        // imported eagerly today (no React.lazy split), so every entry
+        // downloads every chunk on first paint — these splits are about
+        // cache stability across product redeploys, not lazy loading. If a
+        // route is later moved behind React.lazy, the matching chunk
+        // becomes a real on-demand fetch for free.
         manualChunks: {
           "vendor-react": ["react", "react-dom", "react/jsx-runtime", "react-router-dom"],
           "vendor-diagram": ["@xyflow/react", "@dagrejs/dagre"],

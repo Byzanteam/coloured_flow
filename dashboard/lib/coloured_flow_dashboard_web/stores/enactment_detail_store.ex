@@ -234,7 +234,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     transitions = resolve_transitions(enactment_id, flow_cache)
     last_occurrence_at = last_occurrence_at(occurrences)
     marking_index = build_marking_index(markings)
-    diagram = build_diagram(enactment_id, flow_cache, marking_index, %{}, %{})
+    enabled_workitems = seed_enabled_workitems(workitems)
+    diagram = build_diagram(enactment_id, flow_cache, marking_index, enabled_workitems, %{})
 
     summary = %EnactmentSummary{
       enactment_id: enactment_id,
@@ -257,7 +258,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:transitions, transitions)
       |> assign(:diagram, diagram)
       |> assign(:marking_index, marking_index)
-      |> assign(:transition_counts, %{})
+      |> assign(:enabled_workitems, enabled_workitems)
       |> assign(:transition_fired_at, %{})
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
       |> stream(:markings, markings, reset: true)
@@ -1004,18 +1005,34 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     Map.new(rows, fn %MarkingRow{place: p} = row -> {p, row} end)
   end
 
-  defp build_diagram(enactment_id, flow_cache, marking_index, transition_counts, fired_at_index) do
+  # `enabled_workitems :: %{wi_id => transition_name}` records every workitem
+  # currently in the runner's `:enabled` state, sourced exclusively from
+  # mount-time peek + lifecycle events. The diagram glow then reflects the
+  # number of distinct workitems sitting on a transition, matching the
+  # "enabled transitions glow" requirement (`:started` workitems are live but
+  # no longer enabled and intentionally do NOT contribute to the glow count).
+  defp seed_enabled_workitems(rows) when is_list(rows) do
+    for %WorkitemRow{state: :enabled, id: id, transition: t} <- rows, into: %{}, do: {id, t}
+  end
+
+  defp build_diagram(enactment_id, flow_cache, marking_index, enabled_workitems, fired_at_index) do
     case lookup_cpnet_safe(enactment_id, flow_cache) do
       {:ok, cpnet} ->
+        counts = enabled_counts_from(enabled_workitems)
+
         %NetDiagram{
           places: diagram_places(cpnet, marking_index),
-          transitions: diagram_transitions(cpnet, transition_counts, fired_at_index),
+          transitions: diagram_transitions(cpnet, counts, fired_at_index),
           arcs: diagram_arcs(cpnet)
         }
 
       :error ->
         %NetDiagram{places: [], transitions: [], arcs: []}
     end
+  end
+
+  defp enabled_counts_from(enabled_workitems) when is_map(enabled_workitems) do
+    Enum.frequencies_by(enabled_workitems, fn {_id, transition} -> transition end)
   end
 
   defp diagram_places(cpnet, marking_index) do
@@ -1042,16 +1059,14 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     end)
   end
 
-  defp diagram_transitions(cpnet, transition_counts, fired_at_index) do
+  defp diagram_transitions(cpnet, counts, fired_at_index) do
     Enum.map(cpnet.transitions, fn transition ->
-      counts = Map.get(transition_counts, transition.name, %{})
-
       %NetDiagramTransition{
         name: transition.name,
-        enabled_count: Map.get(counts, :enabled_count, 0),
-        rejected_by_guard_count: Map.get(counts, :rejected_by_guard_count, 0),
-        rejected_by_arc_eval_count: Map.get(counts, :rejected_by_arc_eval_count, 0),
-        rejected_by_marking_count: Map.get(counts, :rejected_by_marking_count, 0),
+        enabled_count: Map.get(counts, transition.name, 0),
+        rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
+        rejected_by_marking_count: 0,
         last_fired_at: Map.get(fired_at_index, transition.name)
       }
     end)
@@ -1072,22 +1087,38 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp colour_set_to_string(name) when is_binary(name), do: name
   defp colour_set_to_string(other), do: inspect(other)
 
-  # Refresh marking_index from the live `:markings` stream so the diagram
-  # tracks the same per-place counts as the Markings tab. The mount-time
-  # markings are static (see store @moduledoc), but if a future bridge upgrade
-  # streams marking deltas, the stream is already the source of truth.
+  # Enabled-set maintenance. `enabled_workitems` is the precise membership
+  # set of workitems currently in the runner's `:enabled` state, keyed by
+  # workitem id. Lifecycle transitions:
+  #
+  #   * `:produce_workitems_stop`   — workitem enters `:enabled`        → add
+  #   * `:start_workitems_stop`     — workitem leaves `:enabled`        → drop
+  #   * `:withdraw_workitems_stop`  — workitem killed (from either)     → drop
+  #   * `:complete_workitems_stop`  — workitem fired (was `:started`)   → drop
+  #     (already absent after the matching start; the drop is a safety net
+  #     for missed start events.)
+  #   * `:enactment_terminate`      — every workitem gone               → clear
+  #
+  # The diagram glow on a transition is `count of entries with that
+  # transition_name`. `:started` workitems contribute zero, matching the
+  # immutable requirement ("enabled transitions glow").
   defp apply_diagram_event(socket, %Event{kind: :complete_workitems_stop} = event) do
     socket
     |> record_transition_firings(event)
-    |> bump_enabled_counts(event, -1)
+    |> drop_enabled_workitems(event)
   end
 
   defp apply_diagram_event(socket, %Event{kind: :produce_workitems_stop} = event) do
-    bump_enabled_counts(socket, event, +1)
+    add_enabled_workitems(socket, event)
   end
 
-  defp apply_diagram_event(socket, %Event{kind: :withdraw_workitems_stop} = event) do
-    bump_enabled_counts(socket, event, -1)
+  defp apply_diagram_event(socket, %Event{kind: kind} = event)
+       when kind in [:start_workitems_stop, :withdraw_workitems_stop] do
+    drop_enabled_workitems(socket, event)
+  end
+
+  defp apply_diagram_event(socket, %Event{kind: :enactment_terminate}) do
+    assign(socket, :enabled_workitems, %{})
   end
 
   defp apply_diagram_event(socket, %Event{}), do: socket
@@ -1105,19 +1136,27 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   defp record_transition_firings(socket, %Event{}), do: socket
 
-  defp bump_enabled_counts(socket, %Event{payload: %{workitems: workitems}}, delta) do
-    counts =
-      Enum.reduce(workitems, socket.assigns.transition_counts, fn wi, acc ->
-        name = transition_label(wi.binding_element)
-        cur = Map.get(acc, name, %{})
-        next_enabled = max(Map.get(cur, :enabled_count, 0) + delta, 0)
-        Map.put(acc, name, Map.put(cur, :enabled_count, next_enabled))
+  defp add_enabled_workitems(socket, %Event{payload: %{workitems: workitems}}) do
+    next =
+      Enum.reduce(workitems, socket.assigns.enabled_workitems, fn wi, acc ->
+        Map.put(acc, wi.id, transition_label(wi.binding_element))
       end)
 
-    assign(socket, :transition_counts, counts)
+    assign(socket, :enabled_workitems, next)
   end
 
-  defp bump_enabled_counts(socket, %Event{}, _delta), do: socket
+  defp add_enabled_workitems(socket, %Event{}), do: socket
+
+  defp drop_enabled_workitems(socket, %Event{payload: %{workitems: workitems}}) do
+    next =
+      Enum.reduce(workitems, socket.assigns.enabled_workitems, fn wi, acc ->
+        Map.delete(acc, wi.id)
+      end)
+
+    assign(socket, :enabled_workitems, next)
+  end
+
+  defp drop_enabled_workitems(socket, %Event{}), do: socket
 
   defp refresh_diagram(socket) do
     diagram =
@@ -1125,7 +1164,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         socket.assigns.enactment_id,
         socket.assigns.flow_cache,
         socket.assigns.marking_index,
-        socket.assigns.transition_counts,
+        socket.assigns.enabled_workitems,
         socket.assigns.transition_fired_at
       )
 

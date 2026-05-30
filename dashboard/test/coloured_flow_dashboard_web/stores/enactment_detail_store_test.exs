@@ -667,6 +667,133 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
       assert diagram.transitions == []
       assert diagram.arcs == []
     end
+
+    test "start_workitems_stop drops the workitem out of enabled_count", %{
+      enactment_id: eid,
+      topic: topic,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {eid, "flow-id", synthetic_cpnet()})
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event_for(:produce_workitems_stop, eid, wi_id, "pass", 1))
+
+      assert [%{enabled_count: 1}] = Musubi.Testing.assigns(page).diagram.transitions
+
+      broadcast!(topic, build_workitem_event_for(:start_workitems_stop, eid, wi_id, "pass", 1))
+
+      # `:enabled → :started` leaves the firing-enabled set; the glow drops to 0
+      # even though the workitem is still live.
+      assert [%{enabled_count: 0}] = Musubi.Testing.assigns(page).diagram.transitions
+    end
+
+    test "withdraw_workitems_stop drops a still-enabled workitem out of enabled_count", %{
+      enactment_id: eid,
+      topic: topic,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {eid, "flow-id", synthetic_cpnet()})
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event_for(:produce_workitems_stop, eid, wi_id, "pass", 1))
+      assert [%{enabled_count: 1}] = Musubi.Testing.assigns(page).diagram.transitions
+
+      broadcast!(topic, build_workitem_event_for(:withdraw_workitems_stop, eid, wi_id, "pass", 2))
+      assert [%{enabled_count: 0}] = Musubi.Testing.assigns(page).diagram.transitions
+    end
+
+    test "with two enabled workitems, starting one keeps the glow at 1", %{
+      enactment_id: eid,
+      topic: topic,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {eid, "flow-id", synthetic_cpnet()})
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      wi_a = Ecto.UUID.generate()
+      wi_b = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event_for(:produce_workitems_stop, eid, wi_a, "pass", 1))
+      broadcast!(topic, build_workitem_event_for(:produce_workitems_stop, eid, wi_b, "pass", 2))
+      assert [%{enabled_count: 2}] = Musubi.Testing.assigns(page).diagram.transitions
+
+      broadcast!(topic, build_workitem_event_for(:start_workitems_stop, eid, wi_a, "pass", 2))
+      assert [%{enabled_count: 1}] = Musubi.Testing.assigns(page).diagram.transitions
+
+      # Completing the started workitem must NOT touch the still-enabled sibling.
+      broadcast!(topic, build_workitem_event_for(:complete_workitems_stop, eid, wi_a, "pass", 3))
+      assert [%{enabled_count: 1}] = Musubi.Testing.assigns(page).diagram.transitions
+    end
+
+    test "enactment_terminate clears the enabled set", %{
+      enactment_id: eid,
+      topic: topic,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {eid, "flow-id", synthetic_cpnet()})
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event_for(:produce_workitems_stop, eid, wi_id, "pass", 1))
+      assert [%{enabled_count: 1}] = Musubi.Testing.assigns(page).diagram.transitions
+
+      broadcast!(topic, %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_terminate,
+        enactment_id: eid,
+        enactment_version: 2,
+        occurred_at: DateTime.utc_now(),
+        payload: %{termination_type: :force, termination_message: "operator"}
+      })
+
+      assert [%{enabled_count: 0}] = Musubi.Testing.assigns(page).diagram.transitions
+    end
+
+    test "mount seeds enabled_count from live workitems already in :enabled state", %{
+      topic_prefix: topic_prefix
+    } do
+      # ApprovalFlow's first transition produces one `:enabled` workitem on the
+      # `approve` transition. A page opened against an already-running
+      # enactment must reflect this at mount, not zero.
+      Seed.run(enabled: true)
+      enactment_id = Seed.enactment_id(ApprovalFlow)
+      flow_cache = flow_cache_for_seed()
+      _warm = TelemetryBridge.lookup_cpnet(enactment_id, flow_cache)
+
+      assert_eventually(fn ->
+        case GenServer.whereis(
+               ColouredFlow.Runner.Enactment.Registry.via_name({:enactment, enactment_id})
+             ) do
+          pid when is_pid(pid) ->
+            %RunnerEnactment{workitems: workitems} = :sys.get_state(pid)
+
+            Enum.any?(workitems, fn {_id, wi} -> wi.state == :enabled end)
+
+          _other ->
+            false
+        end
+      end)
+
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+      diagram = Musubi.Testing.assigns(page).diagram
+
+      approve = Enum.find(diagram.transitions, &(&1.name == "approve"))
+      assert approve != nil
+      assert approve.enabled_count >= 1
+    end
   end
 
   describe "occurrence row keys" do

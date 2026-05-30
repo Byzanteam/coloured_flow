@@ -96,10 +96,27 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
 })
 
 // NetDiagram pulls in `@xyflow/react`, which requires DOM measurement APIs
-// that jsdom does not implement. Mount-stub it so this page-level test
-// stays focused on the layout shell; NetDiagram has its own component test.
+// that jsdom does not implement for full edge painting. The stub forwards the
+// click-to-Debug-tab click flow so page-level wiring can be exercised without
+// mounting React Flow; NetDiagram has its own component test for the real
+// rendering surface, and `mounts the real NetDiagram with a sample payload`
+// below double-checks the shared default path.
 vi.mock("../components/NetDiagram", () => ({
-  default: () => <div data-testid="net-diagram-stub" />
+  default: ({
+    onSelectTransition
+  }: {
+    onSelectTransition?: (name: string) => void
+  }) => (
+    <div data-testid="net-diagram-stub">
+      <button
+        type="button"
+        data-testid="net-diagram-click-approve"
+        onClick={() => onSelectTransition?.("approve")}
+      >
+        click approve transition
+      </button>
+    </div>
+  )
 }))
 
 vi.mock("../musubi", () => ({
@@ -194,6 +211,58 @@ describe("EnactmentDetailPage", () => {
     renderRoute(<EnactmentDetailPage />)
     expect(screen.getByTestId("net-diagram-card")).toBeDefined()
     expect(screen.getByTestId("net-diagram-stub")).toBeDefined()
+  })
+
+  it("lays out the diagram and the tabs as siblings under a split container", () => {
+    renderRoute(<EnactmentDetailPage />)
+    const split = screen.getByTestId("detail-split")
+    const diagramCard = screen.getByTestId("net-diagram-card")
+    const tabsPane = screen.getByTestId("detail-tabs-pane")
+    // Immutable requirement: diagram + tabs share a parent (the split) so
+    // the desktop layout can place them left/right (lg:flex-row). If a
+    // future change moves them into unrelated containers, the spec breaks.
+    expect(split.contains(diagramCard)).toBe(true)
+    expect(split.contains(tabsPane)).toBe(true)
+    expect(split.className).toMatch(/lg:flex-row/)
+    expect(diagramCard.className).toMatch(/lg:basis-3\/5/)
+    expect(tabsPane.className).toMatch(/lg:basis-2\/5/)
+  })
+
+  it("clicking a transition in the diagram switches to Debug and dispatches inspect_transition", async () => {
+    inspectTransitionMock.mockResolvedValueOnce({
+      code: "ok",
+      transition: "approve",
+      info: {
+        transition: "approve",
+        candidates_count: 1,
+        enabled_count: 1,
+        rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
+        rejected_by_marking_count: 0
+      },
+      candidates: [
+        {
+          transition: "approve",
+          binding_summary: "t = true",
+          guard_status: "enabled" as const,
+          reason: null
+        }
+      ]
+    })
+
+    renderRoute(<EnactmentDetailPage />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("net-diagram-click-approve"))
+    })
+
+    // Debug tab becomes the active tab + the inspector fires for the clicked
+    // transition, both wired by the parent page (the DebugTab itself never
+    // sees the click).
+    await waitFor(() => {
+      expect(screen.getByTestId("debug-tab")).toBeDefined()
+      expect(inspectTransitionMock).toHaveBeenCalledWith({ transition: "approve" })
+    })
   })
 
   it("renders the header with summary stats", () => {

@@ -1,5 +1,5 @@
-import { act, render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { act, fireEvent, render, screen } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
 
 import NetDiagram from "./NetDiagram"
 
@@ -57,6 +57,50 @@ describe("NetDiagram", () => {
     render(<NetDiagram diagram={baseDiagram()} />)
     expect(screen.getByTestId("place-tokens-pending")).toBeDefined()
     expect(screen.queryByTestId("place-tokens-decided")).toBeNull()
+  })
+
+  it("applies the enabled glow data attribute when enabled_count > 0", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 2
+    render(<NetDiagram diagram={diagram} enactmentState="running" />)
+    const node = screen.getByTestId("transition-node-approve")
+    expect(node.getAttribute("data-enabled")).toBe("true")
+    expect(node.getAttribute("data-glow")).toBe("enabled")
+  })
+
+  it("applies the exception glow when enactmentState is exception", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 0
+    render(<NetDiagram diagram={diagram} enactmentState="exception" />)
+    const node = screen.getByTestId("transition-node-approve")
+    expect(node.getAttribute("data-glow")).toBe("exception")
+  })
+
+  it("emits no glow when neither enabled nor in exception", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 0
+    render(<NetDiagram diagram={diagram} enactmentState="running" />)
+    expect(screen.getByTestId("transition-node-approve").getAttribute("data-glow")).toBe(
+      "none"
+    )
+  })
+
+  it("invokes onSelectTransition when a transition node is clicked", () => {
+    const onSelectTransition = vi.fn()
+    render(
+      <NetDiagram diagram={baseDiagram()} onSelectTransition={onSelectTransition} />
+    )
+    fireEvent.click(screen.getByTestId("transition-node-approve"))
+    expect(onSelectTransition).toHaveBeenCalledWith("approve")
+  })
+
+  it("does not invoke onSelectTransition for a place click", () => {
+    const onSelectTransition = vi.fn()
+    render(
+      <NetDiagram diagram={baseDiagram()} onSelectTransition={onSelectTransition} />
+    )
+    fireEvent.click(screen.getByTestId("place-node-pending"))
+    expect(onSelectTransition).not.toHaveBeenCalled()
   })
 
   it("pulses the transition node when last_fired_at changes", async () => {

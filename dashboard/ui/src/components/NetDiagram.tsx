@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Background,
   Controls,
@@ -22,6 +22,12 @@ type EnactmentState = "running" | "exception" | "terminated"
 interface NetDiagramProps {
   diagram: NetDiagramPayload | null | undefined
   enactmentState?: EnactmentState
+  /**
+   * Fires when the operator clicks a transition node. Used by the detail page
+   * to switch to the Debug tab and pre-filter the binding inspector to the
+   * clicked transition.
+   */
+  onSelectTransition?: (name: string) => void
 }
 
 const PLACE_NODE = "cf-place"
@@ -52,10 +58,24 @@ const DEFAULT_MARKER = {
   color: "var(--color-cf-border-strong)"
 }
 
-export default function NetDiagram({ diagram, enactmentState = "running" }: NetDiagramProps) {
+export default function NetDiagram({
+  diagram,
+  enactmentState = "running",
+  onSelectTransition
+}: NetDiagramProps) {
   const { nodes, edges, isEmpty } = useMemo(
     () => buildGraph(diagram, enactmentState),
     [diagram, enactmentState]
+  )
+
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (!onSelectTransition) return
+      if (node.type !== TRANSITION_NODE) return
+      const data = node.data as TransitionNodeData
+      onSelectTransition(data.name)
+    },
+    [onSelectTransition]
   )
 
   if (isEmpty) {
@@ -80,12 +100,13 @@ export default function NetDiagram({ diagram, enactmentState = "running" }: NetD
         nodeTypes={NODE_TYPES}
         nodesDraggable={false}
         nodesConnectable={false}
-        elementsSelectable={false}
+        elementsSelectable={Boolean(onSelectTransition)}
         zoomOnDoubleClick={false}
         defaultEdgeOptions={{ style: DEFAULT_EDGE_STYLE, markerEnd: DEFAULT_MARKER }}
         proOptions={{ hideAttribution: true }}
         fitView
         fitViewOptions={{ padding: 0.12, minZoom: 0.4, maxZoom: 1.5 }}
+        onNodeClick={onSelectTransition ? handleNodeClick : undefined}
       >
         <Background gap={18} size={1} color="var(--color-cf-border)" />
         <Controls showInteractive={false} />
@@ -253,11 +274,18 @@ const PlaceNodeView = memo(PlaceNodeViewImpl)
 function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
   const pulsing = usePulseOnChange(data.last_fired_at)
 
-  const glow = useMemo(() => {
-    if (data.enactmentState === "exception") return "var(--color-cf-dot-exception)"
-    if (data.enabled_count > 0) return "var(--color-cf-dot-enabled)"
-    return null
+  const glowKind: "exception" | "enabled" | "none" = useMemo(() => {
+    if (data.enactmentState === "exception") return "exception"
+    if (data.enabled_count > 0) return "enabled"
+    return "none"
   }, [data.enactmentState, data.enabled_count])
+
+  const glow =
+    glowKind === "exception"
+      ? "var(--color-cf-dot-exception)"
+      : glowKind === "enabled"
+        ? "var(--color-cf-dot-enabled)"
+        : null
 
   const pulseColor =
     data.enactmentState === "exception"
@@ -282,6 +310,7 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
       data-testid={`transition-node-${data.name}`}
       data-pulsing={pulsing ? "true" : "false"}
       data-enabled={data.enabled_count > 0 ? "true" : "false"}
+      data-glow={glowKind}
     >
       <Handle
         type="target"
