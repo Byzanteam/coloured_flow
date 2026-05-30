@@ -23,6 +23,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge.Event do
   @type topic() ::
           :inbox
           | :flows
+          | :telemetry
           | {:enactment, enactment_id()}
           | {:flow, String.t()}
 
@@ -50,7 +51,9 @@ defmodule ColouredFlowDashboard.TelemetryBridge.Event do
     plugin TypedStructor.Plugins.DocFields
 
     field :topic, topic(),
-      doc: "Audience the broadcast targets — `:inbox`, `{:enactment, id}`, or `{:flow, mod}`."
+      doc:
+        "Audience the broadcast targets — `:inbox`, `:flows`, `:telemetry`, " <>
+          "`{:enactment, id}`, or `{:flow, mod}`."
 
     field :kind, kind(),
       doc: "Atom identifying the event family (e.g. `:produce_workitems_stop`)."

@@ -4,6 +4,7 @@ import RootLayout from "./RootLayout"
 import InboxPage from "./InboxPage"
 import EnactmentDetailPage from "./EnactmentDetailPage"
 import FlowCatalogPage from "./FlowCatalogPage"
+import TelemetryPage from "./TelemetryPage"
 import NotFoundPage from "./NotFoundPage"
 
 export const routes: RouteObject[] = [
@@ -15,6 +16,7 @@ export const routes: RouteObject[] = [
       { path: "enactments/:id", element: <EnactmentDetailPage /> },
       { path: "flows", element: <FlowCatalogPage /> },
       { path: "flows/:module", element: <FlowCatalogPage /> },
+      { path: "telemetry", element: <TelemetryPage /> },
       { path: "*", element: <NotFoundPage /> }
     ]
   }

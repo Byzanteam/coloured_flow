@@ -197,6 +197,18 @@ declare namespace Musubi {
         }
       }
     >
+
+    "ColouredFlowDashboardWeb.Stores.TelemetryFeedStore": StoreDef<
+      "ColouredFlowDashboardWeb.Stores.TelemetryFeedStore",
+      {
+        entries: Musubi.StreamField<ColouredFlowDashboardWeb.Views.GlobalTelemetryEntry>
+        total_events: number
+        entries_in_window: number
+        oldest_seq: number | null
+        newest_seq: number | null
+      },
+      {}
+    >
   }
 }
 
@@ -242,6 +254,18 @@ declare namespace ColouredFlowDashboardWeb {
       live_enactments: number
       last_started_at: string | null
       recent_enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
+    }
+
+    interface GlobalTelemetryEntry {
+      id: string
+      event: string
+      enactment_id: string | null
+      flow_id: string | null
+      occurred_at: string
+      seq: number
+      measurements_json: string
+      metadata_json: string
+      summary: string
     }
 
     interface InboxCounts {

@@ -13,6 +13,11 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
     * `"cf:inbox"` — every workitem-shape or lifecycle change, regardless of
       enactment. Drives the operator inbox.
+    * `"cf:telemetry"` — every event the bridge produces, regardless of
+      audience. Drives the global telemetry feed at `/telemetry`. Carries
+      the same `%Event{}` struct used by the other topics (with
+      `topic: :telemetry`); consumers derive event-name string, flow_id, etc.
+      themselves to keep the wire payload small.
     * `"cf:flows"` — enactment lifecycle changes only
       (`:enactment_start`, `:enactment_terminate`, `:enactment_exception`).
       Drives the `/flows` catalog's live-count refresh; workitem-op events
@@ -330,7 +335,8 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     base = [
       {"#{prefix}inbox", struct!(Event, Map.put(common, :topic, :inbox))},
       {"#{prefix}enactment:#{state.enactment_id}",
-       struct!(Event, Map.put(common, :topic, {:enactment, state.enactment_id}))}
+       struct!(Event, Map.put(common, :topic, {:enactment, state.enactment_id}))},
+      {"#{prefix}telemetry", struct!(Event, Map.put(common, :topic, :telemetry))}
     ]
 
     base = base ++ flows_topic(prefix, kind, common)
