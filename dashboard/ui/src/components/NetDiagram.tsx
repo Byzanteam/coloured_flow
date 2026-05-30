@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties
+} from "react"
 import {
   Background,
   Controls,
@@ -29,7 +37,22 @@ interface NetDiagramProps {
    * clicked transition.
    */
   onSelectTransition?: (name: string) => void
+  /**
+   * Edges whose stroke should fill from source to target with the accent
+   * color, signalling that their transition just fired. Ids match
+   * `arc-${orientation}-${place}-${transition}-${index}`.
+   */
+  firingEdgeIds?: ReadonlySet<string>
+  /**
+   * Duration of the firing fill animation. Scales with timeline playback
+   * speed (4× → 150ms, 1× → 600ms, 0.25× → 2400ms). Default 600.
+   */
+  firingDurationMs?: number
 }
+
+const DEFAULT_FIRING_DURATION_MS = 600
+
+const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
 
 const PLACE_NODE = "cf-place"
 const TRANSITION_NODE = "cf-transition"
@@ -62,11 +85,13 @@ const DEFAULT_MARKER = {
 export default function NetDiagram({
   diagram,
   enactmentState = "running",
-  onSelectTransition
+  onSelectTransition,
+  firingEdgeIds = EMPTY_FIRING_SET,
+  firingDurationMs = DEFAULT_FIRING_DURATION_MS
 }: NetDiagramProps) {
   const { nodes, edges, isEmpty } = useMemo(
-    () => buildGraph(diagram, enactmentState),
-    [diagram, enactmentState]
+    () => buildGraph(diagram, enactmentState, firingEdgeIds, firingDurationMs),
+    [diagram, enactmentState, firingEdgeIds, firingDurationMs]
   )
 
   const handleNodeClick = useCallback(
@@ -120,9 +145,11 @@ export default function NetDiagram({
 // Layout
 // ---------------------------------------------------------------------------
 
-function buildGraph(
+export function buildGraph(
   diagram: NetDiagramPayload | null | undefined,
-  enactmentState: EnactmentState
+  enactmentState: EnactmentState,
+  firingEdgeIds: ReadonlySet<string> = EMPTY_FIRING_SET,
+  firingDurationMs: number = DEFAULT_FIRING_DURATION_MS
 ): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
   const places = diagram?.places ?? []
   const transitions = diagram?.transitions ?? []
@@ -191,15 +218,24 @@ function buildGraph(
 
   const edges: Edge[] = arcs.map((arc, index) => {
     const [from, to] = arcEndpoints(arc)
-    return {
-      id: `arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`,
+    const id = `arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`
+    const isFiring = firingEdgeIds.has(id)
+    // CSS custom property piped to `.cf-edge-firing` keyframes so animation
+    // cadence matches the timeline playback speed.
+    const style: CSSProperties = isFiring
+      ? { ...DEFAULT_EDGE_STYLE, ["--cf-edge-duration" as string]: `${firingDurationMs}ms` }
+      : DEFAULT_EDGE_STYLE
+    const edge: Edge = {
+      id,
       source: from,
       target: to,
       type: "smoothstep",
       animated: false,
-      style: DEFAULT_EDGE_STYLE,
+      style,
       markerEnd: DEFAULT_MARKER
     }
+    if (isFiring) edge.className = "cf-edge-firing"
+    return edge
   })
 
   return { nodes: [...placeNodes, ...transitionNodes], edges, isEmpty: false }

@@ -185,6 +185,32 @@ body {
   transform: scale(1.15);
 }
 
+/* Net diagram edge firing animation. When a transition fires (occurrence
+ * version advances) the EnactmentDetail page tags the matching arc edges with
+ * `cf-edge-firing`; the keyframes below paint the stroke in the accent color
+ * from source to target by sweeping `stroke-dashoffset` from `--cf-edge-len`
+ * down to 0. Length is a generous constant — most arc paths are far shorter,
+ * so the sweep finishes before reaching the constant.
+ *
+ * `forwards` keeps the path fully drawn until the JS-driven timeout removes
+ * the class, at which point react-flow's default stroke style takes over.
+ */
+@keyframes cf-edge-fill {
+  from {
+    stroke-dashoffset: var(--cf-edge-len, 1000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.cf-edge-firing .react-flow__edge-path {
+  stroke: var(--color-cf-accent);
+  stroke-dasharray: var(--cf-edge-len, 1000);
+  stroke-dashoffset: var(--cf-edge-len, 1000);
+  animation: cf-edge-fill var(--cf-edge-duration, 600ms) ease-out forwards;
+}
+
 /* Global focus ring fallback. Kumo primitives ship their own focus styles,
  * but native controls (range / select / anchors) need an explicit ring so
  * keyboard operators can always tell where focus sits in either palette.

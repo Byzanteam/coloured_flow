@@ -17,11 +17,16 @@ interface TimelineScrubberProps {
   onScrub: (version: number) => void
   onExit: () => void
   isPending: boolean
+  /**
+   * Notifies the parent of speed changes so derived UI (e.g. NetDiagram edge
+   * firing duration) can scale to match the playback cadence.
+   */
+  onSpeedChange?: (speed: SpeedKey) => void
 }
 
 const DEBOUNCE_MS = 150
 
-type SpeedKey = "0.25" | "1" | "4"
+export type SpeedKey = "0.25" | "1" | "4"
 const SPEED_TICK_MS: Record<SpeedKey, number> = {
   "0.25": 4000,
   "1": 1000,
@@ -56,7 +61,8 @@ export default function TimelineScrubber({
   replayState,
   onScrub,
   onExit,
-  isPending
+  isPending,
+  onSpeedChange
 }: TimelineScrubberProps) {
   const min = Math.max(0, range.min)
   const max = Math.max(min, range.max)
@@ -292,7 +298,11 @@ export default function TimelineScrubber({
           <select
             className="h-8 rounded-md border border-cf-border bg-cf-surface px-2 text-xs font-medium text-cf-ink tabular-nums transition-colors hover:border-cf-border-strong disabled:cursor-not-allowed disabled:opacity-50"
             value={speed}
-            onChange={(event) => setSpeed(event.target.value as SpeedKey)}
+            onChange={(event) => {
+              const next = event.target.value as SpeedKey
+              setSpeed(next)
+              onSpeedChange?.(next)
+            }}
             disabled={disabled}
             aria-label="Playback speed"
             data-testid="timeline-speed"

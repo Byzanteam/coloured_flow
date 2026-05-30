@@ -116,11 +116,19 @@ const {
 // below double-checks the shared default path.
 vi.mock("../components/NetDiagram", () => ({
   default: ({
-    onSelectTransition
+    onSelectTransition,
+    firingEdgeIds,
+    firingDurationMs
   }: {
     onSelectTransition?: (name: string) => void
+    firingEdgeIds?: ReadonlySet<string>
+    firingDurationMs?: number
   }) => (
-    <div data-testid="net-diagram-stub">
+    <div
+      data-testid="net-diagram-stub"
+      data-firing-edges={JSON.stringify([...(firingEdgeIds ?? [])].sort())}
+      data-firing-duration={String(firingDurationMs ?? "")}
+    >
       <button
         type="button"
         data-testid="net-diagram-click-approve"
@@ -755,6 +763,78 @@ describe("EnactmentDetailPage", () => {
         expect(screen.getByTestId("markings-replay-banner")).toBeDefined()
       } finally {
         restore()
+      }
+    })
+
+    it("populates firingEdgeIds when version advances + clears after the firing duration", async () => {
+      vi.useFakeTimers()
+      const mut = sampleSnapshot as unknown as {
+        summary: { version: number }
+        occurrences: Array<{
+          id: string
+          step_number: number
+          transition: string
+          binding_summary: string
+          occurred_at: string
+          outputs_summary: string
+        }>
+      }
+      const origVersion = mut.summary.version
+      const origOccurrences = mut.occurrences
+      // Park the live version at 3 with no occurrence at v=3 so the initial
+      // mount seeds `lastVersionRef` without firing the animation.
+      mut.summary.version = 3
+      mut.occurrences = []
+      try {
+        const { rerender } = renderRoute(<EnactmentDetailPage />)
+        expect(screen.getByTestId("net-diagram-stub").dataset.firingEdges).toBe("[]")
+
+        // Bump version → simulate occurrence at v=4 firing the `approve`
+        // transition (which has one input arc + one output arc in the seeded
+        // diagram).
+        mut.summary.version = 4
+        mut.occurrences = [
+          {
+            id: "occ-4",
+            step_number: 4,
+            transition: "approve",
+            binding_summary: "",
+            occurred_at: "2026-05-29T01:00:00Z",
+            outputs_summary: ""
+          }
+        ]
+        await act(async () => {
+          rerender(
+            <Toasty>
+              <MemoryRouter initialEntries={["/enactments/en-aaaa"]}>
+                <Routes>
+                  <Route path="/enactments/:id" element={<EnactmentDetailPage />} />
+                </Routes>
+              </MemoryRouter>
+            </Toasty>
+          )
+        })
+
+        const firing = JSON.parse(
+          screen.getByTestId("net-diagram-stub").dataset.firingEdges ?? "[]"
+        )
+        expect(firing).toEqual([
+          "arc-p_to_t-pending-approve-0",
+          "arc-t_to_p-decided-approve-1"
+        ])
+        // 1× speed default → 600ms duration is reported to NetDiagram.
+        expect(
+          screen.getByTestId("net-diagram-stub").dataset.firingDuration
+        ).toBe("600")
+
+        await act(async () => {
+          vi.advanceTimersByTime(700)
+        })
+        expect(screen.getByTestId("net-diagram-stub").dataset.firingEdges).toBe("[]")
+      } finally {
+        mut.summary.version = origVersion
+        mut.occurrences = origOccurrences
+        vi.useRealTimers()
       }
     })
 

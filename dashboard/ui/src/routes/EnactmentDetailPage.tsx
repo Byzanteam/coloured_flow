@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react"
 import { useParams } from "react-router-dom"
@@ -27,7 +28,7 @@ import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
 import NetDiagram from "../components/NetDiagram"
-import TimelineScrubber from "../components/TimelineScrubber"
+import TimelineScrubber, { type SpeedKey } from "../components/TimelineScrubber"
 import { useEmbedMode } from "../hooks/useEmbedMode"
 
 const ENACTMENT_DETAIL_STORE =
@@ -45,6 +46,17 @@ type EnactmentSummary = ColouredFlowDashboardWeb.Views.EnactmentSummary
 type DetailProxy = StoreProxy<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
 
 type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
+
+// Firing edge fill duration per speed. Mirrors TimelineScrubber tick cadence
+// scaled to a comfortable ease-out sweep: 1× → 600ms, 4× → 150ms, 0.25×
+// → 2400ms.
+const SPEED_TO_FIRING_MS: Record<SpeedKey, number> = {
+  "0.25": 2400,
+  "1": 600,
+  "4": 150
+}
+
+const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
 
 const TAB_ITEMS = [
   { value: "markings", label: "Markings" },
@@ -150,6 +162,13 @@ function DetailContent({
   const toasts = useKumoToastManager()
   const { embed } = useEmbedMode()
 
+  // Playback speed is lifted out of TimelineScrubber so the diagram's edge
+  // firing animation duration can scale to match the cadence the operator
+  // picked. TimelineScrubber still owns its own speed-ref logic for autoplay
+  // ticks; this state mirrors the latest choice via `onSpeedChange`.
+  const [speed, setSpeed] = useState<SpeedKey>("1")
+  const firingDurationMs = SPEED_TO_FIRING_MS[speed]
+
   const summary: EnactmentSummary | undefined = snapshot.summary
   const liveMarkings: readonly MarkingRow[] = snapshot.markings ?? []
   const workitems: readonly WorkitemRow[] = snapshot.workitems ?? []
@@ -244,6 +263,53 @@ function DetailContent({
 
   const markings: readonly MarkingRow[] = replayState ? derivedMarkings : liveMarkings
 
+  // Drive the NetDiagram edge-fill animation when the *active* version (live
+  // or replay) ticks forward. The first mount-pass seeds `lastVersionRef`
+  // without animating — the operator landed at an existing K, not just-fired.
+  // Subsequent bumps locate the occurrence at the new version and highlight
+  // every arc touching its transition. Coalescing: a new bump replaces the
+  // pending set + resets the timeout.
+  const activeVersion = replayState?.version ?? summary?.version ?? 0
+  const [firingEdgeIds, setFiringEdgeIds] = useState<ReadonlySet<string>>(EMPTY_FIRING_SET)
+  const firingTimeoutRef = useRef<number | null>(null)
+  const lastVersionRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const prev = lastVersionRef.current
+    lastVersionRef.current = activeVersion
+    if (prev === null) return
+    if (activeVersion <= prev) return
+
+    const occurrence = occurrences.find((o) => o.step_number === activeVersion)
+    if (!occurrence) return
+
+    const arcs = diagram?.arcs ?? []
+    const ids = new Set<string>()
+    arcs.forEach((arc, index) => {
+      if (arc.transition !== occurrence.transition) return
+      ids.add(`arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`)
+    })
+    if (ids.size === 0) return
+
+    setFiringEdgeIds(ids)
+    if (firingTimeoutRef.current !== null) {
+      window.clearTimeout(firingTimeoutRef.current)
+    }
+    firingTimeoutRef.current = window.setTimeout(() => {
+      setFiringEdgeIds(EMPTY_FIRING_SET)
+      firingTimeoutRef.current = null
+    }, firingDurationMs)
+  }, [activeVersion, occurrences, diagram?.arcs, firingDurationMs])
+
+  useEffect(() => {
+    return () => {
+      if (firingTimeoutRef.current !== null) {
+        window.clearTimeout(firingTimeoutRef.current)
+        firingTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   const [activeTab, setActiveTab] = useState<TabId>("markings")
   // Pending inspect target driven by NetDiagram node click. Cleared by
   // DebugTab once the dispatch fires so re-clicking the same transition
@@ -301,6 +367,7 @@ function DetailContent({
         onScrub={onScrub}
         onExit={onExitReplay}
         isPending={replayCmd.isPending || exitReplayCmd.isPending}
+        onSpeedChange={setSpeed}
       />
 
 
@@ -320,6 +387,8 @@ function DetailContent({
               diagram={diagram}
               enactmentState={state}
               onSelectTransition={onSelectTransition}
+              firingEdgeIds={firingEdgeIds}
+              firingDurationMs={firingDurationMs}
             />
           </div>
         </LayerCard.Primary>

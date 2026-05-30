@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
-import NetDiagram from "./NetDiagram"
+import NetDiagram, { buildGraph } from "./NetDiagram"
 
 type DiagramPayload = ColouredFlowDashboardWeb.Views.NetDiagram
 
@@ -101,6 +101,30 @@ describe("NetDiagram", () => {
     )
     fireEvent.click(screen.getByTestId("place-node-pending"))
     expect(onSelectTransition).not.toHaveBeenCalled()
+  })
+
+  it("tags edges in firingEdgeIds with `cf-edge-firing` and the duration var", () => {
+    const diagram = baseDiagram()
+    const inputId = "arc-p_to_t-pending-approve-0"
+    const outputId = "arc-t_to_p-decided-approve-1"
+    const firing = new Set<string>([inputId, outputId])
+    const { edges } = buildGraph(diagram, "running", firing, 1200)
+
+    const input = edges.find((e) => e.id === inputId)
+    const output = edges.find((e) => e.id === outputId)
+    expect(input?.className).toBe("cf-edge-firing")
+    expect(output?.className).toBe("cf-edge-firing")
+    expect((input?.style as Record<string, unknown>)["--cf-edge-duration"]).toBe("1200ms")
+    expect((output?.style as Record<string, unknown>)["--cf-edge-duration"]).toBe("1200ms")
+  })
+
+  it("leaves non-firing edges with no `cf-edge-firing` class", () => {
+    const diagram = baseDiagram()
+    const firing = new Set<string>(["arc-p_to_t-pending-approve-0"])
+    const { edges } = buildGraph(diagram, "running", firing, 600)
+    const other = edges.find((e) => e.id === "arc-t_to_p-decided-approve-1")
+    expect(other?.className).toBeUndefined()
+    expect((other?.style as Record<string, unknown>)["--cf-edge-duration"]).toBeUndefined()
   })
 
   it("pulses the transition node when last_fired_at changes", async () => {
