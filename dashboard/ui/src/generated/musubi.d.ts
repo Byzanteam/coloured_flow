@@ -155,7 +155,7 @@ declare namespace ColouredFlowDashboardWeb {
     interface BindingCandidate {
       transition: string
       binding_summary: string
-      guard_status: "enabled" | "rejected_by_guard" | "rejected_by_marking"
+      guard_status: "enabled" | "rejected_by_guard" | "rejected_by_arc_eval" | "rejected_by_marking"
       reason: string | null
     }
 
@@ -167,6 +167,7 @@ declare namespace ColouredFlowDashboardWeb {
       markings_count: number
       workitems_count: number
       last_occurrence_at: string | null
+      last_exception_banner: string | null
     }
 
     interface InboxCounts {
@@ -205,6 +206,7 @@ declare namespace ColouredFlowDashboardWeb {
       candidates_count: number
       enabled_count: number
       rejected_by_guard_count: number
+      rejected_by_arc_eval_count: number
       rejected_by_marking_count: number
     }
 

@@ -5,7 +5,8 @@ defmodule ColouredFlowDashboardWeb.Views.TransitionDebugInfo do
   tab.
 
   `candidates_count == enabled_count + rejected_by_guard_count +
-  rejected_by_marking_count` for every well-formed inspector reply.
+  rejected_by_arc_eval_count + rejected_by_marking_count` for every
+  well-formed inspector reply.
   """
 
   use Musubi.State
@@ -15,6 +16,7 @@ defmodule ColouredFlowDashboardWeb.Views.TransitionDebugInfo do
     field :candidates_count, integer()
     field :enabled_count, integer()
     field :rejected_by_guard_count, integer()
+    field :rejected_by_arc_eval_count, integer()
     field :rejected_by_marking_count, integer()
   end
 end

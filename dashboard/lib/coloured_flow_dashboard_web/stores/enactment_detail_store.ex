@@ -46,8 +46,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   | `:withdraw_workitems_stop`    | delete from `:workitems`                                                                        |
   | `:complete_workitems_stop`    | delete from `:workitems`; insert into `:occurrences` (one per workitem); set last_occurrence_at |
   | `:enactment_take_snapshot`    | bump summary.version                                                                            |
-  | `:enactment_terminate`        | summary.state = `:terminated`; flush remaining workitem rows                                    |
-  | `:enactment_exception`        | summary.state = `:exception`                                                                    |
+  | `:enactment_terminate`        | summary.state = `:terminated`; flush remaining workitem rows; clear last_exception_banner       |
+  | `:enactment_exception`        | summary.state = `:exception`; set last_exception_banner from payload.error_banner               |
   | `:enactment_start`            | summary.state = `:running`; refresh summary.version                                             |
   | everything else               | no-op (`*_workitems_start`, `:enactment_stop`, exception halves)                                |
 
@@ -236,7 +236,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       version: version,
       markings_count: length(markings),
       workitems_count: length(workitems),
-      last_occurrence_at: last_occurrence_at
+      last_occurrence_at: last_occurrence_at,
+      last_exception_banner: nil
     }
 
     socket =
@@ -275,7 +276,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   @impl Musubi.Store
   def handle_info({:cf_event, %Event{} = event}, socket) do
     if event.enactment_id == socket.assigns.enactment_id do
-      socket = event |> route_event(socket) |> append_telemetry(event)
+      socket =
+        event
+        |> route_event(socket)
+        |> append_telemetry(event)
+        |> maybe_refresh_transitions()
+
       {:noreply, socket}
     else
       {:noreply, socket}
@@ -465,11 +471,25 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   defp route_event(%Event{kind: :enactment_terminate} = event, socket) do
     socket
     |> clear_workitems()
-    |> bump_summary(state: :terminated, version: event.enactment_version)
+    |> bump_summary(
+      state: :terminated,
+      version: event.enactment_version,
+      last_exception_banner: nil
+    )
   end
 
   defp route_event(%Event{kind: :enactment_exception} = event, socket) do
-    bump_summary(socket, state: :exception, version: event.enactment_version)
+    banner =
+      case event.payload do
+        %{error_banner: b} when is_binary(b) -> b
+        _other -> "Enactment exception"
+      end
+
+    bump_summary(socket,
+      state: :exception,
+      version: event.enactment_version,
+      last_exception_banner: banner
+    )
   end
 
   defp route_event(%Event{kind: :enactment_start} = event, socket) do
@@ -714,6 +734,24 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     end
   end
 
+  # Mount-time `resolve_transitions/2` runs once; if the bridge cpnet cache
+  # is populated AFTER mount (race), the Debug tab would stay empty until
+  # the page is remounted. Re-resolve on every matching cf_event whenever
+  # the current list is still empty so the picker materialises as soon as
+  # the cache catches up. No-op once `transitions` is non-empty.
+  defp maybe_refresh_transitions(socket) do
+    case socket.assigns.transitions do
+      [] ->
+        case resolve_transitions(socket.assigns.enactment_id, socket.assigns.flow_cache) do
+          [] -> socket
+          [_head | _rest] = transitions -> assign(socket, :transitions, transitions)
+        end
+
+      [_head | _rest] ->
+        socket
+    end
+  end
+
   defp lookup_cpnet_safe(enactment_id, flow_cache) do
     case :ets.whereis(flow_cache) do
       :undefined -> :error
@@ -811,7 +849,22 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   defp encode_payload(_other), do: "{}"
 
-  defp sanitize_for_json(value) when is_map(value) and not is_struct(value) do
+  # Narrowed structural sanitizer for telemetry payloads. Plain maps, lists,
+  # tuples, atoms, numbers, booleans, nil, and binaries are recursively
+  # normalised into JSON-friendly shapes. Structs are first probed against
+  # the consolidated `JSON.Encoder` protocol (Elixir 1.18+) — those that
+  # implement the protocol pass through untouched so `JSON.encode!/1` can
+  # serialise them losslessly (e.g. `DateTime`). Only structs WITHOUT a
+  # `JSON.Encoder` implementation fall back to `inspect_safe/1`, which is
+  # where runner internals like `BindingElement`, `Workitem`, etc. end up.
+  defp sanitize_for_json(value) when is_struct(value) do
+    case JSON.Encoder.impl_for(value) do
+      nil -> inspect_safe(value)
+      _impl -> value
+    end
+  end
+
+  defp sanitize_for_json(value) when is_map(value) do
     Map.new(value, fn {k, v} -> {sanitize_key(k), sanitize_for_json(v)} end)
   end
 
@@ -875,6 +928,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
             candidates_count: info.candidates_count,
             enabled_count: info.enabled_count,
             rejected_by_guard_count: info.rejected_by_guard_count,
+            rejected_by_arc_eval_count: info.rejected_by_arc_eval_count,
             rejected_by_marking_count: info.rejected_by_marking_count
           },
           candidates:

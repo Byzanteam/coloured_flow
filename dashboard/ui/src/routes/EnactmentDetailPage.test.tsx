@@ -12,7 +12,8 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
     version: 3,
     markings_count: 1,
     workitems_count: 1,
-    last_occurrence_at: "2026-05-29T00:00:00Z"
+    last_occurrence_at: "2026-05-29T00:00:00Z",
+    last_exception_banner: null as string | null
   }
 
   const marking = {
@@ -261,24 +262,39 @@ describe("EnactmentDetailPage", () => {
     expect(screen.getByText("produce_workitems_stop")).toBeDefined()
   })
 
-  it("renders the exception banner when summary.state is :exception", async () => {
+  it("renders the exception banner from summary.last_exception_banner, ignoring workitem-op exception telemetry rows", async () => {
     const mut = sampleSnapshot as unknown as {
-      summary: { state: string }
+      summary: { state: string; last_exception_banner: string | null }
       telemetry: unknown[]
     }
-    const original = mut.summary.state
-    mut.summary.state = "exception"
+    const originalState = mut.summary.state
+    const originalBanner = mut.summary.last_exception_banner
     const originalTelemetry = mut.telemetry
+
+    mut.summary.state = "exception"
+    mut.summary.last_exception_banner = "real enactment failure"
     mut.telemetry = [
+      // A workitem-op exception came first AND is the earliest "error" row;
+      // the banner must NOT pick this — it must source from
+      // summary.last_exception_banner instead.
+      {
+        id: "en-aaaa-wi-exc",
+        kind: "produce_workitems_exception",
+        at: "2026-05-29T00:00:00Z",
+        summary: "workitem op blew up",
+        severity: "error",
+        payload_json: '{"error_banner":"workitem op blew up"}'
+      },
       {
         id: "en-aaaa-exc",
         kind: "enactment_exception",
-        at: "2026-05-29T00:00:00Z",
-        summary: "boom",
+        at: "2026-05-29T00:00:01Z",
+        summary: "real enactment failure",
         severity: "error",
-        payload_json: '{"error_banner":"boom"}'
+        payload_json: '{"error_banner":"real enactment failure"}'
       }
     ]
+
     try {
       renderRoute(<EnactmentDetailPage />)
       await act(async () => {
@@ -286,9 +302,25 @@ describe("EnactmentDetailPage", () => {
       })
       await waitFor(() => {
         expect(screen.getByText("Enactment exception")).toBeDefined()
+        // "real enactment failure" appears twice: once as the banner
+        // description (sourced from summary.last_exception_banner) and
+        // once as a telemetry row summary. Both render concurrently.
+        expect(screen.getAllByText("real enactment failure").length).toBeGreaterThanOrEqual(1)
       })
+
+      // The workitem-op exception telemetry row IS rendered in the table
+      // (it's a valid telemetry entry), but its `error_banner` payload must
+      // NOT be the banner description — the banner sources from summary,
+      // never the telemetry stream.
+      expect(screen.queryByText(/Enactment exception$/)).toBeDefined()
+      // Sanity: banner description does NOT contain the workitem-op text.
+      // (The telemetry row's summary cell does — but the banner does not.)
+      const allMatches = screen.queryAllByText("workitem op blew up")
+      // Exactly one match (the telemetry row summary), never two.
+      expect(allMatches.length).toBe(1)
     } finally {
-      mut.summary.state = original
+      mut.summary.state = originalState
+      mut.summary.last_exception_banner = originalBanner
       mut.telemetry = originalTelemetry
     }
   })
@@ -302,6 +334,7 @@ describe("EnactmentDetailPage", () => {
         candidates_count: 1,
         enabled_count: 1,
         rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
         rejected_by_marking_count: 0
       },
       candidates: [

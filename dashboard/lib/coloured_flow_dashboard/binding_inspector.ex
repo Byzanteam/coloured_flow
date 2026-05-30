@@ -7,9 +7,10 @@ defmodule ColouredFlowDashboard.BindingInspector do
   current `markings` map, and a transition name, enumerates every candidate
   binding the runner can compute and classifies each as one of:
 
-    * `:enabled` — the binding satisfies the guard AND every input arc's
-      consumption is included in the corresponding marking. The runner would
-      offer this candidate as a workitem.
+    * `:enabled` — the binding satisfies the guard, every input arc
+      expression evaluated cleanly AND the resulting consumption is
+      included in the corresponding marking. The runner would offer this
+      candidate as a workitem.
     * `:rejected_by_guard` — the binding's variables type-checked against
       the input tokens, but the transition's guard expression evaluated to
       `false` (or raised). `reason` is either a verbatim error string from
@@ -17,10 +18,21 @@ defmodule ColouredFlowDashboard.BindingInspector do
       a boolean but not `true` — the engine surfaces no error from a
       successful-but-false guard, so the inspector substitutes a fixed
       caption.
-    * `:rejected_by_marking` — the binding's guard passed, but at least one
-      input arc's consumption (after substituting the binding's variables)
-      is NOT included in the place's marking. The fewest-tokens place is
-      named in `reason`.
+    * `:rejected_by_arc_eval` — at least one input arc's inscription failed
+      to evaluate for this binding (raised, returned a non-multiset shape,
+      or produced a value that does not type-check against the place's
+      colour set). `reason` names the offending place and reproduces the
+      evaluator message verbatim.
+    * `:rejected_by_marking` — guard + every arc expression evaluated
+      cleanly, but at least one input arc's consumption (after substituting
+      the binding's variables) is NOT included in the place's marking. The
+      offending place is named in `reason`.
+
+  Candidate enumeration mirrors the engine exactly — the inspector does
+  NOT deduplicate the combined bindings. A marking with two identical
+  tokens consumed by the same arc produces TWO identical candidates, which
+  is the same multiplicity `ColouredFlow.EnabledBindingElements.Computation.list/3`
+  yields.
 
   ## Engine reuse
 
@@ -59,7 +71,8 @@ defmodule ColouredFlowDashboard.BindingInspector do
   alias ColouredFlow.MultiSet
   alias ColouredFlow.Runner.RuntimeCpnet
 
-  @type guard_status() :: :enabled | :rejected_by_guard | :rejected_by_marking
+  @type guard_status() ::
+          :enabled | :rejected_by_guard | :rejected_by_arc_eval | :rejected_by_marking
 
   @type candidate() :: %{
           binding: BindingElement.binding(),
@@ -73,6 +86,7 @@ defmodule ColouredFlowDashboard.BindingInspector do
           candidates_count: non_neg_integer(),
           enabled_count: non_neg_integer(),
           rejected_by_guard_count: non_neg_integer(),
+          rejected_by_arc_eval_count: non_neg_integer(),
           rejected_by_marking_count: non_neg_integer()
         }
 
@@ -126,7 +140,6 @@ defmodule ColouredFlowDashboard.BindingInspector do
 
     arc_bindings
     |> Binding.combine()
-    |> Enum.uniq()
     |> Enum.map(fn binding ->
       classify(binding, transition, inputs, constants, markings, runtime_cpnet)
     end)
@@ -141,7 +154,10 @@ defmodule ColouredFlowDashboard.BindingInspector do
           :ok ->
             build(binding, :enabled, nil)
 
-          {:error, reason} ->
+          {:rejected_by_arc_eval, reason} ->
+            build(binding, :rejected_by_arc_eval, reason)
+
+          {:rejected_by_marking, reason} ->
             build(binding, :rejected_by_marking, reason)
         end
 
@@ -192,14 +208,16 @@ defmodule ColouredFlowDashboard.BindingInspector do
       if MultiSet.include?(marking.tokens, tokens) do
         {:cont, :ok}
       else
-        {:halt, {:error, "Place #{place.name} lacks tokens for binding"}}
+        {:halt, {:rejected_by_marking, "Place #{place.name} lacks tokens for binding"}}
       end
     else
       :error ->
-        {:halt, {:error, "Arc value type mismatch on #{place.name}"}}
+        {:halt, {:rejected_by_arc_eval, "Arc on place #{place.name} failed type-check"}}
 
       {:error, reason} ->
-        {:halt, {:error, "Arc eval failed on #{place.name}: #{truncate(reason)}"}}
+        {:halt,
+         {:rejected_by_arc_eval,
+          "Arc on place #{place.name} failed to evaluate: #{truncate(reason)}"}}
     end
   end
 
@@ -277,6 +295,7 @@ defmodule ColouredFlowDashboard.BindingInspector do
       candidates_count: length(candidates),
       enabled_count: Map.get(by_status, :enabled, 0),
       rejected_by_guard_count: Map.get(by_status, :rejected_by_guard, 0),
+      rejected_by_arc_eval_count: Map.get(by_status, :rejected_by_arc_eval, 0),
       rejected_by_marking_count: Map.get(by_status, :rejected_by_marking, 0)
     }
   end

@@ -407,6 +407,192 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe "transitions refresh after mount race" do
+    test "matching cf_event re-resolves transitions once the bridge cache populates",
+         %{enactment_id: eid, topic: topic, topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      # Mount with an empty (undefined) flow_cache so resolve_transitions/2
+      # short-circuits to [] at mount-time, simulating the race where the
+      # bridge cache has not yet observed this enactment.
+      assert :ets.whereis(flow_cache) == :undefined
+      page = mount_store(eid, topic_prefix, flow_cache)
+      assert Musubi.Testing.assigns(page).transitions == []
+
+      # Populate the cache with a tiny CPN under the inspected enactment id
+      # — mirrors what TelemetryBridge.resolve_and_cache/2 does internally.
+      :ets.new(flow_cache, [:set, :public, :named_table])
+
+      cpnet = %ColouredFlow.Definition.ColouredPetriNet{
+        colour_sets: [%ColouredFlow.Definition.ColourSet{name: :int, type: {:integer, []}}],
+        places: [%ColouredFlow.Definition.Place{name: "src", colour_set: :int}],
+        transitions: [
+          ColouredFlow.Builder.DefinitionHelper.build_transition!(name: "race", guard: "true")
+        ],
+        arcs: [
+          ColouredFlow.Builder.DefinitionHelper.build_arc!(
+            label: "in",
+            place: "src",
+            transition: "race",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          )
+        ],
+        variables: [%ColouredFlow.Definition.Variable{name: :x, colour_set: :int}]
+      }
+
+      :ets.insert(flow_cache, {eid, "flow-id", cpnet})
+
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event(:produce_workitems_stop, eid, wi_id, :enabled, 1))
+
+      assert Musubi.Testing.assigns(page).transitions == ["race"]
+    end
+
+    test "non-empty transitions are NOT re-resolved on subsequent cf_events", %{
+      enactment_id: eid,
+      topic: topic,
+      topic_prefix: topic_prefix,
+      flow_cache: flow_cache
+    } do
+      :ets.new(flow_cache, [:set, :public, :named_table])
+
+      cpnet = %ColouredFlow.Definition.ColouredPetriNet{
+        colour_sets: [%ColouredFlow.Definition.ColourSet{name: :int, type: {:integer, []}}],
+        places: [%ColouredFlow.Definition.Place{name: "src", colour_set: :int}],
+        transitions: [
+          ColouredFlow.Builder.DefinitionHelper.build_transition!(name: "stable", guard: "true")
+        ],
+        arcs: [
+          ColouredFlow.Builder.DefinitionHelper.build_arc!(
+            label: "in",
+            place: "src",
+            transition: "stable",
+            orientation: :p_to_t,
+            expression: "bind {1, x}"
+          )
+        ],
+        variables: [%ColouredFlow.Definition.Variable{name: :x, colour_set: :int}]
+      }
+
+      :ets.insert(flow_cache, {eid, "flow-id", cpnet})
+
+      page = mount_store(eid, topic_prefix, flow_cache)
+      assert Musubi.Testing.assigns(page).transitions == ["stable"]
+
+      # Replace cache with a different transition list; the refresh should NOT fire.
+      newer =
+        ColouredFlow.Builder.DefinitionHelper.build_transition!(name: "newer", guard: "true")
+
+      :ets.insert(
+        flow_cache,
+        {eid, "flow-id", %{cpnet | transitions: [newer | cpnet.transitions]}}
+      )
+
+      wi_id = Ecto.UUID.generate()
+      broadcast!(topic, build_workitem_event(:produce_workitems_stop, eid, wi_id, :enabled, 1))
+
+      assert Musubi.Testing.assigns(page).transitions == ["stable"]
+    end
+  end
+
+  describe "summary.last_exception_banner" do
+    setup %{enactment_id: enactment_id, topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+      {:ok, page: page}
+    end
+
+    test "starts nil", %{page: page} do
+      assert Musubi.Testing.assigns(page).summary.last_exception_banner == nil
+    end
+
+    test "set ONLY by :enactment_exception events (not workitem-op exceptions)", %{
+      enactment_id: eid,
+      topic: topic,
+      page: page
+    } do
+      # A workitem-op exception must NOT touch the banner.
+      wi_op_exception = %Event{
+        topic: {:enactment, eid},
+        kind: :produce_workitems_exception,
+        enactment_id: eid,
+        enactment_version: 1,
+        occurred_at: DateTime.utc_now(),
+        payload: %{error_banner: "wi-op should not surface"}
+      }
+
+      broadcast!(topic, wi_op_exception)
+      assert Musubi.Testing.assigns(page).summary.last_exception_banner == nil
+
+      # Enactment-level exception updates the banner.
+      enactment_exception = %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_exception,
+        enactment_id: eid,
+        enactment_version: 2,
+        occurred_at: DateTime.utc_now(),
+        payload: %{error_banner: "real enactment failure"}
+      }
+
+      broadcast!(topic, enactment_exception)
+
+      assert Musubi.Testing.assigns(page).summary.last_exception_banner ==
+               "real enactment failure"
+    end
+
+    test "subsequent :enactment_exception events overwrite the banner with the latest", %{
+      enactment_id: eid,
+      topic: topic,
+      page: page
+    } do
+      broadcast!(topic, %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_exception,
+        enactment_id: eid,
+        enactment_version: 1,
+        occurred_at: DateTime.utc_now(),
+        payload: %{error_banner: "first"}
+      })
+
+      broadcast!(topic, %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_exception,
+        enactment_id: eid,
+        enactment_version: 2,
+        occurred_at: DateTime.utc_now(),
+        payload: %{error_banner: "second"}
+      })
+
+      assert Musubi.Testing.assigns(page).summary.last_exception_banner == "second"
+    end
+
+    test ":enactment_terminate clears the banner", %{
+      enactment_id: eid,
+      topic: topic,
+      page: page
+    } do
+      broadcast!(topic, %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_exception,
+        enactment_id: eid,
+        enactment_version: 1,
+        occurred_at: DateTime.utc_now(),
+        payload: %{error_banner: "boom"}
+      })
+
+      assert Musubi.Testing.assigns(page).summary.last_exception_banner == "boom"
+
+      broadcast!(topic, %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_terminate,
+        enactment_id: eid,
+        enactment_version: 2,
+        occurred_at: DateTime.utc_now(),
+        payload: %{termination_type: :force, termination_message: "operator"}
+      })
+
+      assert Musubi.Testing.assigns(page).summary.last_exception_banner == nil
+    end
+  end
+
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,

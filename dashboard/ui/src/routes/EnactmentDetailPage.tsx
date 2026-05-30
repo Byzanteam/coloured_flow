@@ -109,7 +109,11 @@ function DetailContent({ enactmentId }: { enactmentId: string }) {
       {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
       {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
       {activeTab === "telemetry" && (
-        <TelemetryTab rows={telemetry} state={summary?.state ?? "running"} />
+        <TelemetryTab
+          rows={telemetry}
+          state={summary?.state ?? "running"}
+          lastExceptionBanner={summary?.last_exception_banner ?? null}
+        />
       )}
       {activeTab === "debug" && (
         <DebugTab enactmentId={enactmentId} transitions={transitions} />
@@ -493,19 +497,20 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
 
 function TelemetryTab({
   rows,
-  state
+  state,
+  lastExceptionBanner: bannerFromSummary
 }: {
   rows: readonly TelemetryEntry[]
   state: "running" | "exception" | "terminated"
+  lastExceptionBanner: string | null
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const orderedRows = useMemo(() => rows.slice(), [rows])
   const lastExceptionBanner = useMemo(() => {
     if (state !== "exception") return null
-    const exception = rows.find((entry) => entry.severity === "error")
-    return exception ? exception.summary : "Enactment is in an exception state."
-  }, [rows, state])
+    return bannerFromSummary ?? "Enactment is in an exception state."
+  }, [bannerFromSummary, state])
 
   if (rows.length === 0 && !lastExceptionBanner) {
     return (
@@ -765,6 +770,7 @@ function DebugInfoCard({ info }: { info: TransitionDebugInfo }) {
       <Badge variant="neutral">candidates {info.candidates_count}</Badge>
       <Badge variant="info">enabled {info.enabled_count}</Badge>
       <Badge variant="warning">guard {info.rejected_by_guard_count}</Badge>
+      <Badge variant="error">arc_eval {info.rejected_by_arc_eval_count}</Badge>
       <Badge variant="error">marking {info.rejected_by_marking_count}</Badge>
     </LayerCard>
   )
@@ -773,13 +779,15 @@ function DebugInfoCard({ info }: { info: TransitionDebugInfo }) {
 function GuardStatusBadge({
   status
 }: {
-  status: "enabled" | "rejected_by_guard" | "rejected_by_marking"
+  status: "enabled" | "rejected_by_guard" | "rejected_by_arc_eval" | "rejected_by_marking"
 }) {
   switch (status) {
     case "enabled":
       return <Badge variant="info">enabled</Badge>
     case "rejected_by_guard":
       return <Badge variant="warning">rejected_by_guard</Badge>
+    case "rejected_by_arc_eval":
+      return <Badge variant="error">rejected_by_arc_eval</Badge>
     case "rejected_by_marking":
       return <Badge variant="error">rejected_by_marking</Badge>
   }

@@ -7,6 +7,12 @@ defmodule ColouredFlowDashboardWeb.Views.EnactmentSummary do
   it via a single peek (see store mount); when it has shut down (terminated
   / exception) we treat the storage row's `state` column as the source of
   truth instead.
+
+  `last_exception_banner` is the latest enactment-level exception banner
+  (`error_banner` from `:enactment_exception` events ONLY — never workitem
+  operation halves like `:produce_workitems_exception`). Cleared back to
+  `nil` on `:enactment_terminate` so a force-terminated enactment does not
+  surface a stale banner.
   """
 
   use Musubi.State
@@ -19,5 +25,6 @@ defmodule ColouredFlowDashboardWeb.Views.EnactmentSummary do
     field :markings_count, integer()
     field :workitems_count, integer()
     field :last_occurrence_at, String.t() | nil
+    field :last_exception_banner, String.t() | nil
   end
 end
