@@ -336,8 +336,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   def handle_command(:retry_enactment, _payload, socket) do
-    {:reply, retry_enactment_reply(socket.assigns.enactment_id, socket.assigns.summary.state),
-     socket}
+    {:reply, retry_enactment_reply(socket.assigns.enactment_id), socket}
   end
 
   def handle_command(:inspect_transition, payload, socket) when is_map(payload) do
@@ -1209,16 +1208,21 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     kind, reason -> %{code: :runner_error, message: Exception.format(kind, reason)}
   end
 
-  # `:retry_enactment` (M6) — runs only when the dashboard's last-seen state
-  # is `:exception`. Calls `Storage.retry_enactment/2` (flips DB row →
-  # `:running`, writes a `:retried` log) and then asks the runner supervisor
-  # to (re)start the enactment GenServer. `start_enactment/2` collapses
-  # `{:already_started, pid}` → `{:ok, pid}` so an existing process is not a
-  # failure mode.
-  defp retry_enactment_reply(_enactment_id, :terminated), do: %{code: :already_terminated}
-  defp retry_enactment_reply(_enactment_id, :running), do: %{code: :not_exception}
+  # `:retry_enactment` (M6) — re-reads the authoritative enactment state
+  # from storage BEFORE dispatching. The Musubi-cached `summary.state` can
+  # lag behind a concurrent force-terminate; trusting it would let an
+  # already-`:terminated` row be resurrected back to `:running` by
+  # `Storage.retry_enactment/2`. Only an actual `:exception` row is retried.
+  defp retry_enactment_reply(enactment_id) when is_binary(enactment_id) do
+    case authoritative_enactment_state(enactment_id) do
+      {:ok, :exception} -> do_retry_enactment(enactment_id)
+      {:ok, :running} -> %{code: :not_exception}
+      {:ok, :terminated} -> %{code: :already_terminated}
+      {:error, reason} -> %{code: :runner_error, message: inspect(reason)}
+    end
+  end
 
-  defp retry_enactment_reply(enactment_id, :exception) when is_binary(enactment_id) do
+  defp do_retry_enactment(enactment_id) do
     :ok = Storage.retry_enactment(enactment_id, message: "operator-triggered")
 
     case EnactmentSupervisor.start_enactment(enactment_id) do
@@ -1229,5 +1233,18 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     error -> %{code: :runner_error, message: Exception.message(error)}
   catch
     kind, reason -> %{code: :runner_error, message: Exception.format(kind, reason)}
+  end
+
+  # No public `Storage` callback exposes just the state; the dashboard's
+  # `read_storage_state/1` swallows errors into `:running`, which would
+  # silently allow retries on transient DB outages. Read once here with
+  # explicit `:error` semantics so the gate above can fail closed.
+  defp authoritative_enactment_state(enactment_id) do
+    case ColouredFlowDashboard.Repo.get(Schemas.Enactment, enactment_id) do
+      %Schemas.Enactment{state: state} -> {:ok, state}
+      nil -> {:error, :not_found}
+    end
+  rescue
+    error -> {:error, error}
   end
 end

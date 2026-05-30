@@ -177,12 +177,16 @@ function InboxTable({
               </span>
             </Table.Cell>
             <Table.Cell className="text-right">
-              {row.enactment_state === "exception" ? (
+              {row.enactment_state !== "running" ? (
                 <Link
                   to={`/enactments/${row.enactment_id}`}
                   aria-label={`Open enactment ${row.enactment_id} detail`}
                   data-testid={`inbox-open-detail-${row.id}`}
-                  className="inline-flex h-7 items-center rounded-md border border-cf-exception-ink/60 bg-cf-exception-bg px-2.5 text-xs font-medium text-cf-exception-ink hover:bg-cf-exception-bg/80"
+                  className={
+                    row.enactment_state === "exception"
+                      ? "inline-flex h-7 items-center rounded-md border border-cf-exception-ink/60 bg-cf-exception-bg px-2.5 text-xs font-medium text-cf-exception-ink hover:bg-cf-exception-bg/80"
+                      : "inline-flex h-7 items-center rounded-md border border-cf-border bg-cf-surface px-2.5 text-xs font-medium text-cf-ink-muted hover:bg-cf-surface/80"
+                  }
                 >
                   Open detail
                 </Link>

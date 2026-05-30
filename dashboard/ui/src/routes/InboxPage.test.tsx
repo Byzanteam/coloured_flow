@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import type { ReactNode } from "react"
+import { MemoryRouter } from "react-router-dom"
 import { Toasty } from "@cloudflare/kumo"
 
 // ---------------------------------------------------------------------------
@@ -149,6 +150,14 @@ import InboxPage from "./InboxPage"
 
 function renderWithProviders(children: ReactNode) {
   return render(<Toasty>{children}</Toasty>)
+}
+
+function renderWithRouter(children: ReactNode) {
+  return render(
+    <MemoryRouter>
+      <Toasty>{children}</Toasty>
+    </MemoryRouter>
+  )
 }
 
 async function openDrawer(workitemId: string) {
@@ -517,5 +526,52 @@ describe("InboxPage outputs drawer — reply handling (M2b regressions)", () => 
       expect(screen.getByText(/submission failed/i)).toBeDefined()
       expect(screen.getByText(/socket closed/i)).toBeDefined()
     })
+  })
+})
+
+describe("InboxPage row — enactment_state affordances (P19 M6)", () => {
+  beforeEach(() => {
+    dispatchMock.mockReset()
+  })
+
+  function makeRowWithEnactmentState(
+    id: string,
+    enactment_state: WorkitemRow["enactment_state"]
+  ): WorkitemRow {
+    const base = makeRow(id, "approve", schemaBinary)
+    return { ...base, enactment_state }
+  }
+
+  it("renders Exception chip + Open detail link (not the outputs Action) when enactment_state = 'exception'", () => {
+    loadSnapshot(makeRowWithEnactmentState("wi-exc", "exception"))
+    renderWithRouter(<InboxPage />)
+
+    expect(screen.getByTestId("inbox-enactment-chip-exception")).toBeDefined()
+    expect(screen.getByText(/Exception/i)).toBeDefined()
+
+    const link = screen.getByTestId("inbox-open-detail-wi-exc") as HTMLAnchorElement
+    expect(link.tagName).toBe("A")
+    expect(link.getAttribute("href")).toBe("/enactments/enactment-aaaa-bbbb-cccc")
+
+    // The drawer-opening Action button must NOT be present for non-running rows.
+    expect(
+      screen.queryByRole("button", { name: /open outputs drawer for workitem wi-exc/i })
+    ).toBeNull()
+  })
+
+  it("renders Terminated chip + Open detail link (not the outputs Action) when enactment_state = 'terminated'", () => {
+    loadSnapshot(makeRowWithEnactmentState("wi-term", "terminated"))
+    renderWithRouter(<InboxPage />)
+
+    expect(screen.getByTestId("inbox-enactment-chip-terminated")).toBeDefined()
+    expect(screen.getByText(/Terminated/i)).toBeDefined()
+
+    const link = screen.getByTestId("inbox-open-detail-wi-term") as HTMLAnchorElement
+    expect(link.tagName).toBe("A")
+    expect(link.getAttribute("href")).toBe("/enactments/enactment-aaaa-bbbb-cccc")
+
+    expect(
+      screen.queryByRole("button", { name: /open outputs drawer for workitem wi-term/i })
+    ).toBeNull()
   })
 })

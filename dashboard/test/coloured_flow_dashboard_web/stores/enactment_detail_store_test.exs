@@ -241,36 +241,66 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
   end
 
   describe ":retry_enactment command" do
-    setup %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
-      stale = Ecto.UUID.generate()
-      page = mount_store(stale, topic_prefix, flow_cache)
-      {:ok, page: page, enactment_id: stale}
-    end
+    test "not_exception when the storage row is :running",
+         %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      enactment = insert_enactment_with_state!(:running)
+      page = mount_store(enactment.id, topic_prefix, flow_cache)
 
-    test "not_exception when summary.state is :running (default)", %{page: page} do
       assert {:ok, %{code: :not_exception}} =
                Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
     end
 
-    test "already_terminated when summary.state is :terminated",
-         %{page: page, topic_prefix: topic_prefix, enactment_id: enactment_id} do
-      :ok =
-        Phoenix.PubSub.broadcast(@pubsub, "#{topic_prefix}enactment:#{enactment_id}", {
-          :cf_event,
-          %ColouredFlowDashboard.TelemetryBridge.Event{
-            topic: {:enactment, enactment_id},
-            kind: :enactment_terminate,
-            enactment_id: enactment_id,
-            enactment_version: 1,
-            occurred_at: DateTime.utc_now(),
-            payload: %{termination_type: :force, termination_message: nil}
-          }
-        })
-
-      _assigns = Musubi.Testing.assigns(page)
+    test "already_terminated when the storage row is :terminated",
+         %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      enactment = insert_enactment_with_state!(:terminated)
+      page = mount_store(enactment.id, topic_prefix, flow_cache)
 
       assert {:ok, %{code: :already_terminated}} =
                Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+    end
+
+    test "runner_error when no storage row exists",
+         %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      stale = Ecto.UUID.generate()
+      page = mount_store(stale, topic_prefix, flow_cache)
+
+      assert {:ok, %{code: :runner_error}} =
+               Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+    end
+
+    # Race pin (P20 HIGH): another operator force-terminated the row, but
+    # this page's cached `summary.state` is still `:exception` because the
+    # `:enactment_terminate` event has not been broadcast/applied yet. The
+    # handler MUST re-read storage and deny the retry — otherwise
+    # `Storage.retry_enactment/2` would flip `:terminated` → `:running` and
+    # resurrect a closed enactment.
+    test "refuses retry when cached :exception lags behind a terminated storage row",
+         %{topic_prefix: topic_prefix, flow_cache: flow_cache, topic: _topic_unused} do
+      enactment = insert_enactment_with_state!(:terminated)
+      eid = enactment.id
+      topic = "#{topic_prefix}enactment:#{eid}"
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      # Force the Musubi-cached state back to `:exception` to mimic a stale
+      # detail page that never saw the terminate event.
+      broadcast!(topic, %Event{
+        topic: {:enactment, eid},
+        kind: :enactment_exception,
+        enactment_id: eid,
+        enactment_version: 99,
+        occurred_at: DateTime.utc_now(),
+        payload: %{error_banner: "stale exception"}
+      })
+
+      assert Musubi.Testing.assigns(page).summary.state == :exception
+
+      assert {:ok, %{code: :already_terminated}} =
+               Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+
+      # Storage row must still be `:terminated` — `Storage.retry_enactment/2`
+      # was never called.
+      assert %ColouredFlow.Runner.Storage.Schemas.Enactment{state: :terminated} =
+               Repo.get!(ColouredFlow.Runner.Storage.Schemas.Enactment, eid)
     end
   end
 
@@ -874,6 +904,25 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
       "id" => enactment_id,
       "topic_prefix" => topic_prefix,
       "flow_cache" => flow_cache
+    })
+  end
+
+  # Inserts a real `enactments` row in the requested state so the
+  # `:retry_enactment` gate (which re-reads from storage) can observe a
+  # concrete state instead of guessing from cached `summary.state`.
+  defp insert_enactment_with_state!(state) when state in [:running, :exception, :terminated] do
+    import ColouredFlow.MultiSet, only: [sigil_MS: 2]
+
+    flow =
+      Repo.insert!(%ColouredFlow.Runner.Storage.Schemas.Flow{
+        name: "enactment-detail-test-flow-#{System.unique_integer([:positive])}",
+        definition: ColouredFlowDashboard.Test.SimpleSequenceWorkflow.cpnet()
+      })
+
+    Repo.insert!(%ColouredFlow.Runner.Storage.Schemas.Enactment{
+      flow_id: flow.id,
+      initial_markings: [%ColouredFlow.Enactment.Marking{place: "input", tokens: ~MS[1]}],
+      state: state
     })
   end
 
