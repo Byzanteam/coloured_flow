@@ -197,6 +197,15 @@ declare namespace Musubi {
             code: "ok"
           }
         }
+        fetch_flow_detail: {
+          payload: {
+            flow_id: string
+          }
+          reply: {
+            code: "ok" | "not_found"
+            flow: ColouredFlowDashboardWeb.Views.FlowDetail | null
+          }
+        }
       }
     >
 
@@ -275,6 +284,19 @@ declare namespace ColouredFlowDashboardWeb {
       total_live_enactments: number
     }
 
+    interface FlowDetail {
+      id: string
+      name: string
+      version: string
+      place_count: number
+      transition_count: number
+      live_enactments: number
+      total_enactments: number
+      last_started_at: string | null
+      enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
+      diagram: ColouredFlowDashboardWeb.Views.NetDiagram
+    }
+
     interface FlowEnactmentEntry {
       id: string
       state: "running" | "exception" | "terminated"
@@ -288,10 +310,9 @@ declare namespace ColouredFlowDashboardWeb {
       place_count: number
       transition_count: number
       live_enactments: number
+      total_enactments: number
       last_started_at: string | null
       recent_enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
-      enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
-      diagram: ColouredFlowDashboardWeb.Views.NetDiagram | null
     }
 
     interface GlobalTelemetryEntry {

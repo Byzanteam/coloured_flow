@@ -79,10 +79,13 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
       |> assign(:oldest_seq, nil)
       |> assign(:newest_seq, nil)
       |> assign(:last_seq, %{})
-      # `:queue.queue/0` of `{id, seq}` tuples — oldest at the head. Drives
-      # the manual trim when the window is full; Musubi's `:limit` is
-      # client-side only so the server has to manage the bound itself.
-      |> assign(:entry_queue, :queue.new())
+      # Ordered `[{id, seq}]` list — newest (highest seq) at head, matching
+      # the stream's `at: 0` insertion semantics. Position-based insert keeps
+      # the feed sorted by bridge seq even when the bridge's per-event Task
+      # fan-out lets cross-enactment events arrive out of seq order.
+      # Musubi's `:limit` is client-side only so the server tracks its own
+      # bound + trims the tail on overflow.
+      |> assign(:entries_index, [])
       |> stream(:entries, [], reset: true)
 
     {:ok, socket}
@@ -128,54 +131,55 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
 
   defp ingest_event(socket, %Event{} = event) do
     entry = build_entry(event, socket.assigns.flow_cache)
+    %GlobalTelemetryEntry{id: id} = entry
+    seq = event.seq
+    index = socket.assigns.entries_index
+    position = insert_position(index, seq)
+    next_index = List.insert_at(index, position, {id, seq})
 
     socket
-    |> stream_insert(:entries, entry, at: 0)
-    |> track_entry(entry, event)
+    |> stream_insert(:entries, entry, at: position)
+    |> assign(:entries_index, next_index)
+    |> assign(:total_events, socket.assigns.total_events + 1)
+    |> assign(:entries_in_window, length(next_index))
+    |> assign(:newest_seq, head_seq(next_index))
+    |> assign(:oldest_seq, tail_seq(next_index))
     |> trim_window()
   end
 
-  defp track_entry(socket, %GlobalTelemetryEntry{id: id}, %Event{seq: seq}) do
-    queue = :queue.in({id, seq}, socket.assigns.entry_queue)
-    total = socket.assigns.total_events + 1
-    size = :queue.len(queue)
-
-    socket
-    |> assign(:entry_queue, queue)
-    |> assign(:total_events, total)
-    |> assign(:entries_in_window, size)
-    |> assign(:newest_seq, latest_seq(seq, Map.get(socket.assigns, :newest_seq)))
-    |> assign(:oldest_seq, queue_head_seq(queue))
+  # Newest entry sits at index 0, so walk the list head-first and count items
+  # whose seq is greater-or-equal to the new one. Ties keep arrival order
+  # (new event slots in after equal-seq predecessors). O(N) at the bounded
+  # window of 500.
+  defp insert_position(index, seq) do
+    Enum.find_index(index, fn {_id, existing} -> existing < seq end) ||
+      length(index)
   end
 
   defp trim_window(socket) do
-    queue = socket.assigns.entry_queue
+    index = socket.assigns.entries_index
     window = socket.assigns.window
 
-    if :queue.len(queue) <= window do
+    if length(index) <= window do
       socket
     else
-      {{:value, {old_id, _old_seq}}, queue_after} = :queue.out(queue)
+      {{drop_id, _drop_seq}, next_index} = List.pop_at(index, -1)
 
       socket
-      |> stream_delete_by_item_key(:entries, old_id)
-      |> assign(:entry_queue, queue_after)
-      |> assign(:entries_in_window, :queue.len(queue_after))
-      |> assign(:oldest_seq, queue_head_seq(queue_after))
+      |> stream_delete_by_item_key(:entries, drop_id)
+      |> assign(:entries_index, next_index)
+      |> assign(:entries_in_window, length(next_index))
+      |> assign(:newest_seq, head_seq(next_index))
+      |> assign(:oldest_seq, tail_seq(next_index))
       |> trim_window()
     end
   end
 
-  defp queue_head_seq(queue) do
-    case :queue.peek(queue) do
-      {:value, {_id, seq}} -> seq
-      :empty -> nil
-    end
-  end
+  defp head_seq([{_id, seq} | _rest]), do: seq
+  defp head_seq([]), do: nil
 
-  defp latest_seq(seq, nil) when is_integer(seq), do: seq
-  defp latest_seq(seq, prev) when is_integer(seq) and is_integer(prev), do: max(seq, prev)
-  defp latest_seq(_other, prev), do: prev
+  defp tail_seq([]), do: nil
+  defp tail_seq(list), do: list |> List.last() |> elem(1)
 
   # ---------------------------------------------------------------------------
   # Entry build

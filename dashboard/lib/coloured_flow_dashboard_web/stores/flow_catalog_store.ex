@@ -78,6 +78,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Stores.SeqTracker
   alias ColouredFlowDashboardWeb.Views.FlowCatalogCounts
+  alias ColouredFlowDashboardWeb.Views.FlowDetail
   alias ColouredFlowDashboardWeb.Views.FlowEnactmentEntry
   alias ColouredFlowDashboardWeb.Views.FlowSummary
   alias ColouredFlowDashboardWeb.Views.NetDiagram
@@ -140,6 +141,17 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
     end
   end
 
+  command :fetch_flow_detail do
+    payload do
+      field :flow_id, String.t()
+    end
+
+    reply do
+      field :code, :ok | :not_found
+      field :flow, ColouredFlowDashboardWeb.Views.FlowDetail.t() | nil
+    end
+  end
+
   @impl Musubi.Store
   def mount(params, socket) when is_map(params) do
     pubsub = Map.get(params, "pubsub_name", @default_pubsub)
@@ -174,6 +186,11 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
 
   def handle_command(:refresh_catalog, _payload, socket) do
     {:reply, %{code: :ok}, refresh_socket(socket)}
+  end
+
+  def handle_command(:fetch_flow_detail, payload, socket) when is_map(payload) do
+    flow_id = Map.get(payload, "flow_id") || Map.get(payload, :flow_id)
+    {:reply, fetch_flow_detail_reply(flow_id), socket}
   end
 
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
@@ -245,6 +262,49 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   end
 
   defp build_summary(%{id: id, name: name, definition: %ColouredPetriNet{} = cpnet}, enactments) do
+    %{
+      seed: seed,
+      live: live,
+      last_started_at: last_started_at,
+      full_entries: full_entries
+    } = enactment_rollup(name, enactments)
+
+    %FlowSummary{
+      id: id,
+      name: name,
+      version: if(seed, do: seed.version, else: ""),
+      place_count: length(cpnet.places),
+      transition_count: length(cpnet.transitions),
+      live_enactments: live,
+      total_enactments: length(full_entries),
+      last_started_at: last_started_at,
+      recent_enactments: Enum.take(full_entries, @recent_limit)
+    }
+  end
+
+  defp build_detail(%{id: id, name: name, definition: %ColouredPetriNet{} = cpnet}, enactments) do
+    %{
+      seed: seed,
+      live: live,
+      last_started_at: last_started_at,
+      full_entries: full_entries
+    } = enactment_rollup(name, enactments)
+
+    %FlowDetail{
+      id: id,
+      name: name,
+      version: if(seed, do: seed.version, else: ""),
+      place_count: length(cpnet.places),
+      transition_count: length(cpnet.transitions),
+      live_enactments: live,
+      total_enactments: length(full_entries),
+      last_started_at: last_started_at,
+      enactments: full_entries,
+      diagram: build_diagram(cpnet)
+    }
+  end
+
+  defp enactment_rollup(name, enactments) do
     seed = Map.get(@seed_by_name, name)
     live = Enum.count(enactments, &(&1.state == :running))
 
@@ -277,20 +337,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
         }
       end)
 
-    recent = Enum.take(full_entries, @recent_limit)
-
-    %FlowSummary{
-      id: id,
-      name: name,
-      version: if(seed, do: seed.version, else: ""),
-      place_count: length(cpnet.places),
-      transition_count: length(cpnet.transitions),
-      live_enactments: live,
-      last_started_at: last_started_at,
-      recent_enactments: recent,
-      enactments: full_entries,
-      diagram: build_diagram(cpnet)
-    }
+    %{seed: seed, live: live, last_started_at: last_started_at, full_entries: full_entries}
   end
 
   # Static, marking-free NetDiagram for the per-flow detail page. The detail
@@ -605,5 +652,58 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
     error -> {:error, {:runner, Exception.message(error)}}
   catch
     kind, reason -> {:error, {:runner, Exception.format(kind, reason)}}
+  end
+
+  # ---------------------------------------------------------------------------
+  # :fetch_flow_detail command
+  # ---------------------------------------------------------------------------
+
+  defp fetch_flow_detail_reply(flow_id) when is_binary(flow_id) do
+    case fetch_flow_row(flow_id) do
+      {:ok, row} ->
+        enactments = Map.get(list_enactments_by_flow([flow_id]), flow_id, [])
+        %{code: :ok, flow: build_detail(row, enactments)}
+
+      {:error, :unknown_flow} ->
+        %{code: :not_found, flow: nil}
+    end
+  rescue
+    _error -> %{code: :not_found, flow: nil}
+  end
+
+  defp fetch_flow_detail_reply(_other), do: %{code: :not_found, flow: nil}
+
+  # Returns the `%{id, name, definition}` shape `build_detail/2` expects.
+  # Separate from `fetch_flow/1` (used by `:start_enactment`) because that
+  # path only needs name + storage handle, not the cpnet.
+  defp fetch_flow_row(flow_id) do
+    case Storage.__storage__() do
+      InMemory -> fetch_flow_row_in_memory(flow_id)
+      _default -> fetch_flow_row_default(flow_id)
+    end
+  rescue
+    _error -> {:error, :unknown_flow}
+  end
+
+  defp fetch_flow_row_in_memory(flow_id) do
+    table = in_memory_table(:flow)
+
+    with table when table != :undefined <- ets_whereis(table),
+         [record] <- :ets.lookup(in_memory_table(:flow), flow_id) do
+      cpnet = InMemory.flow(record, :definition)
+      {:ok, %{id: flow_id, name: seeded_name_for(cpnet), definition: cpnet}}
+    else
+      _other -> {:error, :unknown_flow}
+    end
+  end
+
+  defp fetch_flow_row_default(flow_id) do
+    case repo_configured?() && Repo.get(Schemas.Flow, flow_id) do
+      %Schemas.Flow{} = row ->
+        {:ok, %{id: row.id, name: row.name, definition: row.definition}}
+
+      _other ->
+        {:error, :unknown_flow}
+    end
   end
 end

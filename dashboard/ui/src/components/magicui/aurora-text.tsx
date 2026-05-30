@@ -1,7 +1,4 @@
-import type { ReactNode } from "react"
-import { motion } from "motion/react"
-
-import { cn } from "../../lib/utils"
+import type { CSSProperties, ReactNode } from "react"
 
 interface AuroraTextProps {
   children: ReactNode
@@ -26,28 +23,18 @@ export function AuroraText({
   ...props
 }: AuroraTextProps) {
   const gradient = `linear-gradient(110deg, ${[...colors, colors[0]].join(", ")})`
+  const wrapperClass = ["relative inline-block", className].filter(Boolean).join(" ")
+  const style = {
+    backgroundImage: gradient,
+    "--cf-aurora-duration": `${8 / speed}s`
+  } as CSSProperties
 
   return (
-    <span
-      data-testid="aurora-text"
-      className={cn("relative inline-block", className)}
-      {...props}
-    >
+    <span data-testid="aurora-text" className={wrapperClass} {...props}>
       <span className="sr-only">{children}</span>
-      <motion.span
-        aria-hidden="true"
-        className="bg-clip-text text-transparent"
-        style={{
-          backgroundImage: gradient,
-          backgroundSize: "200% auto",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent"
-        }}
-        animate={{ backgroundPosition: ["0% 50%", "200% 50%"] }}
-        transition={{ duration: 8 / speed, ease: "linear", repeat: Infinity }}
-      >
+      <span aria-hidden="true" className="cf-aurora-text" style={style}>
         {children}
-      </motion.span>
+      </span>
     </span>
   )
 }

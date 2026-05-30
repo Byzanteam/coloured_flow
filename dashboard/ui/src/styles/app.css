@@ -211,6 +211,48 @@ body {
   animation: cf-edge-fill var(--cf-edge-duration, 600ms) ease-out forwards;
 }
 
+/* Magic UI decorative text effects. CSS-only replacements for the previous
+ * `motion`-driven components: a continuously sweeping gradient (aurora) and
+ * a translucent shimmer band sliding across bg-clipped text. Both keep the
+ * children visible to screen readers via an `.sr-only` sibling rendered by
+ * the component while the visible layer uses `bg-clip-text`. */
+@keyframes cf-aurora-sweep {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+.cf-aurora-text {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: cf-aurora-sweep var(--cf-aurora-duration, 8s) linear infinite;
+}
+
+@keyframes cf-shimmer-sweep {
+  from {
+    background-position: 150% 0%;
+  }
+  to {
+    background-position: -50% 0%;
+  }
+}
+
+.cf-shimmer-text {
+  display: inline-block;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-repeat: no-repeat;
+  animation: cf-shimmer-sweep var(--cf-shimmer-duration, 4s) linear infinite;
+}
+
 /* Global focus ring fallback. Kumo primitives ship their own focus styles,
  * but native controls (range / select / anchors) need an explicit ring so
  * keyboard operators can always tell where focus sits in either palette.

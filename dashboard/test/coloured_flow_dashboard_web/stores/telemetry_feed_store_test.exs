@@ -22,8 +22,7 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStoreTest do
       # so the seed value surfaces correctly.
       assert Map.get(assigns, :oldest_seq) == nil
       assert Map.get(assigns, :newest_seq) == nil
-      assert :queue.is_queue(assigns.entry_queue)
-      assert :queue.is_empty(assigns.entry_queue)
+      assert assigns.entries_index == []
     end
   end
 
@@ -92,10 +91,33 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStoreTest do
 
       assert assigns.total_events == 2
       assert assigns.entries_in_window == 2
-      # newest_seq accumulates across enactments; oldest matches the
-      # head of the window queue (insertion order).
+      # Endpoints follow bridge seq, not arrival order — newest is the
+      # max seq in the window, oldest the min. The store sorts by seq so
+      # cross-enactment events stay correctly ordered even when the
+      # bridge's per-event Task fan-out lets B's seq=3 land after A's
+      # seq=10.
       assert assigns.newest_seq == 10
-      assert assigns.oldest_seq == 10
+      assert assigns.oldest_seq == 3
+    end
+
+    test "out-of-order arrivals sort into the stream by seq",
+         %{topic: topic, page: page} do
+      eid_a = Ecto.UUID.generate()
+      eid_b = Ecto.UUID.generate()
+
+      # A's seq=10 arrives BEFORE B's seq=5 (older event lands later — the
+      # Task fan-out race that motivated the position-based insert).
+      broadcast!(topic, build_event(:produce_workitems_stop, eid_a, 10))
+      broadcast!(topic, build_event(:produce_workitems_stop, eid_b, 5))
+
+      assigns = Musubi.Testing.assigns(page)
+      [{_id, head_seq} | _rest] = assigns.entries_index
+      tail_seq = assigns.entries_index |> List.last() |> elem(1)
+
+      assert head_seq == 10
+      assert tail_seq == 5
+      assert assigns.newest_seq == 10
+      assert assigns.oldest_seq == 5
     end
 
     test "render/1 surfaces total + window + seq endpoints",

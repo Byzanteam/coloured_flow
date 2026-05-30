@@ -1,52 +1,59 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { Toasty } from "@cloudflare/kumo"
 
 type FlowSummary = ColouredFlowDashboardWeb.Views.FlowSummary
+type FlowDetail = ColouredFlowDashboardWeb.Views.FlowDetail
 type FlowEnactmentEntry = ColouredFlowDashboardWeb.Views.FlowEnactmentEntry
 type NetDiagram = ColouredFlowDashboardWeb.Views.NetDiagram
 
-const { dispatchMock, snapshotMock, navigateMock, sampleDiagram } = vi.hoisted(() => {
-  const diagram: NetDiagram = {
-    places: [
-      { name: "pending", colour_set: "trigger_t", tokens_count: 0, tokens_summary: "" },
-      { name: "decided", colour_set: "outcome", tokens_count: 0, tokens_summary: "" }
-    ],
-    transitions: [
-      {
-        name: "approve",
-        enabled_count: 0,
-        rejected_by_guard_count: 0,
-        rejected_by_arc_eval_count: 0,
-        rejected_by_marking_count: 0,
-        last_fired_at: null
-      }
-    ],
-    arcs: [
-      { place: "pending", transition: "approve", orientation: "p_to_t" },
-      { place: "decided", transition: "approve", orientation: "t_to_p" }
-    ]
-  }
+const { startDispatchMock, fetchDispatchMock, snapshotMock, navigateMock, sampleDiagram } =
+  vi.hoisted(() => {
+    const diagram: NetDiagram = {
+      places: [
+        { name: "pending", colour_set: "trigger_t", tokens_count: 0, tokens_summary: "" },
+        { name: "decided", colour_set: "outcome", tokens_count: 0, tokens_summary: "" }
+      ],
+      transitions: [
+        {
+          name: "approve",
+          enabled_count: 0,
+          rejected_by_guard_count: 0,
+          rejected_by_arc_eval_count: 0,
+          rejected_by_marking_count: 0,
+          last_fired_at: null
+        }
+      ],
+      arcs: [
+        { place: "pending", transition: "approve", orientation: "p_to_t" },
+        { place: "decided", transition: "approve", orientation: "t_to_p" }
+      ]
+    }
 
-  return {
-    dispatchMock: vi.fn(),
-    snapshotMock: vi.fn(),
-    navigateMock: vi.fn(),
-    sampleDiagram: diagram
-  }
-})
+    return {
+      startDispatchMock: vi.fn(),
+      fetchDispatchMock: vi.fn(),
+      snapshotMock: vi.fn(),
+      navigateMock: vi.fn(),
+      sampleDiagram: diagram
+    }
+  })
 
 vi.mock("../musubi", () => ({
   useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "catalog-proxy" }),
   useMusubiSnapshot: (...args: unknown[]) => snapshotMock(...args),
-  useMusubiCommand: () => ({
-    dispatch: dispatchMock,
-    isPending: false,
-    error: null,
-    data: null,
-    reset: vi.fn()
-  }),
+  useMusubiCommand: (_proxy: unknown, command: string) => {
+    const dispatch =
+      command === "fetch_flow_detail" ? fetchDispatchMock : startDispatchMock
+    return {
+      dispatch,
+      isPending: false,
+      error: null,
+      data: null,
+      reset: vi.fn()
+    }
+  },
   useMusubiConnectionStatus: vi.fn().mockReturnValue({
     state: "ready",
     connection: { __mock: "connection" }
@@ -119,10 +126,9 @@ function makeFlow(overrides: Partial<FlowSummary> = {}): FlowSummary {
     place_count: 2,
     transition_count: 1,
     live_enactments: 2,
+    total_enactments: 0,
     last_started_at: "2026-05-29T00:00:00Z",
     recent_enactments: [],
-    enactments: [],
-    diagram: sampleDiagram,
     ...overrides
   }
 }
@@ -134,6 +140,22 @@ function makeEntry(
   return { id, state, inserted_at: "2026-05-29T00:00:00Z" }
 }
 
+function makeDetail(overrides: Partial<FlowDetail> = {}): FlowDetail {
+  return {
+    id: "flow-1",
+    name: "Approval Demo",
+    version: "1.0.0",
+    place_count: 2,
+    transition_count: 1,
+    live_enactments: 2,
+    total_enactments: overrides.enactments?.length ?? 0,
+    last_started_at: "2026-05-29T00:00:00Z",
+    enactments: [],
+    diagram: sampleDiagram,
+    ...overrides
+  }
+}
+
 function loadSnapshot(flows: FlowSummary[]) {
   snapshotMock.mockReturnValue({
     flows,
@@ -142,6 +164,14 @@ function loadSnapshot(flows: FlowSummary[]) {
       total_live_enactments: flows.reduce((sum, f) => sum + f.live_enactments, 0)
     }
   })
+}
+
+function primeDetail(detail: FlowDetail | null) {
+  if (detail === null) {
+    fetchDispatchMock.mockResolvedValue({ code: "not_found", flow: null })
+  } else {
+    fetchDispatchMock.mockResolvedValue({ code: "ok", flow: detail })
+  }
 }
 
 function renderAt(path: string) {
@@ -158,31 +188,45 @@ function renderAt(path: string) {
 
 describe("FlowDetailPage", () => {
   beforeEach(() => {
-    dispatchMock.mockReset()
+    startDispatchMock.mockReset()
+    fetchDispatchMock.mockReset()
     snapshotMock.mockReset()
     navigateMock.mockReset()
   })
 
-  it("renders the flow name as the header title", () => {
+  it("renders the flow name as the header title", async () => {
     loadSnapshot([
       makeFlow({
-        enactments: [makeEntry("en-aaaa"), makeEntry("en-bbbb", "terminated")]
+        total_enactments: 2
       })
     ])
-    renderAt("/flows/flow-1")
+    primeDetail(
+      makeDetail({
+        enactments: [makeEntry("en-aaaa"), makeEntry("en-bbbb", "terminated")]
+      })
+    )
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
     expect(screen.getByRole("heading", { level: 1, name: "Approval Demo" })).toBeDefined()
   })
 
-  it("renders the version chip + place/transition counts subtitle", () => {
+  it("renders the version chip + place/transition counts subtitle", async () => {
     loadSnapshot([makeFlow()])
-    renderAt("/flows/flow-1")
+    primeDetail(makeDetail())
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
     expect(screen.getByText("v1.0.0")).toBeDefined()
     expect(screen.getByText(/2 places · 1 transition/)).toBeDefined()
   })
 
-  it("renders breadcrumbs with a Flows link and the current flow name", () => {
+  it("renders breadcrumbs with a Flows link and the current flow name", async () => {
     loadSnapshot([makeFlow()])
-    renderAt("/flows/flow-1")
+    primeDetail(makeDetail())
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
     const crumbs = screen.getByTestId("page-header-breadcrumbs")
     const link = crumbs.querySelector('a[href="/flows"]') as HTMLAnchorElement | null
     expect(link).not.toBeNull()
@@ -190,38 +234,53 @@ describe("FlowDetailPage", () => {
     expect(crumbs.textContent).toMatch(/Approval Demo/)
   })
 
-  it("mounts the NetDiagram with the flow's diagram payload", () => {
+  it("dispatches :fetch_flow_detail on mount and mounts NetDiagram with the reply payload", async () => {
     loadSnapshot([makeFlow()])
-    renderAt("/flows/flow-1")
-    const stub = screen.getByTestId("net-diagram-stub")
-    expect(stub.getAttribute("data-place-count")).toBe("2")
-    expect(stub.getAttribute("data-transition-count")).toBe("1")
+    primeDetail(makeDetail())
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+    await waitFor(() => {
+      expect(fetchDispatchMock).toHaveBeenCalledWith({ flow_id: "flow-1" })
+    })
+    await waitFor(() => {
+      const stub = screen.getByTestId("net-diagram-stub")
+      expect(stub.getAttribute("data-place-count")).toBe("2")
+      expect(stub.getAttribute("data-transition-count")).toBe("1")
+    })
   })
 
-  it("lists every enactment with a link to the detail page", () => {
-    loadSnapshot([
-      makeFlow({
+  it("lists every enactment from the detail reply with a link to the enactment page", async () => {
+    loadSnapshot([makeFlow({ total_enactments: 3 })])
+    primeDetail(
+      makeDetail({
         enactments: [
           makeEntry("en-aaaaaaaa-1111"),
           makeEntry("en-bbbbbbbb-2222", "exception"),
           makeEntry("en-cccccccc-3333", "terminated")
         ]
       })
-    ])
-    renderAt("/flows/flow-1")
-    const table = screen.getByTestId("flow-detail-enactments")
-    const links = table.querySelectorAll('a[href^="/enactments/"]')
-    expect(links.length).toBe(3)
-    expect(table.textContent).toMatch(/running/)
-    expect(table.textContent).toMatch(/exception/)
-    expect(table.textContent).toMatch(/terminated/)
+    )
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+    await waitFor(() => {
+      const table = screen.getByTestId("flow-detail-enactments")
+      expect(table.querySelectorAll('a[href^="/enactments/"]').length).toBe(3)
+      expect(table.textContent).toMatch(/running/)
+      expect(table.textContent).toMatch(/exception/)
+      expect(table.textContent).toMatch(/terminated/)
+    })
   })
 
   it("dispatches :start_enactment when the Start button + Confirm is clicked", async () => {
-    dispatchMock.mockResolvedValueOnce({ code: "ok", enactment_id: "en-new" })
+    startDispatchMock.mockResolvedValueOnce({ code: "ok", enactment_id: "en-new" })
     loadSnapshot([makeFlow()])
+    primeDetail(makeDetail())
 
-    renderAt("/flows/flow-1")
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
 
     await act(async () => {
       fireEvent.click(screen.getByTestId("flow-detail-start"))
@@ -232,30 +291,41 @@ describe("FlowDetailPage", () => {
       fireEvent.click(screen.getByTestId("flow-detail-start-confirm"))
     })
 
-    expect(dispatchMock).toHaveBeenCalledOnce()
-    const [payload] = dispatchMock.mock.calls[0] as [{ flow_id: string }]
+    expect(startDispatchMock).toHaveBeenCalledOnce()
+    const [payload] = startDispatchMock.mock.calls[0] as [{ flow_id: string }]
     expect(payload.flow_id).toBe("flow-1")
     expect(navigateMock).toHaveBeenCalledWith("/enactments/en-new")
   })
 
-  it("disables Start for an (unknown) flow row", () => {
+  it("disables Start for an (unknown) flow row", async () => {
     loadSnapshot([makeFlow({ name: "(unknown)" })])
-    renderAt("/flows/flow-1")
+    primeDetail(makeDetail({ name: "(unknown)" }))
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
     const button = screen.getByTestId("flow-detail-start") as HTMLButtonElement
     expect(button.disabled).toBe(true)
   })
 
-  it("renders a not-found banner with a Back-to-Flows link when no flow matches the id", () => {
+  it("renders a not-found banner with a Back-to-Flows link when no flow matches the id", async () => {
     loadSnapshot([makeFlow({ id: "flow-other" })])
-    renderAt("/flows/missing-id")
+    primeDetail(makeDetail())
+    await act(async () => {
+      renderAt("/flows/missing-id")
+    })
     expect(screen.getByText(/No flow matches that id/i)).toBeDefined()
     const back = screen.getByTestId("flow-detail-back-to-flows") as HTMLAnchorElement
     expect(back.getAttribute("href")).toBe("/flows")
   })
 
-  it("renders an empty-state message when the flow has no enactments yet", () => {
-    loadSnapshot([makeFlow({ enactments: [] })])
-    renderAt("/flows/flow-1")
-    expect(screen.getByText(/No enactments yet for this flow/i)).toBeDefined()
+  it("renders an empty-state message when the detail reply carries no enactments", async () => {
+    loadSnapshot([makeFlow()])
+    primeDetail(makeDetail({ enactments: [] }))
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/No enactments yet for this flow/i)).toBeDefined()
+    })
   })
 })

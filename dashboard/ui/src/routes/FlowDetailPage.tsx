@@ -1,4 +1,4 @@
-import { Component, type ReactNode, Suspense, useState } from "react"
+import { Component, type ReactNode, Suspense, useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   Badge,
@@ -20,6 +20,7 @@ import NetDiagram from "../components/NetDiagram"
 const FLOW_CATALOG_STORE = "ColouredFlowDashboardWeb.Stores.FlowCatalogStore" as const
 
 type FlowSummary = ColouredFlowDashboardWeb.Views.FlowSummary
+type FlowDetail = ColouredFlowDashboardWeb.Views.FlowDetail
 type FlowEnactmentEntry = ColouredFlowDashboardWeb.Views.FlowEnactmentEntry
 type CatalogProxy = StoreProxy<typeof FLOW_CATALOG_STORE, Musubi.Stores>
 
@@ -29,6 +30,8 @@ type StartReplyCode =
   | "no_initial_markings"
   | "storage_error"
   | "runner_error"
+
+type FetchReplyCode = "ok" | "not_found"
 
 export default function FlowDetailPage() {
   const { flow_id } = useParams<"flow_id">()
@@ -45,8 +48,10 @@ export default function FlowDetailPage() {
 
 function DetailRoot({ flowId }: { flowId: string }) {
   // Reuses the FlowCatalogStore singleton root (per Requirements: "/flows,
-  // /flows/:module → FlowCatalogStore"). The store streams every flow into
-  // `flows`; we filter to the requested id client-side.
+  // /flows/:module → FlowCatalogStore"). The stream carries lightweight
+  // FlowSummary rows; the heavy NetDiagram + full enactments list is
+  // fetched on demand via :fetch_flow_detail so the catalog payload stays
+  // bounded as history accumulates.
   const catalog = useMusubiRootSuspense({
     module: FLOW_CATALOG_STORE,
     id: "default"
@@ -97,11 +102,11 @@ function DetailError({ message }: { message: string }) {
 function DetailContent({ catalog, flowId }: { catalog: CatalogProxy; flowId: string }) {
   const snapshot = useMusubiSnapshot(catalog)
   const flows: readonly FlowSummary[] = snapshot.flows ?? []
-  const flow = flows.find((f) => f.id === flowId) ?? null
+  const summary = flows.find((f) => f.id === flowId) ?? null
 
-  if (!flow) return <NotFoundBody flowId={flowId} />
+  if (!summary) return <NotFoundBody flowId={flowId} />
 
-  return <FoundBody catalog={catalog} flow={flow} />
+  return <FoundBody catalog={catalog} summary={summary} />
 }
 
 function NotFoundBody({ flowId }: { flowId: string }) {
@@ -131,35 +136,95 @@ function NotFoundBody({ flowId }: { flowId: string }) {
   )
 }
 
-function FoundBody({ catalog, flow }: { catalog: CatalogProxy; flow: FlowSummary }) {
+type DetailState =
+  | { status: "loading" }
+  | { status: "ready"; detail: FlowDetail }
+  | { status: "not_found" }
+  | { status: "error"; message: string }
+
+function FoundBody({ catalog, summary }: { catalog: CatalogProxy; summary: FlowSummary }) {
   const [startOpen, setStartOpen] = useState(false)
-  const startable = flow.name !== "(unknown)" && flow.name !== ""
+  const [detailState, setDetailState] = useState<DetailState>({ status: "loading" })
+  const { dispatch: fetchDetail } = useMusubiCommand(catalog, "fetch_flow_detail")
+  const fetchRef = useRef(fetchDetail)
+  fetchRef.current = fetchDetail
+
+  // Initial fetch + refetch whenever the lightweight summary's enactment
+  // count or live state changes — live deltas from the catalog stream
+  // surface here as a totals diff and trigger a fresh detail pull so the
+  // diagram + full enactments list stay in sync without holding a heavy
+  // payload on every catalog row.
+  const refetchKey = `${summary.id}:${summary.total_enactments}:${summary.live_enactments}`
+  useEffect(() => {
+    let cancelled = false
+    setDetailState({ status: "loading" })
+    void dispatchWithReply<FetchReplyCode>(
+      fetchRef.current as unknown as (
+        payload: Record<string, unknown>
+      ) => Promise<{ code?: string } & Record<string, unknown>>,
+      { flow_id: summary.id },
+      {
+        onReply: (code, reply) => {
+          if (cancelled) return
+          if (code === "ok" && reply.flow) {
+            setDetailState({ status: "ready", detail: reply.flow as FlowDetail })
+          } else if (code === "not_found") {
+            setDetailState({ status: "not_found" })
+          } else {
+            setDetailState({
+              status: "error",
+              message: typeof reply.message === "string" ? reply.message : `Reply: ${code}`
+            })
+          }
+        },
+        onUnexpected: (cause) => {
+          if (cancelled) return
+          setDetailState({
+            status: "error",
+            message: cause instanceof Error ? cause.message : "Failed to load flow detail."
+          })
+        }
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [refetchKey, summary.id])
+
+  const startable = summary.name !== "(unknown)" && summary.name !== ""
+  const enactments =
+    detailState.status === "ready" ? detailState.detail.enactments : []
+  const diagram = detailState.status === "ready" ? detailState.detail.diagram : null
 
   return (
     <>
       <PageHeader
-        title={flow.name || "(unnamed)"}
-        breadcrumbs={[{ label: "Flows", to: "/flows" }, { label: flow.name || "(unnamed)" }]}
+        title={summary.name || "(unnamed)"}
+        breadcrumbs={[
+          { label: "Flows", to: "/flows" },
+          { label: summary.name || "(unnamed)" }
+        ]}
         subtitle={
           <span className="text-xs text-cf-ink-muted">
-            {flow.place_count} {flow.place_count === 1 ? "place" : "places"} ·{" "}
-            {flow.transition_count}{" "}
-            {flow.transition_count === 1 ? "transition" : "transitions"}
+            {summary.place_count}{" "}
+            {summary.place_count === 1 ? "place" : "places"} ·{" "}
+            {summary.transition_count}{" "}
+            {summary.transition_count === 1 ? "transition" : "transitions"}
           </span>
         }
         byline={
           <div className="flex items-center gap-2">
-            {flow.version ? (
+            {summary.version ? (
               <Badge variant="outline" className="text-[10px]">
-                v{flow.version}
+                v{summary.version}
               </Badge>
             ) : null}
             <Badge
-              variant={flow.live_enactments > 0 ? "info" : "outline"}
+              variant={summary.live_enactments > 0 ? "info" : "outline"}
               className="bg-cf-accent-tint text-cf-accent-ink"
               data-testid="flow-detail-live-count"
             >
-              {flow.live_enactments} live
+              {summary.live_enactments} live
             </Badge>
           </div>
         }
@@ -169,7 +234,7 @@ function FoundBody({ catalog, flow }: { catalog: CatalogProxy; flow: FlowSummary
             size="sm"
             disabled={!startable}
             onClick={() => setStartOpen(true)}
-            aria-label={`Start a new enactment of ${flow.name}`}
+            aria-label={`Start a new enactment of ${summary.name}`}
             data-testid="flow-detail-start"
           >
             Start enactment
@@ -182,22 +247,38 @@ function FoundBody({ catalog, flow }: { catalog: CatalogProxy; flow: FlowSummary
         data-testid="flow-detail-diagram-card"
       >
         <div className="flex-1 min-h-0">
-          <NetDiagram diagram={flow.diagram} />
+          {diagram ? (
+            <NetDiagram diagram={diagram} />
+          ) : (
+            <div className="flex h-full items-center justify-center px-6">
+              <Text variant="secondary">
+                {detailState.status === "error"
+                  ? detailState.message
+                  : "Loading diagram…"}
+              </Text>
+            </div>
+          )}
         </div>
       </LayerCard.Primary>
 
-      <EnactmentsSection rows={flow.enactments ?? []} />
+      <EnactmentsSection rows={enactments} detailStatus={detailState.status} />
 
       <StartEnactmentDialog
         catalog={catalog}
-        flow={startOpen ? flow : null}
+        flow={startOpen ? summary : null}
         onClose={() => setStartOpen(false)}
       />
     </>
   )
 }
 
-function EnactmentsSection({ rows }: { rows: readonly FlowEnactmentEntry[] }) {
+function EnactmentsSection({
+  rows,
+  detailStatus
+}: {
+  rows: readonly FlowEnactmentEntry[]
+  detailStatus: DetailState["status"]
+}) {
   return (
     <LayerCard.Primary
       className="overflow-hidden p-0"
@@ -211,7 +292,11 @@ function EnactmentsSection({ rows }: { rows: readonly FlowEnactmentEntry[] }) {
           </span>
         </div>
       </div>
-      {rows.length === 0 ? (
+      {detailStatus === "loading" ? (
+        <div className="px-6 py-8 text-center">
+          <p className="text-sm text-cf-ink-muted">Loading enactments…</p>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="px-6 py-8 text-center">
           <p className="text-sm text-cf-ink-muted">No enactments yet for this flow.</p>
         </div>

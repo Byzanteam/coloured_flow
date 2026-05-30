@@ -19,10 +19,9 @@ const { dispatchMock, snapshotMock, navigateMock, makeFlow } = vi.hoisted(() => 
       place_count: overrides.place_count ?? 2,
       transition_count: overrides.transition_count ?? 1,
       live_enactments: overrides.live_enactments ?? 0,
+      total_enactments: overrides.total_enactments ?? 0,
       last_started_at: overrides.last_started_at ?? null,
-      recent_enactments: overrides.recent_enactments ?? [],
-      enactments: overrides.enactments ?? [],
-      diagram: overrides.diagram ?? null
+      recent_enactments: overrides.recent_enactments ?? []
     }
   }
 

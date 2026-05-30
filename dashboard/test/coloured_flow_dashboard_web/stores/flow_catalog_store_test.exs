@@ -64,7 +64,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
       assert MapSet.member?(assigns.flow_ids, flow_id)
     end
 
-    test "FlowSummary carries the full enactments list + a NetDiagram payload",
+    test "FlowSummary stays lightweight — counts only, no diagram or full enactments list",
          %{topic: topic} do
       flow_record = InMemory.insert_flow!(ApprovalFlow.cpnet())
       flow_id = InMemory.flow(flow_record, :id)
@@ -84,24 +84,55 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
       _page = mount_store(topic)
       summary = await_flow_summary(flow_id, 2_000)
 
-      # Per-flow detail page reads BOTH new fields. The wire shape is
-      # string-keyed (post `Musubi.Wire` encoding).
-      enactments = Map.fetch!(summary, "enactments")
       recent = Map.fetch!(summary, "recent_enactments")
-      assert is_list(enactments)
-      # `enactments` is uncapped (catalog grid still caps `recent_enactments`
-      # at 3, but the detail page wants every row).
-      assert length(enactments) >= 2
+      assert is_list(recent)
       assert length(recent) <= 3
+      assert Map.fetch!(summary, "total_enactments") >= 2
 
-      # Static, marking-free NetDiagram shape with the cpnet topology.
-      diagram = Map.fetch!(summary, "diagram")
-      assert is_map(diagram)
+      # Heavy fields moved to :fetch_flow_detail reply payload.
+      refute Map.has_key?(summary, "enactments")
+      refute Map.has_key?(summary, "diagram")
+    end
+  end
+
+  describe ":fetch_flow_detail command" do
+    test "returns the full enactments list + a NetDiagram for an existing flow", %{
+      topic: topic
+    } do
+      flow_record = InMemory.insert_flow!(ApprovalFlow.cpnet())
+      flow_id = InMemory.flow(flow_record, :id)
+
+      for _i <- 1..2 do
+        {:ok, _enactment} =
+          ColouredFlow.Runner.Storage.insert_enactment(%{
+            flow_id: flow_id,
+            initial_markings: ApprovalFlow.__cpn__(:initial_markings)
+          })
+      end
+
+      page = mount_store(topic)
+
+      assert {:ok, %{code: :ok, flow: detail}} =
+               Musubi.Testing.dispatch_command(page, :fetch_flow_detail, %{flow_id: flow_id})
+
+      assert detail.id == flow_id
+      assert is_list(detail.enactments)
+      assert length(detail.enactments) >= 2
+      assert detail.total_enactments == length(detail.enactments)
+
       cpnet = ApprovalFlow.cpnet()
-      assert length(diagram["places"]) == length(cpnet.places)
-      assert length(diagram["transitions"]) == length(cpnet.transitions)
-      assert length(diagram["arcs"]) == length(cpnet.arcs)
-      assert Enum.all?(diagram["places"], &(&1["tokens_count"] == 0))
+      assert length(detail.diagram.places) == length(cpnet.places)
+      assert length(detail.diagram.transitions) == length(cpnet.transitions)
+      assert length(detail.diagram.arcs) == length(cpnet.arcs)
+      assert Enum.all?(detail.diagram.places, &(&1.tokens_count == 0))
+    end
+
+    test "returns :not_found for an unknown flow_id", %{topic: topic} do
+      page = mount_store(topic)
+      bogus = Ecto.UUID.generate()
+
+      assert {:ok, %{code: :not_found, flow: nil}} =
+               Musubi.Testing.dispatch_command(page, :fetch_flow_detail, %{flow_id: bogus})
     end
   end
 

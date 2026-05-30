@@ -1,7 +1,4 @@
 import type { CSSProperties, ReactNode } from "react"
-import { motion } from "motion/react"
-
-import { cn } from "../../lib/utils"
 
 interface AnimatedShinyTextProps {
   children: ReactNode
@@ -20,26 +17,26 @@ export function AnimatedShinyText({
   style,
   ...props
 }: AnimatedShinyTextProps) {
-  const composedStyle: CSSProperties = {
+  const composedStyle = {
     backgroundImage:
       "linear-gradient(110deg, var(--color-cf-ink) 0%, var(--color-cf-ink) 42%, var(--color-cf-accent) 50%, var(--color-cf-ink) 58%, var(--color-cf-ink) 100%)",
     backgroundSize: `${shimmerWidth * 2}% 100%`,
-    backgroundRepeat: "no-repeat",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
+    "--cf-shimmer-duration": `${duration}s`,
     ...style
-  }
+  } as CSSProperties
+
+  const composedClass = ["cf-shimmer-text bg-clip-text text-transparent", className]
+    .filter(Boolean)
+    .join(" ")
 
   return (
-    <motion.span
+    <span
       data-testid="animated-shiny-text"
       {...props}
-      className={cn("inline-block bg-clip-text text-transparent", className)}
+      className={composedClass}
       style={composedStyle}
-      animate={{ backgroundPosition: ["150% 0%", "-50% 0%"] }}
-      transition={{ duration, ease: "linear", repeat: Infinity }}
     >
       {children}
-    </motion.span>
+    </span>
   )
 }
