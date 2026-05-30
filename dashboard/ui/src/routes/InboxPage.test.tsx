@@ -807,3 +807,35 @@ describe("InboxPage controls — search/filter/pagination", () => {
     expect(screen.getByTestId("inbox-row-wi-1")).toBeDefined()
   })
 })
+
+describe("InboxPage — retry", () => {
+  beforeEach(() => {
+    snapshotMock.mockReset()
+    dispatchMock.mockReset()
+  })
+
+  it("recovers from a transient error via Retry", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    let shouldThrow = true
+    snapshotMock.mockImplementation(() => {
+      if (shouldThrow) throw new Error("boom")
+      return {
+        workitems: [],
+        counts: { enabled: 0, started: 0, by_enactment: {} }
+      }
+    })
+
+    renderWithProviders(<InboxPage />)
+    expect(screen.getByTestId("inbox-error")).toBeDefined()
+    expect(screen.getByText(/boom/)).toBeDefined()
+
+    shouldThrow = false
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("inbox-error-retry"))
+    })
+
+    expect(screen.queryByTestId("inbox-error")).toBeNull()
+    expect(screen.getByText(/No live workitems/i)).toBeDefined()
+    errorSpy.mockRestore()
+  })
+})

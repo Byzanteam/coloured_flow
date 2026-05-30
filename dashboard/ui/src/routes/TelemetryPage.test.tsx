@@ -182,6 +182,40 @@ describe("TelemetryPage — filters", () => {
   })
 })
 
+describe("TelemetryPage — retry", () => {
+  beforeEach(() => {
+    snapshotMock.mockReset()
+  })
+
+  it("recovers from a transient error via Retry", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    let shouldThrow = true
+    snapshotMock.mockImplementation(() => {
+      if (shouldThrow) throw new Error("boom")
+      return {
+        entries: [],
+        total_events: 0,
+        entries_in_window: 0,
+        oldest_seq: null,
+        newest_seq: null
+      }
+    })
+
+    renderAt()
+    expect(screen.getByTestId("telemetry-error")).toBeDefined()
+    expect(screen.getByText(/boom/)).toBeDefined()
+
+    shouldThrow = false
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("telemetry-error-retry"))
+    })
+
+    expect(screen.queryByTestId("telemetry-error")).toBeNull()
+    expect(screen.getByText(/No telemetry yet/i)).toBeDefined()
+    errorSpy.mockRestore()
+  })
+})
+
 describe("TelemetryPage — pagination", () => {
   beforeEach(() => {
     snapshotMock.mockReset()

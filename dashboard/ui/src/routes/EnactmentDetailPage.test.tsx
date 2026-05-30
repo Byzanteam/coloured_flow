@@ -223,6 +223,7 @@ vi.mock("@musubi/react", () => {
 })
 
 import { MusubiCommandError } from "@musubi/react"
+import { useMusubiSnapshot } from "../musubi"
 import EnactmentDetailPage from "./EnactmentDetailPage"
 
 function renderRoute(children: ReactNode) {
@@ -936,5 +937,40 @@ describe("EnactmentDetailPage", () => {
         restore()
       }
     })
+  })
+})
+
+describe("EnactmentDetailPage — retry", () => {
+  beforeEach(() => {
+    takeSnapshotMock.mockReset()
+    forceTerminateMock.mockReset()
+    inspectTransitionMock.mockReset()
+    retryEnactmentMock.mockReset()
+    replayToVersionMock.mockReset()
+    exitReplayMock.mockReset()
+    completeWorkitemMock.mockReset()
+    vi.mocked(useMusubiSnapshot).mockReturnValue(sampleSnapshot)
+  })
+
+  it("recovers from a transient error via Retry", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    let shouldThrow = true
+    vi.mocked(useMusubiSnapshot).mockImplementation(() => {
+      if (shouldThrow) throw new Error("boom")
+      return sampleSnapshot
+    })
+
+    renderRoute(<EnactmentDetailPage />)
+    expect(screen.getByTestId("detail-error")).toBeDefined()
+    expect(screen.getByText(/boom/)).toBeDefined()
+
+    shouldThrow = false
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("detail-error-retry"))
+    })
+
+    expect(screen.queryByTestId("detail-error")).toBeNull()
+    expect(screen.getByTestId("net-diagram-card")).toBeDefined()
+    errorSpy.mockRestore()
   })
 })

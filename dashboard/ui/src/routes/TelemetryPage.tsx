@@ -56,8 +56,11 @@ class TelemetryBoundary extends Component<BoundaryProps, BoundaryState> {
     return { error: error instanceof Error ? error : new Error(String(error)) }
   }
 
+  resetError = () => this.setState({ error: null })
+
   render() {
-    if (this.state.error) return <TelemetryError message={this.state.error.message} />
+    if (this.state.error)
+      return <TelemetryError message={this.state.error.message} onRetry={this.resetError} />
     return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>
   }
 }
@@ -83,8 +86,20 @@ function TelemetryFallback() {
   )
 }
 
-function TelemetryError({ message }: { message: string }) {
-  return <Banner variant="error" title="Telemetry feed unavailable" description={message} />
+function TelemetryError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-3" data-testid="telemetry-error">
+      <Banner variant="error" title="Telemetry feed unavailable" description={message} />
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={onRetry}
+        data-testid="telemetry-error-retry"
+      >
+        Retry
+      </Button>
+    </div>
+  )
 }
 
 function entryMatchesQuery(entry: Entry, q: string): boolean {

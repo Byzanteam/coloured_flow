@@ -49,8 +49,11 @@ class StoreBoundary extends Component<StoreBoundaryProps, StoreBoundaryState> {
     return { error: error instanceof Error ? error : new Error(String(error)) }
   }
 
+  resetError = () => this.setState({ error: null })
+
   render() {
-    if (this.state.error) return <InboxError message={this.state.error.message} />
+    if (this.state.error)
+      return <InboxError message={this.state.error.message} onRetry={this.resetError} />
     return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>
   }
 }
@@ -76,8 +79,20 @@ function InboxFallback() {
   )
 }
 
-function InboxError({ message }: { message: string }) {
-  return <Banner variant="error" title="Inbox unavailable" description={message} />
+function InboxError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-3" data-testid="inbox-error">
+      <Banner variant="error" title="Inbox unavailable" description={message} />
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={onRetry}
+        data-testid="inbox-error-retry"
+      >
+        Retry
+      </Button>
+    </div>
+  )
 }
 
 const INBOX_STATE_OPTIONS: ReadonlyArray<WorkitemRow["state"] | "exception" | "terminated"> = [

@@ -400,3 +400,43 @@ describe("FlowDetailPage", () => {
     expect(screen.queryByTestId("colour-sets-panel")).toBeNull()
   })
 })
+
+describe("FlowDetailPage — retry", () => {
+  beforeEach(() => {
+    snapshotMock.mockReset()
+    startDispatchMock.mockReset()
+    fetchDispatchMock.mockReset()
+    navigateMock.mockReset()
+  })
+
+  it("recovers from a transient error via Retry", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    let shouldThrow = true
+    snapshotMock.mockImplementation(() => {
+      if (shouldThrow) throw new Error("boom")
+      return {
+        flows: [makeFlow()],
+        counts: { total_flows: 1, total_live_enactments: 2 }
+      }
+    })
+    primeDetail(makeDetail())
+
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+
+    expect(screen.getByTestId("flow-detail-error")).toBeDefined()
+    expect(screen.getByText(/boom/)).toBeDefined()
+
+    shouldThrow = false
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("flow-detail-error-retry"))
+    })
+
+    expect(screen.queryByTestId("flow-detail-error")).toBeNull()
+    await waitFor(() => {
+      expect(screen.getByTestId("flow-detail-diagram-card")).toBeDefined()
+    })
+    errorSpy.mockRestore()
+  })
+})

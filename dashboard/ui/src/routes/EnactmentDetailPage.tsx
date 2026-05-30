@@ -118,9 +118,17 @@ class DetailBoundary extends Component<DetailBoundaryProps, DetailBoundaryState>
     return { error: error instanceof Error ? error : new Error(String(error)) }
   }
 
+  resetError = () => this.setState({ error: null })
+
   render() {
     if (this.state.error) {
-      return <DetailError enactmentId={this.props.enactmentId} message={this.state.error.message} />
+      return (
+        <DetailError
+          enactmentId={this.props.enactmentId}
+          message={this.state.error.message}
+          onRetry={this.resetError}
+        />
+      )
     }
     return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>
   }
@@ -141,15 +149,33 @@ function DetailFallback({ enactmentId }: { enactmentId: string }) {
   )
 }
 
-function DetailError({ enactmentId, message }: { enactmentId: string; message: string }) {
+function DetailError({
+  enactmentId,
+  message,
+  onRetry
+}: {
+  enactmentId: string
+  message: string
+  onRetry: () => void
+}) {
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-6" data-testid="detail-error">
       <PageHeader
         title="Enactment"
         byline={<code className="text-xs text-cf-ink-muted">{enactmentId}</code>}
         breadcrumbs={detailBreadcrumbs(enactmentId)}
       />
       <Banner variant="error" title="Detail unavailable" description={message} />
+      <div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onRetry}
+          data-testid="detail-error-retry"
+        >
+          Retry
+        </Button>
+      </div>
     </section>
   )
 }

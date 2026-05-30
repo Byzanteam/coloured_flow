@@ -70,8 +70,11 @@ class DetailBoundary extends Component<BoundaryProps, BoundaryState> {
     return { error: error instanceof Error ? error : new Error(String(error)) }
   }
 
+  resetError = () => this.setState({ error: null })
+
   render() {
-    if (this.state.error) return <DetailError message={this.state.error.message} />
+    if (this.state.error)
+      return <DetailError message={this.state.error.message} onRetry={this.resetError} />
     return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>
   }
 }
@@ -88,15 +91,25 @@ function DetailFallback() {
   )
 }
 
-function DetailError({ message }: { message: string }) {
+function DetailError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <>
+    <div className="flex flex-col gap-4" data-testid="flow-detail-error">
       <PageHeader
         title="Flow"
         breadcrumbs={[{ label: "Flows", to: "/flows" }, { label: "Error" }]}
       />
       <Banner variant="error" title="Flow detail unavailable" description={message} />
-    </>
+      <div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onRetry}
+          data-testid="flow-detail-error-retry"
+        >
+          Retry
+        </Button>
+      </div>
+    </div>
   )
 }
 
