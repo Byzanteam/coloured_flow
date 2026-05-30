@@ -154,6 +154,18 @@ declare namespace Musubi {
       }
     >
 
+    "ColouredFlowDashboardWeb.Stores.EnactmentListStore": StoreDef<
+      "ColouredFlowDashboardWeb.Stores.EnactmentListStore",
+      {
+        enactments: Musubi.StreamField<ColouredFlowDashboardWeb.Views.EnactmentRow>
+        total_enactments: number
+        running_count: number
+        exception_count: number
+        terminated_count: number
+      },
+      {}
+    >
+
     "ColouredFlowDashboardWeb.Stores.FlowCatalogStore": StoreDef<
       "ColouredFlowDashboardWeb.Stores.FlowCatalogStore",
       {
@@ -219,6 +231,21 @@ declare namespace ColouredFlowDashboardWeb {
       binding_summary: string
       guard_status: "enabled" | "rejected_by_guard" | "rejected_by_arc_eval" | "rejected_by_marking"
       reason: string | null
+    }
+
+    interface BindingPair {
+      name: string
+      value: string
+    }
+
+    interface EnactmentRow {
+      id: string
+      flow_id: string
+      flow_name: string
+      state: "running" | "exception" | "terminated"
+      inserted_at: string
+      updated_at: string
+      live_workitems: number
     }
 
     interface EnactmentSummary {
@@ -363,6 +390,7 @@ declare namespace ColouredFlowDashboardWeb {
       state: "enabled" | "started"
       enactment_state: "running" | "exception" | "terminated"
       binding_summary: string
+      binding_pairs: ColouredFlowDashboardWeb.Views.BindingPair[]
       output_vars: ColouredFlowDashboardWeb.Views.OutputVar[]
       enabled_at: string
       updated_at: string

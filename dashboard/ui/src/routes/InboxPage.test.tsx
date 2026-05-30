@@ -63,6 +63,7 @@ const { dispatchMock, snapshotMock, makeRow, schemaMix, schemaBinary, schemaElix
         state: "enabled",
         enactment_state: "running",
         binding_summary: "",
+        binding_pairs: [],
         output_vars: schema,
         enabled_at: "2026-05-29T00:00:00Z",
         updated_at: "2026-05-29T00:00:00Z"
@@ -188,21 +189,53 @@ describe("InboxPage outputs drawer — render", () => {
     expect(screen.getByTestId("outputs-field-note")).toBeDefined()
   })
 
-  it("renders binding_summary inside Kumo CodeBlock", async () => {
+  it("renders binding_pairs as a name/value definition list", async () => {
     const row = {
       ...makeRow("wi-bind", "approve", schemaBinary),
-      binding_summary: "x = 1, y = :foo"
+      binding_summary: "x = 1, y = :foo",
+      binding_pairs: [
+        { name: "x", value: "1" },
+        { name: "y", value: ":foo" }
+      ]
     }
     loadSnapshot(row)
     renderWithProviders(<InboxPage />)
     await openDrawer("wi-bind")
 
-    const wrap = screen.getByTestId("drawer-binding-code")
+    const wrap = screen.getByTestId("drawer-binding-pairs")
     expect(wrap).toBeDefined()
-    expect(wrap.textContent).toContain("x = 1, y = :foo")
-    // CodeBlock renders a <code> child inside its bordered container; the
-    // wrapper itself is not a <pre>, but Kumo's CodeBlock injects one.
-    expect(wrap.querySelector("pre")).not.toBeNull()
+
+    const dts = Array.from(wrap.querySelectorAll("dt")).map((el) => el.textContent)
+    const dds = Array.from(wrap.querySelectorAll("dd")).map((el) => el.textContent)
+    expect(dts).toEqual(["x", "y"])
+    expect(dds).toEqual(["1", ":foo"])
+  })
+
+  it("renders comma-bearing binding values in a single row", async () => {
+    const row = {
+      ...makeRow("wi-tuple", "approve", schemaBinary),
+      binding_pairs: [
+        { name: "pair", value: "{1, true}" },
+        { name: "note", value: '"hello, world"' }
+      ]
+    }
+    loadSnapshot(row)
+    renderWithProviders(<InboxPage />)
+    await openDrawer("wi-tuple")
+
+    const wrap = screen.getByTestId("drawer-binding-pairs")
+    const dds = Array.from(wrap.querySelectorAll("dd")).map((el) => el.textContent)
+    expect(dds).toEqual(["{1, true}", '"hello, world"'])
+  })
+
+  it("shows a muted hint when binding_pairs is empty", async () => {
+    loadSnapshot(makeRow("wi-empty", "approve", schemaBinary))
+    renderWithProviders(<InboxPage />)
+    await openDrawer("wi-empty")
+
+    const wrap = screen.getByTestId("drawer-binding-pairs")
+    expect(wrap.textContent).toContain("no bindings")
+    expect(wrap.querySelector("dl")).toBeNull()
   })
 })
 

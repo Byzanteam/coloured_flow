@@ -144,6 +144,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Views.BindingCandidate
+  alias ColouredFlowDashboardWeb.Views.BindingPair
   alias ColouredFlowDashboardWeb.Views.EnactmentSummary
   alias ColouredFlowDashboardWeb.Views.MarkingRow
   alias ColouredFlowDashboardWeb.Views.NetDiagram
@@ -929,6 +930,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       state: wi.state,
       enactment_state: :running,
       binding_summary: format_binding(wi.binding_element),
+      binding_pairs: binding_pairs(wi.binding_element),
       output_vars: [],
       enabled_at: "",
       updated_at: ""
@@ -944,6 +946,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       state: w.state,
       enactment_state: :running,
       binding_summary: format_binding(w.binding_element),
+      binding_pairs: binding_pairs(w.binding_element),
       output_vars: [],
       enabled_at: datetime_to_iso(w.inserted_at),
       updated_at: datetime_to_iso(w.updated_at)
@@ -965,6 +968,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   defp format_binding(%BindingElement{binding: binding}) do
     Enum.map_join(binding, ", ", fn {name, value} -> "#{name} = #{inspect(value)}" end)
+  end
+
+  defp binding_pairs(%BindingElement{binding: binding}) do
+    Enum.map(binding, fn {name, value} ->
+      %BindingPair{name: Atom.to_string(name), value: inspect(value)}
+    end)
   end
 
   defp format_free_binding(free_binding) when is_list(free_binding) do

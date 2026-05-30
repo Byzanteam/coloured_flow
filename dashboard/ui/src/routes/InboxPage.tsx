@@ -1,11 +1,10 @@
-import { Component, type ReactNode, Suspense, useEffect, useMemo, useState } from "react"
+import { Component, Fragment, type ReactNode, Suspense, useEffect, useMemo, useState } from "react"
 import {
   Badge,
   Banner,
   Button,
   Checkbox,
   ClipboardText,
-  CodeBlock,
   Empty,
   Input,
   InputArea,
@@ -663,19 +662,28 @@ function OutputsDrawerBody({
         <DrawerMetaRow label="Enabled at">
           <span className="text-xs text-cf-ink">{formatTimestamp(row.enabled_at)}</span>
         </DrawerMetaRow>
-        {row.binding_summary ? (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
-              Binding
-            </span>
-            <div
-              className="max-h-32 overflow-auto"
-              data-testid="drawer-binding-code"
-            >
-              <CodeBlock lang="bash" code={row.binding_summary} />
-            </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
+            Binding
+          </span>
+          <div
+            className="max-h-32 overflow-auto"
+            data-testid="drawer-binding-pairs"
+          >
+            {row.binding_pairs.length === 0 ? (
+              <span className="text-xs italic text-cf-ink-muted">no bindings</span>
+            ) : (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                {row.binding_pairs.map((pair) => (
+                  <Fragment key={pair.name}>
+                    <dt className="font-mono text-cf-ink-muted">{pair.name}</dt>
+                    <dd className="font-mono text-cf-ink break-all">{pair.value}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            )}
           </div>
-        ) : null}
+        </div>
       </section>
 
       <div className="flex-1 overflow-y-auto px-6 py-5">

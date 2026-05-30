@@ -67,6 +67,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Stores.SeqTracker
+  alias ColouredFlowDashboardWeb.Views.BindingPair
   alias ColouredFlowDashboardWeb.Views.InboxCounts
   alias ColouredFlowDashboardWeb.Views.OutputVar
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
@@ -458,6 +459,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       state: w.state,
       enactment_state: :running,
       binding_summary: format_binding(w.binding_element),
+      binding_pairs: binding_pairs(w.binding_element),
       output_vars: resolve_output_schema(w.enactment_id, w.binding_element, flow_cache),
       enabled_at: datetime_to_iso(w.inserted_at),
       updated_at: datetime_to_iso(w.updated_at)
@@ -475,6 +477,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       state: wi.state,
       enactment_state: :running,
       binding_summary: format_binding(wi.binding_element),
+      binding_pairs: binding_pairs(wi.binding_element),
       output_vars: resolve_output_schema(eid, wi.binding_element, flow_cache),
       enabled_at: iso,
       updated_at: iso
@@ -522,6 +525,12 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
   defp format_binding(%BindingElement{binding: binding}) do
     Enum.map_join(binding, ", ", fn {name, value} -> "#{name} = #{inspect(value)}" end)
+  end
+
+  defp binding_pairs(%BindingElement{binding: binding}) do
+    Enum.map(binding, fn {name, value} ->
+      %BindingPair{name: Atom.to_string(name), value: inspect(value)}
+    end)
   end
 
   defp datetime_to_iso(%DateTime{} = dt), do: DateTime.to_iso8601(dt)

@@ -26,10 +26,18 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
   is still live in the runner, but completing it will hit `:runner_error`).
   Default `:running`; flips to `:exception` when an `:enactment_exception`
   bridge event arrives for the row's enactment.
+
+  `binding_pairs` is the structured equivalent of `binding_summary` — one
+  `%BindingPair{name:, value:}` per variable bound by the binding element,
+  with `value` pre-rendered via `inspect/1`. The drawer renders the list as
+  a definition list so values containing commas (tuples, strings) survive
+  intact. `binding_summary` is kept around for callers that still consume the
+  flattened blob (search filter, occurrence rows, etc.).
   """
 
   use Musubi.State
 
+  alias ColouredFlowDashboardWeb.Views.BindingPair
   alias ColouredFlowDashboardWeb.Views.OutputVar
 
   state do
@@ -40,6 +48,7 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
     field :state, :enabled | :started
     field :enactment_state, :running | :exception | :terminated
     field :binding_summary, String.t()
+    field :binding_pairs, list(BindingPair.t())
     field :output_vars, list(OutputVar.t())
     field :enabled_at, String.t()
     field :updated_at, String.t()
