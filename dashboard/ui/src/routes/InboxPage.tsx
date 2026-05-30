@@ -487,7 +487,7 @@ function OutputsDrawer({ inbox, row, onClose }: OutputsDrawerProps) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-black/40 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         {row ? <OutputsDrawerBody inbox={inbox} row={row} onClose={onClose} /> : null}
       </Dialog.Portal>
     </Dialog.Root>
@@ -614,7 +614,7 @@ function OutputsDrawerBody({
 
   return (
     <Dialog.Popup
-      className="fixed top-0 right-0 h-screen w-full sm:w-[28rem] flex flex-col bg-cf-surface border-l border-cf-border outline-none focus:outline-none shadow-2xl transition-transform duration-200 ease-out data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
+      className="fixed top-0 right-0 z-50 h-screen w-full sm:w-[28rem] flex flex-col bg-cf-surface border-l border-cf-border outline-none focus:outline-none shadow-2xl transition-transform duration-200 ease-out data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
     >
       <header className="flex flex-col gap-3 border-b border-cf-border bg-cf-surface px-6 pt-6 pb-4">
         <div className="flex items-center gap-3">
