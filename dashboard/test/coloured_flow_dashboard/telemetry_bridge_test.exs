@@ -420,6 +420,79 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
     end
   end
 
+  describe "seq monotonicity across bridge restart" do
+    # Pins codex-r2 MAJOR fix: bridge crash/hot-reload MUST NOT reset the seq
+    # space. If it did, every event after restart would have `seq <= last_seq`
+    # in already-connected `InboxStore`/`EnactmentDetailStore` and live
+    # sessions would silently freeze. VM-wide `System.unique_integer/1`
+    # survives the restart; this test fails if anyone reintroduces an
+    # ETS- or process-state-backed counter.
+    test "seqs allocated after a bridge restart are strictly greater than pre-restart seqs",
+         context do
+      %{prefix: prefix_a, handler_id: handler_a, bridge: bridge_a} = start_bridge(context)
+
+      eid = unique_id("-restart")
+      state = build_state(eid)
+      :ok = Phoenix.PubSub.subscribe(@pubsub, "#{prefix_a}inbox")
+
+      for _i <- 1..3 do
+        execute_via_handler(
+          handler_a,
+          [:coloured_flow, :runner, :enactment, :start],
+          %{system_time: System.system_time()},
+          %{enactment_id: eid, enactment_state: state}
+        )
+      end
+
+      pre_seqs =
+        for _i <- 1..3 do
+          assert_receive {:cf_event, %Event{kind: :enactment_start, topic: :inbox, seq: seq}},
+                         1_000
+
+          seq
+        end
+
+      max_pre = Enum.max(pre_seqs)
+      assert max_pre > 0
+      assert pre_seqs == Enum.sort(pre_seqs), "pre-restart seqs must be monotonic"
+
+      # Kill the bridge and wait for the supervisor to surface the exit so
+      # `start_bridge/2` below opens a fresh ETS / new GenServer state.
+      ref = Process.monitor(bridge_a)
+      Process.exit(bridge_a, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^bridge_a, _reason}, 1_000
+
+      %{prefix: prefix_b, handler_id: handler_b} = start_bridge(context)
+      :ok = Phoenix.PubSub.subscribe(@pubsub, "#{prefix_b}inbox")
+
+      for _i <- 1..3 do
+        execute_via_handler(
+          handler_b,
+          [:coloured_flow, :runner, :enactment, :start],
+          %{system_time: System.system_time()},
+          %{enactment_id: eid, enactment_state: state}
+        )
+      end
+
+      post_seqs =
+        for _i <- 1..3 do
+          assert_receive {:cf_event, %Event{kind: :enactment_start, topic: :inbox, seq: seq}},
+                         1_000
+
+          seq
+        end
+
+      min_post = Enum.min(post_seqs)
+      assert post_seqs == Enum.sort(post_seqs), "post-restart seqs must be monotonic"
+
+      assert min_post > max_pre,
+             "post-restart seqs must STRICTLY exceed pre-restart max " <>
+               "(pre=#{inspect(pre_seqs)}, post=#{inspect(post_seqs)}). " <>
+               "A regression here would freeze every live dashboard session " <>
+               "after a bridge restart."
+    end
+  end
+
   describe "integration smoke (real runner + InMemory storage)" do
     test "drives a tiny pass-through CPN and observes the lifecycle stream including cf:flow",
          context do

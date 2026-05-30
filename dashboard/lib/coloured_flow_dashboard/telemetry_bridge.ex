@@ -75,7 +75,6 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   @default_pubsub :coloured_flow_dashboard_pubsub
   @default_task_supervisor ColouredFlowDashboard.TaskSupervisor
   @default_flow_cache :coloured_flow_dashboard_telemetry_bridge_flow_cache
-  @default_seq_table :coloured_flow_dashboard_telemetry_bridge_seq
   @default_topic_prefix "cf:"
 
   @enactment_lifecycle_events ~w[start stop terminate exception take_snapshot]a
@@ -91,7 +90,6 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
           | {:task_supervisor, atom()}
           | {:topic_prefix, String.t()}
           | {:flow_cache, atom()}
-          | {:seq_table, atom()}
           | {:broadcast_fn, broadcast_fn()}
 
   @spec start_link([option()]) :: GenServer.on_start()
@@ -129,7 +127,6 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     task_supervisor = Keyword.get(opts, :task_supervisor, @default_task_supervisor)
     topic_prefix = Keyword.get(opts, :topic_prefix, @default_topic_prefix)
     flow_cache = Keyword.get(opts, :flow_cache, @default_flow_cache)
-    seq_table = Keyword.get(opts, :seq_table, @default_seq_table)
     broadcast_fn = Keyword.get(opts, :broadcast_fn, &Phoenix.PubSub.broadcast/3)
 
     # GenServer owns the ETS table so it dies with us (test cleanup is free).
@@ -137,19 +134,12 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     # through the GenServer.
     flow_cache = ensure_table(flow_cache)
 
-    # Per-enactment monotonic counter. `:ets.update_counter/4` is atomic and
-    # runs inline with the runner's `:telemetry.execute/3` call, so seq
-    # allocation inherits the runner GenServer's reduction order. Tasks then
-    # broadcast asynchronously; consumers use `seq` to drop late events.
-    seq_table = ensure_table(seq_table)
-
     config = %{
       handler_id: handler_id,
       pubsub: pubsub,
       task_supervisor: task_supervisor,
       topic_prefix: topic_prefix,
       flow_cache: flow_cache,
-      seq_table: seq_table,
       broadcast_fn: broadcast_fn
     }
 
@@ -160,7 +150,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
     :ok = :telemetry.attach_many(handler_id, events(), &__MODULE__.handle_event/4, config)
 
-    {:ok, %{handler_id: handler_id, flow_cache: flow_cache, seq_table: seq_table}}
+    {:ok, %{handler_id: handler_id, flow_cache: flow_cache}}
   end
 
   defp ensure_table(name) do
@@ -204,10 +194,10 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   def handle_event(event_name, measurements, metadata, config) do
     # Defer EVERYTHING — shaping, flow lookup, broadcast — to the task. The
     # only work that runs inline with the runner's `:telemetry.execute/3` is
-    # the `start_child` call AND the `allocate_seq/2` atomic bump. Tests
-    # assert async-ness by injecting a blocking `:broadcast_fn`; the seq bump
-    # is bounded-time `:ets.update_counter/4` so it preserves the invariant.
-    seq = allocate_seq(metadata, config.seq_table)
+    # the `start_child` call AND the `allocate_seq/1` monotonic bump. Tests
+    # assert async-ness by injecting a blocking `:broadcast_fn`; the seq
+    # bump is a bounded-time VM call so it preserves the invariant.
+    seq = allocate_seq(metadata)
 
     Task.Supervisor.start_child(config.task_supervisor, fn ->
       dispatch(event_name, measurements, metadata, seq, config)
@@ -216,16 +206,19 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     :ok
   end
 
-  # `seq` is per-enactment monotonic. Allocating it inline (before the task
-  # fans out) means two events for the same enactment are stamped in the
-  # runner's serialized telemetry order even if their tasks then race. When
-  # `enactment_id` is missing the event is unscoped — return `0` and skip
-  # the staleness check on the consumer side; such events drop in
-  # `build_broadcasts/4` anyway.
-  defp allocate_seq(metadata, seq_table) do
+  # `seq` is a VM-wide strictly-increasing integer. Allocating it inline
+  # (before the task fans out) means two events are stamped in the runner's
+  # serialized telemetry order even if their tasks then race; per-enactment
+  # ordering is preserved because `:telemetry.execute/3` runs in the
+  # runner's calling-process context. `System.unique_integer/1` survives
+  # any bridge restart / supervisor restart / code reload — a freshly
+  # rebooted bridge cannot regress consumers' accumulated `last_seq`. When
+  # `enactment_id` is missing the event is unscoped — return `0`; such
+  # events drop in `build_broadcasts/4` anyway.
+  defp allocate_seq(metadata) do
     case enactment_id_from_metadata(metadata) do
       nil -> 0
-      eid -> :ets.update_counter(seq_table, eid, 1, {eid, 0})
+      _eid -> System.unique_integer([:monotonic, :positive])
     end
   end
 
