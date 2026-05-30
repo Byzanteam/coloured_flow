@@ -56,11 +56,11 @@ const PLACE_CIRCLE = 16
 const PLACE_LABEL_GAP = 32
 const PLACE_W = 48
 const PLACE_H = PLACE_CIRCLE + PLACE_LABEL_GAP
-const TRANSITION_H = 32
+const TRANSITION_H = 28
 const TRANSITION_MIN_W = 56
 const TRANSITION_MAX_W = 200
 const TRANSITION_CHAR_PX = 7
-const TRANSITION_PAD_PX = 24
+const TRANSITION_PAD_PX = 20
 
 function computeTransitionWidth(transitions: ReadonlyArray<DiagramTransition>): number {
   let maxLen = 0
@@ -556,7 +556,7 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
   return (
     <Surface
       as="div"
-      className="flex items-center justify-center rounded-md border bg-cf-surface px-3 py-1.5 text-center shadow-sm"
+      className="flex items-center justify-center rounded-md border bg-cf-surface px-2.5 py-1 text-center shadow-sm"
       style={{
         width: data.width,
         height: TRANSITION_H,
