@@ -11,9 +11,17 @@ defmodule ColouredFlowDashboardWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # The dashboard has no authentication and no per-user session state, so the
+  # Musubi socket does not need `connect_info: [session: ...]`. Mounting with
+  # `session:` is also actively broken against Musubi 0.6: Phoenix's session
+  # fetcher emits `connect_info[:session] = nil` when the client has no cookie
+  # yet (e.g. first visit), and `Musubi.Transport.Socket.build_connect_socket/2`
+  # then forwards that nil to `Musubi.Socket.put_session/2` which only matches
+  # `is_map(session)` and crashes the WS handshake with HTTP 500. Mirrors the
+  # reference apps under arbor/examples/{cart_page,chat_room,poll_app}.
   socket "/socket", ColouredFlowDashboardWeb.UserSocket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: true,
+    longpoll: false
 
   # Serve at "/" the static files from "priv/static" directory.
   #
