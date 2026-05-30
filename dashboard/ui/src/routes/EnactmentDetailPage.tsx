@@ -308,14 +308,14 @@ function DetailContent({
           narrower than lg (1024px) so the diagram doesn't crush on
           mobile. */}
       <div
-        className="flex flex-col gap-6 lg:flex-row lg:items-start"
+        className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:min-h-[640px]"
         data-testid="detail-split"
       >
         <LayerCard.Primary
-          className="overflow-hidden p-0 lg:basis-3/5 lg:flex-shrink-0"
+          className="overflow-hidden p-0 lg:basis-3/5 lg:flex-shrink-0 lg:self-stretch"
           data-testid="net-diagram-card"
         >
-          <div className="h-[440px] w-full lg:h-[560px]">
+          <div className="h-[440px] min-h-[440px] w-full lg:h-full lg:min-h-[640px]">
             <NetDiagram
               diagram={diagram}
               enactmentState={state}
