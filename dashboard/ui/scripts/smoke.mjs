@@ -3,10 +3,13 @@
 //
 // Pins two regressions the unit tests can't catch (they mock @musubi/client):
 //
-//   1. Bundle dedupe — without `resolve.dedupe` in vite.config.ts, the
-//      workspace-linked `@musubi/react` drags its own react@18 copy into the
-//      production bundle alongside the top-level react@19. React then throws
-//      minified #525 in the browser (legacy element from older React).
+//   1. Single React major in the shipped bundle. musubi 0.6.1 declares React
+//      as a peerDep only, so the workspace-linked `@musubi/react` resolves
+//      against the host's react@19 instead of pulling its own copy. If a
+//      future bump regresses that (e.g. a transitive dep re-introduces
+//      react@18), two majors land in the asset chunks and React throws
+//      minified #525 in the browser. Scan every JS chunk and assert exactly
+//      one React major is present.
 //
 //   2. WebSocket boot — opens a real Phoenix Socket against the running
 //      dashboard and runs the same `connect()` call the SPA performs at
@@ -18,7 +21,7 @@
 //   SMOKE_BASE_URL=http://127.0.0.1:4111 pnpm smoke
 //
 // Prereqs:
-//   - `pnpm build` has produced ../priv/static/assets/index-*.js
+//   - `pnpm build` has produced ../priv/static/assets/*.js chunks
 //   - A Phoenix server is running at SMOKE_BASE_URL with /socket reachable
 //
 // Exit 0 on success, 1 on any failure. Each step logs a [smoke] line.
@@ -44,38 +47,52 @@ function die(msg) {
 // Step 1: Bundle dedupe
 // ---------------------------------------------------------------------------
 
-function findBundle() {
+function findChunks() {
   let entries
   try {
     entries = readdirSync(assetsDir)
   } catch (cause) {
     die(`no built bundle at ${assetsDir} (run \`pnpm build\` first): ${cause.message}`)
   }
-  const js = entries.filter((f) => f.startsWith("index-") && f.endsWith(".js"))
-  if (js.length !== 1) {
-    die(`expected exactly one index-*.js in ${assetsDir}, found: ${js.join(", ") || "none"}`)
+  const js = entries.filter((f) => f.endsWith(".js"))
+  if (js.length === 0) {
+    die(`no *.js chunks in ${assetsDir}; run \`pnpm build\` first`)
   }
-  return join(assetsDir, js[0])
+  return js.map((f) => join(assetsDir, f))
 }
 
-function assertSingleReactCopy(bundlePath) {
-  const src = readFileSync(bundlePath, "utf8")
-  // React injects its version literal into the runtime export. Two different
-  // copies in one bundle ⇒ two version strings.
-  const versions = Array.from(src.matchAll(/"(1[0-9]\.\d+\.\d+)"/g))
-    .map((m) => m[1])
-    .filter((v) => /^(18|19|20)\./.test(v))
-  const unique = Array.from(new Set(versions))
-  if (unique.length === 0) {
-    die(`no React version string in ${bundlePath}; check the bundle is the real SPA build`)
+function assertSingleReactMajor(chunkPaths) {
+  // React injects its version literal into the runtime export. Sum across
+  // every chunk that could hold React (vendor-react-*, index-*, etc.) and
+  // assert exactly one major is present.
+  const versions = new Set()
+  const chunksWithReact = []
+  for (const p of chunkPaths) {
+    const src = readFileSync(p, "utf8")
+    const hits = Array.from(src.matchAll(/"(1[0-9]\.\d+\.\d+)"/g))
+      .map((m) => m[1])
+      .filter((v) => /^(18|19|20)\./.test(v))
+    if (hits.length > 0) chunksWithReact.push(p.split("/").pop())
+    for (const v of hits) versions.add(v)
   }
-  if (unique.length > 1) {
+  if (chunksWithReact.length === 0) {
     die(
-      `bundle has ${unique.length} React copies (${unique.join(", ")}). ` +
-        `vite.config.ts \`resolve.dedupe\` likely regressed.`
+      `no React version string found across ${chunkPaths.length} chunk(s); ` +
+        `check the bundle is the real SPA build`
     )
   }
-  log(`bundle dedupe ok — single React (${unique[0]})`)
+  const majors = new Set(Array.from(versions).map((v) => v.split(".")[0]))
+  if (majors.size > 1) {
+    die(
+      `duplicate React majors detected: ${Array.from(versions).join(", ")} ` +
+        `across chunks [${chunksWithReact.join(", ")}]. ` +
+        `A transitive dep likely re-pinned React; check pnpm-lock.yaml.`
+    )
+  }
+  log(
+    `bundle dedupe ok — single React major (${Array.from(versions).join(", ")}) ` +
+      `in [${chunksWithReact.join(", ")}]`
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -257,9 +274,9 @@ async function assertInboxRootStaysMounted() {
 
 // ---------------------------------------------------------------------------
 
-const bundle = findBundle()
-log(`scanning ${bundle}`)
-assertSingleReactCopy(bundle)
+const chunks = findChunks()
+log(`scanning ${chunks.length} chunk(s) in ${assetsDir}`)
+assertSingleReactMajor(chunks)
 await assertConnectSucceeds()
 await assertInboxRootStaysMounted()
 log("OK")
