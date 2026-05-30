@@ -151,6 +151,15 @@ declare namespace Musubi {
             code: "ok"
           }
         }
+        complete_workitem: {
+          payload: {
+            workitem_id: string
+            outputs: Record<string, unknown>
+          }
+          reply: {
+            code: "ok" | "already_completed" | "unknown_workitem" | "unknown_variable" | "invalid_outputs" | "type_mismatch" | "invalid_elixir" | "runner_error"
+          }
+        }
       }
     >
 
@@ -281,6 +290,8 @@ declare namespace ColouredFlowDashboardWeb {
       live_enactments: number
       last_started_at: string | null
       recent_enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
+      enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
+      diagram: ColouredFlowDashboardWeb.Views.NetDiagram | null
     }
 
     interface GlobalTelemetryEntry {

@@ -11,6 +11,7 @@ const {
   retryEnactmentMock,
   replayToVersionMock,
   exitReplayMock,
+  completeWorkitemMock,
   sampleSnapshot
 } = vi.hoisted(() => {
   const summary = {
@@ -39,7 +40,9 @@ const {
     flow_topic_id: "topic-x",
     transition: "approve",
     state: "enabled" as const,
+    enactment_state: "running" as const,
     binding_summary: "x = 1",
+    binding_pairs: [],
     output_vars: [],
     enabled_at: "2026-05-29T00:00:00Z",
     updated_at: "2026-05-29T00:00:00Z"
@@ -96,6 +99,7 @@ const {
     retryEnactmentMock: vi.fn(),
     replayToVersionMock: vi.fn(),
     exitReplayMock: vi.fn(),
+    completeWorkitemMock: vi.fn(),
     sampleSnapshot: {
       summary,
       transitions: ["approve"],
@@ -155,7 +159,9 @@ vi.mock("../musubi", () => ({
               ? replayToVersionMock
               : name === "exit_replay"
                 ? exitReplayMock
-                : forceTerminateMock
+                : name === "complete_workitem"
+                  ? completeWorkitemMock
+                  : forceTerminateMock
     return {
       dispatch,
       isPending: false,
@@ -231,6 +237,7 @@ describe("EnactmentDetailPage", () => {
     retryEnactmentMock.mockReset()
     replayToVersionMock.mockReset()
     exitReplayMock.mockReset()
+    completeWorkitemMock.mockReset()
   })
 
   it("renders the net diagram card with NetDiagram mounted inside", () => {
@@ -314,6 +321,59 @@ describe("EnactmentDetailPage", () => {
     // Withdraw action is intentionally absent — see plan note 2026-05-29
     // user decision dropping Withdraw/Reoffer end-to-end.
     expect(screen.queryByRole("button", { name: /Withdraw/ })).toBeNull()
+  })
+
+  it("workitems tab renders an Open button per row using the shared a11y label", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
+    })
+    expect(
+      screen.getByRole("button", { name: "Open outputs drawer for workitem wi-1" })
+    ).toBeDefined()
+  })
+
+  it("clicking Open mounts the OutputsDrawer with the workitem", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
+    })
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open outputs drawer for workitem wi-1" })
+      )
+    })
+
+    // Drawer title + workitem chrome
+    expect(screen.getByText(/Complete workitem · approve/)).toBeDefined()
+    // Free variables list is empty in the sample snapshot — no-free-variables banner.
+    expect(screen.getByText(/No free variables/)).toBeDefined()
+  })
+
+  it("submitting the drawer dispatches complete_workitem against EnactmentDetailStore", async () => {
+    completeWorkitemMock.mockResolvedValueOnce({ code: "ok" })
+
+    renderRoute(<EnactmentDetailPage />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: /Workitems/ }))
+    })
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open outputs drawer for workitem wi-1" })
+      )
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    await waitFor(() => {
+      expect(completeWorkitemMock).toHaveBeenCalledWith({
+        workitem_id: "wi-1",
+        outputs: {}
+      })
+    })
   })
 
   it("omits the legacy stale-markings Banner from the Markings tab", () => {

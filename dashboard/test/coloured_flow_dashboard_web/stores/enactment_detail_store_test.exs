@@ -1161,6 +1161,162 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe ":complete_workitem command" do
+    # Rides the InMemory runner end-to-end so reply codes verify against the
+    # real `WorkitemTransition.complete_workitem/2` surface, not a mock —
+    # same shape as `InboxStoreTest.":complete_workitem command"`.
+    require ColouredFlow.Runner.Storage.InMemory, as: InMemory
+    alias ColouredFlowDashboard.Test.SimpleSequenceWorkflow
+
+    setup %{flow_cache: flow_cache} do
+      flow = InMemory.insert_flow!(SimpleSequenceWorkflow.cpnet())
+      flow_id = InMemory.flow(flow, :id)
+      {:ok, enactment} = SimpleSequenceWorkflow.insert_enactment(flow_id)
+      enactment_id = InMemory.enactment(enactment, :id)
+      {:ok, _pid} = SimpleSequenceWorkflow.start_enactment(enactment_id, lifecycle_hooks: nil)
+
+      # Per-test flow_cache so the cpnet schema lookup can resolve. The page
+      # subscribes to the global bridge fan-out so live runner events arrive
+      # here without a relay (async: false serialises the suite).
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {enactment_id, "flow-id", SimpleSequenceWorkflow.cpnet()})
+
+      page =
+        Musubi.Testing.mount(EnactmentDetailStore, %{
+          "id" => enactment_id,
+          "flow_cache" => flow_cache
+        })
+
+      workitem_id = await_complete_workitem_id!(page, enactment_id)
+      {:ok, page: page, enactment_id: enactment_id, workitem_id: workitem_id}
+    end
+
+    test "happy path: ok reply + workitem leaves the page index", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{}
+               })
+
+      assert_eventually(fn ->
+        not MapSet.member?(Musubi.Testing.assigns(page).workitem_ids, workitem_id)
+      end)
+    end
+
+    test "race: second completion collapses to :already_completed or :unknown_workitem", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      assert {:ok, %{code: :ok}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{}
+               })
+
+      assert {:ok, %{code: code}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{}
+               })
+
+      assert code in [:already_completed, :unknown_workitem]
+    end
+
+    test "unknown_variable when outputs key has no existing atom", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      garbage = "cf_detail_test_no_such_atom_#{System.unique_integer([:positive])}"
+
+      assert {:ok, %{code: :unknown_variable, variable: ^garbage}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{garbage => "ignored"}
+               })
+    end
+
+    # Schema-strict: even an existing atom (`:x`) outside the transition's
+    # output schema must reject with `:unknown_variable`.
+    test "unknown_variable when key is an existing atom outside transition schema", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      assert {:ok, %{code: :unknown_variable, variable: "x"}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: %{"x" => 1}
+               })
+    end
+
+    test "invalid_outputs when outputs is not a map", %{
+      page: page,
+      workitem_id: workitem_id
+    } do
+      assert {:ok, %{code: :invalid_outputs}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: workitem_id,
+                 outputs: "not a map"
+               })
+    end
+
+    test "unknown_workitem when id is not tracked", %{page: page} do
+      bogus = Ecto.UUID.generate()
+
+      assert {:ok, %{code: :unknown_workitem, workitem_id: ^bogus}} =
+               Musubi.Testing.dispatch_command(page, :complete_workitem, %{
+                 workitem_id: bogus,
+                 outputs: %{}
+               })
+    end
+
+    # `:invalid_elixir` requires an `:elixir`-kind output var. The
+    # SimpleSequenceWorkflow `pass` transition has no free variables, so
+    # there is no schema entry to trip the parser. Exercise the same code
+    # path directly via `WorkitemCompletion.complete/3`; both stores route
+    # through this module so the reply shape is locked there.
+    test "invalid_elixir surfaces through the shared completion path" do
+      alias ColouredFlowDashboard.WorkitemCompletion
+      alias ColouredFlowDashboardWeb.Views.OutputVar
+
+      meta = %{
+        enactment_id: "en-test",
+        schema: %{
+          "term" => %OutputVar{
+            name: "term",
+            colour_set: "complex",
+            kind: :elixir,
+            enum_values: nil,
+            hint: nil,
+            example: ":your_term"
+          }
+        }
+      }
+
+      assert %{code: :invalid_elixir, variable: "term", message: msg} =
+               WorkitemCompletion.complete(meta, "wi-test", %{"term" => "1 + ("})
+
+      assert is_binary(msg)
+    end
+
+    defp await_complete_workitem_id!(page, _enactment_id) do
+      assert_eventually(fn ->
+        case Musubi.Testing.assigns(page) do
+          %{workitem_ids: ids} when is_struct(ids, MapSet) -> MapSet.size(ids) > 0
+          _other -> false
+        end
+      end)
+
+      page
+      |> Musubi.Testing.assigns()
+      |> Map.fetch!(:workitem_ids)
+      |> MapSet.to_list()
+      |> List.first()
+    end
+  end
+
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,

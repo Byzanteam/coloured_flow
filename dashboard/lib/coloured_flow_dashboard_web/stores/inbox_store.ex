@@ -57,15 +57,13 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Runner.Enactment.Workitem, as: RunnerWorkitem
-  alias ColouredFlow.Runner.Enactment.WorkitemTransition
-  alias ColouredFlow.Runner.Exceptions.InvalidWorkitemTransition
-  alias ColouredFlow.Runner.Exceptions.NonLiveWorkitem
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
   alias ColouredFlowDashboard.OutputSchemaBuilder
   alias ColouredFlowDashboard.Repo
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
+  alias ColouredFlowDashboard.WorkitemCompletion
   alias ColouredFlowDashboardWeb.Stores.SeqTracker
   alias ColouredFlowDashboardWeb.Views.BindingPair
   alias ColouredFlowDashboardWeb.Views.InboxCounts
@@ -254,12 +252,9 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
                        transition: name,
                        output_vars: schema
                      } ->
-      {id, %{enactment_id: eid, transition: name, schema: index_schema(schema)}}
+      base = WorkitemCompletion.build_meta(eid, schema)
+      {id, Map.put(base, :transition, name)}
     end)
-  end
-
-  defp index_schema(schema) when is_list(schema) do
-    Map.new(schema, fn %OutputVar{name: name} = var -> {name, var} end)
   end
 
   defp compute_counts(rows, enactment_index) do
@@ -385,7 +380,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       Map.put(
         socket.assigns.workitem_meta,
         id,
-        %{enactment_id: eid, transition: name, schema: index_schema(schema)}
+        Map.put(WorkitemCompletion.build_meta(eid, schema), :transition, name)
       )
 
     row_index = Map.put(socket.assigns.workitem_rows, id, row)
@@ -613,120 +608,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   #                          surfaced in `:message` for debugging.
 
   defp complete_workitem_reply(workitem_id, outputs_json, socket) do
-    with {:ok, meta} <- fetch_meta(workitem_id, socket),
-         {:ok, outputs_map} <- ensure_map(outputs_json),
-         {:ok, free_binding} <- coerce_outputs(outputs_map, meta.schema) do
-      dispatch_completion(meta.enactment_id, workitem_id, free_binding)
-    else
-      {:error, :unknown_workitem} ->
-        %{code: :unknown_workitem, workitem_id: workitem_id}
-
-      {:error, {:unknown_variable, key}} ->
-        %{code: :unknown_variable, variable: key}
-
-      {:error, :invalid_outputs} ->
-        %{code: :invalid_outputs, message: "outputs must be a JSON object"}
-
-      {:error, {:type_mismatch, key, expected}} ->
-        %{
-          code: :type_mismatch,
-          variable: key,
-          expected_kind: expected,
-          message: "Output `#{key}` must be a #{expected}."
-        }
-
-      {:error, {:unknown_enum, key, value}} ->
-        %{
-          code: :type_mismatch,
-          variable: key,
-          expected_kind: "enum",
-          message: "Output `#{key}` does not accept value #{inspect(value)}."
-        }
-
-      {:error, {:invalid_elixir, key, reason}} ->
-        %{
-          code: :invalid_elixir,
-          variable: key,
-          message: "Output `#{key}` is not a valid Elixir term literal: #{reason}"
-        }
-    end
-  end
-
-  defp fetch_meta(workitem_id, socket) when is_binary(workitem_id) do
-    case Map.fetch(socket.assigns.workitem_meta, workitem_id) do
-      {:ok, meta} -> {:ok, meta}
-      :error -> {:error, :unknown_workitem}
-    end
-  end
-
-  defp fetch_meta(_other, _socket), do: {:error, :unknown_workitem}
-
-  defp ensure_map(map) when is_map(map), do: {:ok, map}
-  defp ensure_map(_other), do: {:error, :invalid_outputs}
-
-  # Schema-strict — every key in `outputs_map` MUST match a free variable
-  # declared by the transition's `meta.schema`. `OutputSchemaBuilder.coerce_value/2`
-  # passes `nil` schemas through (used by the cpnet-introspection path when
-  # building the form hint), which would silently let an operator submit
-  # outputs the runner then drops. Reject unknown keys here so the SPA can
-  # surface a structured `:unknown_variable` reply and the operator gets
-  # actionable feedback instead of a false success.
-  defp coerce_outputs(outputs_map, schema) when is_map(outputs_map) and is_map(schema) do
-    Enum.reduce_while(outputs_map, {:ok, []}, fn {key, value}, {:ok, acc} ->
-      key_str = to_string(key)
-
-      case Map.fetch(schema, key_str) do
-        {:ok, %OutputVar{} = var} -> coerce_known_key(key, key_str, value, var, acc)
-        :error -> {:halt, {:error, {:unknown_variable, key_str}}}
-      end
-    end)
-  end
-
-  defp coerce_known_key(key, key_str, value, %OutputVar{} = var, acc) do
-    with {:ok, atom} <- to_existing_atom_safe(key),
-         {:ok, coerced} <- OutputSchemaBuilder.coerce_value(var, value) do
-      {:cont, {:ok, [{atom, coerced} | acc]}}
-    else
-      :error ->
-        {:halt, {:error, {:unknown_variable, key_str}}}
-
-      {:error, {:type_mismatch, expected}} ->
-        {:halt, {:error, {:type_mismatch, key_str, expected}}}
-
-      {:error, {:unknown_enum, value}} ->
-        {:halt, {:error, {:unknown_enum, key_str, value}}}
-
-      {:error, {:invalid_elixir, reason}} ->
-        {:halt, {:error, {:invalid_elixir, key_str, reason}}}
-    end
-  end
-
-  defp to_existing_atom_safe(key) when is_atom(key), do: {:ok, key}
-
-  defp to_existing_atom_safe(key) when is_binary(key) do
-    {:ok, String.to_existing_atom(key)}
-  rescue
-    ArgumentError -> :error
-  end
-
-  defp to_existing_atom_safe(_other), do: :error
-
-  defp dispatch_completion(enactment_id, workitem_id, free_binding) do
-    case WorkitemTransition.complete_workitem(enactment_id, {workitem_id, free_binding}) do
-      {:ok, %RunnerWorkitem{}} ->
-        %{code: :ok}
-
-      {:error, %InvalidWorkitemTransition{}} ->
-        %{code: :already_completed, workitem_id: workitem_id}
-
-      {:error, %NonLiveWorkitem{}} ->
-        %{code: :already_completed, workitem_id: workitem_id}
-
-      {:error, exception} when is_exception(exception) ->
-        %{code: :runner_error, message: Exception.message(exception)}
-    end
-  catch
-    :exit, {:noproc, _info} -> %{code: :already_completed, workitem_id: workitem_id}
-    kind, reason -> %{code: :runner_error, message: Exception.format(kind, reason)}
+    meta = Map.get(socket.assigns.workitem_meta, workitem_id)
+    WorkitemCompletion.complete(meta, workitem_id, outputs_json)
   end
 end

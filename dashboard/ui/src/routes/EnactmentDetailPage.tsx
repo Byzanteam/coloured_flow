@@ -28,6 +28,7 @@ import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
 import NetDiagram from "../components/NetDiagram"
+import OutputsDrawer from "../components/OutputsDrawer"
 import TimelineScrubber, { type SpeedKey } from "../components/TimelineScrubber"
 import { useEmbedMode } from "../hooks/useEmbedMode"
 
@@ -316,6 +317,26 @@ function DetailContent({
   // re-inspects.
   const [pendingInspect, setPendingInspect] = useState<string | null>(null)
 
+  const completeCommand = useMusubiCommand(detail, "complete_workitem")
+  const [drawerRow, setDrawerRow] = useState<WorkitemRow | null>(null)
+
+  // Race-collapse: if another operator completes the workitem while this
+  // drawer is open, the live workitems stream drops the row. Close the
+  // drawer + toast so the operator does not submit against stale data.
+  useEffect(() => {
+    if (!drawerRow) return
+    const stillLive = workitems.some((wi) => wi.id === drawerRow.id)
+    if (!stillLive) {
+      setDrawerRow(null)
+      toasts.add({
+        variant: "info",
+        title: "Already handled",
+        description: "Another operator handled this workitem.",
+        timeout: 4000
+      })
+    }
+  }, [workitems, drawerRow, toasts])
+
   const onSelectTransition = useCallback((name: string) => {
     setActiveTab("debug")
     setPendingInspect(name)
@@ -429,7 +450,9 @@ function DetailContent({
                 isPending={replayCmd.isPending}
               />
             )}
-            {activeTab === "workitems" && <WorkitemsTab rows={workitems} />}
+            {activeTab === "workitems" && (
+              <WorkitemsTab rows={workitems} onOpen={setDrawerRow} />
+            )}
             {activeTab === "occurrences" && <OccurrencesTab rows={orderedOccurrences} />}
             {activeTab === "telemetry" && (
               <TelemetryTab
@@ -451,6 +474,12 @@ function DetailContent({
           </div>
         </div>
       </div>
+
+      <OutputsDrawer
+        command={completeCommand}
+        row={drawerRow}
+        onClose={() => setDrawerRow(null)}
+      />
     </section>
   )
 }
@@ -831,7 +860,13 @@ function MarkingsTab({
   )
 }
 
-function WorkitemsTab({ rows }: { rows: readonly WorkitemRow[] }) {
+function WorkitemsTab({
+  rows,
+  onOpen
+}: {
+  rows: readonly WorkitemRow[]
+  onOpen: (row: WorkitemRow) => void
+}) {
   if (rows.length === 0) {
     return (
       <Banner
@@ -850,11 +885,12 @@ function WorkitemsTab({ rows }: { rows: readonly WorkitemRow[] }) {
             <Table.Head>Transition</Table.Head>
             <Table.Head>State</Table.Head>
             <Table.Head>Binding</Table.Head>
+            <Table.Head className="text-right">Action</Table.Head>
           </Table.Row>
         </Table.Header>
         <Table.Body>
           {rows.map((row) => (
-            <Table.Row key={row.id}>
+            <Table.Row key={row.id} data-testid={`workitem-row-${row.id}`}>
               <Table.Cell>
                 <span className="font-medium text-cf-ink">{row.transition}</span>
               </Table.Cell>
@@ -865,6 +901,16 @@ function WorkitemsTab({ rows }: { rows: readonly WorkitemRow[] }) {
                 <code className="text-xs text-cf-ink-muted">
                   {row.binding_summary || "—"}
                 </code>
+              </Table.Cell>
+              <Table.Cell className="text-right">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label={`Open outputs drawer for workitem ${row.id}`}
+                  onClick={() => onOpen(row)}
+                >
+                  Open
+                </Button>
               </Table.Cell>
             </Table.Row>
           ))}

@@ -128,6 +128,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   use Musubi.Store, root: true
 
+  alias ColouredFlow.Definition.ColouredPetriNet
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
@@ -141,8 +142,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
   alias ColouredFlowDashboard.BindingInspector
+  alias ColouredFlowDashboard.OutputSchemaBuilder
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
+  alias ColouredFlowDashboard.WorkitemCompletion
   alias ColouredFlowDashboardWeb.Views.BindingCandidate
   alias ColouredFlowDashboardWeb.Views.BindingPair
   alias ColouredFlowDashboardWeb.Views.EnactmentSummary
@@ -264,6 +267,27 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     end
   end
 
+  # Mirrors `InboxStore`'s `:complete_workitem`. Reply codes are kept in
+  # lockstep via `ColouredFlowDashboard.WorkitemCompletion`.
+  command :complete_workitem do
+    payload do
+      field :workitem_id, String.t()
+      field :outputs, map()
+    end
+
+    reply do
+      field :code,
+            :ok
+            | :already_completed
+            | :unknown_workitem
+            | :unknown_variable
+            | :invalid_outputs
+            | :type_mismatch
+            | :invalid_elixir
+            | :runner_error
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Mount
   # ---------------------------------------------------------------------------
@@ -293,6 +317,9 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     enabled_workitems = seed_enabled_workitems(workitems)
     diagram = build_diagram(enactment_id, flow_cache, marking_index, enabled_workitems, %{})
     snapshot_floor = read_snapshot_floor(enactment_id)
+    cpnet = cached_cpnet(enactment_id, flow_cache)
+    workitems = Enum.map(workitems, &stamp_output_vars(&1, cpnet))
+    workitem_meta = build_workitem_meta(workitems, enactment_id)
 
     summary = %EnactmentSummary{
       enactment_id: enactment_id,
@@ -323,6 +350,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:last_seq, 0)
       |> assign(:marking_refresh_pending, false)
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
+      |> assign(:workitem_meta, workitem_meta)
       |> stream(:markings, markings, reset: true)
       |> stream(:workitems, workitems, reset: true)
       |> stream(:occurrences, occurrences, reset: true)
@@ -479,7 +507,21 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     {:reply, %{code: :ok}, socket}
   end
 
+  def handle_command(:complete_workitem, payload, socket) when is_map(payload) do
+    workitem_id = Map.get(payload, "workitem_id") || Map.get(payload, :workitem_id)
+    outputs_json = Map.get(payload, "outputs") || Map.get(payload, :outputs)
+    meta = workitem_meta_for(socket, workitem_id)
+
+    {:reply, WorkitemCompletion.complete(meta, workitem_id, outputs_json), socket}
+  end
+
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
+
+  defp workitem_meta_for(socket, workitem_id) when is_binary(workitem_id) do
+    Map.get(socket.assigns.workitem_meta, workitem_id)
+  end
+
+  defp workitem_meta_for(_socket, _workitem_id), do: nil
 
   # ---------------------------------------------------------------------------
   # Seed
@@ -796,21 +838,27 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   defp apply_workitem(socket, %RunnerWorkitem{state: state} = wi, enactment_id, version)
        when state in @live_states do
-    row = workitem_row(wi, enactment_id)
+    cpnet = cached_cpnet(enactment_id, socket.assigns.flow_cache)
+    row = wi |> workitem_row(enactment_id) |> stamp_output_vars(cpnet)
     workitem_ids = MapSet.put(socket.assigns.workitem_ids, row.id)
+    meta = WorkitemCompletion.build_meta(enactment_id, row.output_vars)
+    workitem_meta = Map.put(socket.assigns.workitem_meta, row.id, meta)
 
     socket
     |> stream_insert(:workitems, row)
     |> assign(:workitem_ids, workitem_ids)
+    |> assign(:workitem_meta, workitem_meta)
     |> bump_summary(version: version, workitems_count: MapSet.size(workitem_ids))
   end
 
   defp apply_workitem(socket, %RunnerWorkitem{id: id}, _enactment_id, version) do
     workitem_ids = MapSet.delete(socket.assigns.workitem_ids, id)
+    workitem_meta = Map.delete(socket.assigns.workitem_meta, id)
 
     socket
     |> stream_delete_by_item_key(:workitems, id)
     |> assign(:workitem_ids, workitem_ids)
+    |> assign(:workitem_meta, workitem_meta)
     |> bump_summary(version: version, workitems_count: MapSet.size(workitem_ids))
   end
 
@@ -820,10 +868,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     socket =
       Enum.reduce(workitems, socket, fn %RunnerWorkitem{id: id}, acc ->
         ids = MapSet.delete(acc.assigns.workitem_ids, id)
+        meta = Map.delete(acc.assigns.workitem_meta, id)
 
         acc
         |> stream_delete_by_item_key(:workitems, id)
         |> assign(:workitem_ids, ids)
+        |> assign(:workitem_meta, meta)
       end)
 
     bump_summary(socket,
@@ -844,6 +894,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
     socket
     |> assign(:workitem_ids, MapSet.new())
+    |> assign(:workitem_meta, %{})
     |> bump_summary(workitems_count: 0)
   end
 
@@ -919,6 +970,32 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       tokens_count: MultiSet.size(tokens),
       tokens_summary: format_tokens(tokens)
     }
+  end
+
+  defp cached_cpnet(enactment_id, flow_cache)
+       when is_binary(enactment_id) and is_atom(flow_cache) do
+    case lookup_cpnet_safe(enactment_id, flow_cache) do
+      {:ok, %ColouredPetriNet{} = cpnet} -> cpnet
+      :error -> nil
+    end
+  end
+
+  defp cached_cpnet(_eid, _cache), do: nil
+
+  @spec stamp_output_vars(WorkitemRow.t(), ColouredPetriNet.t() | nil) :: WorkitemRow.t()
+  defp stamp_output_vars(%WorkitemRow{transition: transition} = row, cpnet) do
+    %WorkitemRow{row | output_vars: resolve_output_vars(cpnet, transition)}
+  end
+
+  defp resolve_output_vars(nil, _transition), do: []
+
+  defp resolve_output_vars(%ColouredPetriNet{} = cpnet, transition),
+    do: OutputSchemaBuilder.build(cpnet, transition)
+
+  defp build_workitem_meta(rows, enactment_id) when is_list(rows) and is_binary(enactment_id) do
+    Map.new(rows, fn %WorkitemRow{id: id, output_vars: schema} ->
+      {id, WorkitemCompletion.build_meta(enactment_id, schema)}
+    end)
   end
 
   defp workitem_row(%RunnerWorkitem{} = wi, enactment_id) do
