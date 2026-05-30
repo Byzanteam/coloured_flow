@@ -740,7 +740,7 @@ function replyDescription(code: string, reply: Record<string, unknown>): string 
       return "The dashboard no longer tracks this workitem. Refresh the page if it should still be live."
     case "unknown_variable": {
       const variable = typeof reply.variable === "string" ? reply.variable : "(unknown)"
-      return `The runner does not recognise the output variable "${variable}". Check spelling against the expected variables above.`
+      return `The runner does not recognise the output variable "${variable}". Check spelling against the field labels above.`
     }
     case "invalid_outputs":
       return "The runner rejected the outputs payload shape. It must be a JSON object."

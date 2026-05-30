@@ -3,8 +3,8 @@ defmodule ColouredFlowDashboard.Seeds.IncidentTriageFlow do
   Second seeded demo flow. Exercises the M5 structured outputs drawer beyond
   the binary-only `ApprovalFlow`: the triage transition's three free
   variables span enum (`severity`), boolean (`acknowledged`), and string
-  (`note`) controls, so the drawer renders Kumo `Select`, `Checkbox`, and
-  `Input` side-by-side.
+  (`note`) controls, so the drawer renders a native `select`, Kumo `Checkbox`,
+  and Kumo `Input` side-by-side.
 
   Two places (`:pending`, `:triaged`) and one transition (`:triage`). The
   `:pending` place holds a single `alert :: boolean()` token (`true` means

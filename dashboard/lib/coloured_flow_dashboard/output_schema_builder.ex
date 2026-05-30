@@ -25,8 +25,10 @@ defmodule ColouredFlowDashboard.OutputSchemaBuilder do
   Returns the ordered schema for a transition's free variables.
 
   Empty list when the transition is unknown to the cpnet OR the cpnet is
-  `nil` (cache miss). Order matches `Action.outputs` so the SPA renders the
-  controls in the same order the DSL author declared them.
+  `nil` (cache miss). Order matches `Action.outputs`, which
+  `ColouredFlow.Builder.SetActionOutputs` sorts alphabetically post-build —
+  so the SPA renders the controls in alphabetical order, not DSL declaration
+  order.
   """
   @spec build(ColouredPetriNet.t() | nil, String.t()) :: [OutputVar.t()]
   def build(nil, _transition_name), do: []
