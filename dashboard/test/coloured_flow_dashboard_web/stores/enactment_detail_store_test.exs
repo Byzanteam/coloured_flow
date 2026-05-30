@@ -969,6 +969,21 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
 
       assert {:ok, %{code: :invalid_version}} =
                Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: "abc"})
+
+      # Binary numerals must NOT be coerced — wire field is typed `:integer`.
+      # Guard prevents `Integer.parse/1`-style coercion from masking a client
+      # bug where a string slips into the integer field.
+      assert {:ok, %{code: :invalid_version}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: "1"})
+
+      assert {:ok, %{code: :invalid_version}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: "0"})
+
+      assert {:ok, %{code: :invalid_version}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 1.5})
+
+      assert {:ok, %{code: :invalid_version}} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: nil})
     end
 
     test ":exit_replay clears summary.replay_state and resets diagram", %{page: page} do

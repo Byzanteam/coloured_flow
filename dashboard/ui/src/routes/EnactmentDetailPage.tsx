@@ -690,7 +690,7 @@ function MarkingsTab({
                 ? `Loading derived markings at v${replayState.version}…`
                 : `Showing derived markings at v${replayState.version}`
             }
-            description="Live updates paused. Use Return to live in the timeline scrubber to resume."
+            description="Markings and diagram place tokens are pinned to this version. Workitems, occurrences, and telemetry continue to update live."
           />
         </div>
       ) : (

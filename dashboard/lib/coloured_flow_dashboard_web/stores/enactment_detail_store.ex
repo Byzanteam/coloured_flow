@@ -575,14 +575,6 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   defp coerce_version(v) when is_integer(v) and v >= 0, do: {:ok, v}
-
-  defp coerce_version(v) when is_binary(v) do
-    case Integer.parse(v) do
-      {int, ""} when int >= 0 -> {:ok, int}
-      _other -> :error
-    end
-  end
-
   defp coerce_version(_other), do: :error
 
   # `derive_replay/2` reads the nearest snapshot ≤ target_version and
