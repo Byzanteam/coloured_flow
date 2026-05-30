@@ -99,7 +99,7 @@ export default function RootLayout() {
         variant="sidebar"
       >
         <InboxNotifier />
-        <div className="flex h-full w-full bg-cf-canvas" data-embed="false">
+        <div className="flex h-svh w-full bg-cf-canvas" data-embed="false">
           <Sidebar>
             <Sidebar.Header className="gap-3">
               <BrandHeader />
@@ -142,16 +142,12 @@ function BrandHeader() {
             C
           </AuroraText>
         </span>
-        <Sidebar.Trigger
-          data-testid="sidebar-toggle"
-          aria-label="Expand sidebar"
-        />
       </div>
     )
   }
 
   return (
-    <div className="flex w-full items-start justify-between gap-2">
+    <div className="flex w-full items-start gap-2">
       <div
         className="flex min-w-0 flex-col leading-tight"
         data-testid="brand-wordmark"
@@ -163,10 +159,6 @@ function BrandHeader() {
           Dashboard
         </span>
       </div>
-      <Sidebar.Trigger
-        data-testid="sidebar-toggle"
-        aria-label="Collapse sidebar"
-      />
     </div>
   )
 }
@@ -243,13 +235,17 @@ function SidebarFooterContent() {
           className={`h-2 w-2 rounded-full ${view.dotClass}`}
         />
         <ThemeToggle iconOnly />
+        <Sidebar.Trigger
+          data-testid="sidebar-toggle"
+          aria-label="Expand sidebar"
+        />
       </div>
     )
   }
 
   return (
     <div
-      className="flex w-full flex-row items-center justify-between gap-2 px-1 leading-tight"
+      className="flex w-full flex-row items-center gap-2 px-1 leading-tight"
       data-testid="sidebar-footer-expanded"
     >
       <span
@@ -284,6 +280,10 @@ function SidebarFooterContent() {
         </span>
       </span>
       <ThemeToggle iconOnly />
+      <Sidebar.Trigger
+        data-testid="sidebar-toggle"
+        aria-label="Collapse sidebar"
+      />
     </div>
   )
 }

@@ -123,6 +123,29 @@ describe("RootLayout", () => {
     )
   })
 
+  it("hosts the status pill, theme toggle, and collapse trigger together in the footer", () => {
+    renderLayout()
+    const footer = screen.getByTestId("sidebar-footer-expanded")
+    expect(within(footer).getByTestId("connection-status")).toBeTruthy()
+    expect(within(footer).getByTestId("theme-toggle")).toBeTruthy()
+    expect(within(footer).getByTestId("sidebar-toggle")).toBeTruthy()
+  })
+
+  it("keeps the status dot, theme toggle, and collapse trigger together in the collapsed footer", () => {
+    window.localStorage.setItem("cf-sidebar-collapsed", "true")
+    renderLayout()
+    const footer = screen.getByTestId("sidebar-footer-collapsed")
+    expect(within(footer).getByTestId("connection-status")).toBeTruthy()
+    expect(within(footer).getByTestId("theme-toggle")).toBeTruthy()
+    expect(within(footer).getByTestId("sidebar-toggle")).toBeTruthy()
+  })
+
+  it("does not render the collapse trigger inside the brand header", () => {
+    renderLayout()
+    const brand = screen.getByTestId("brand-wordmark")
+    expect(within(brand).queryByTestId("sidebar-toggle")).toBeNull()
+  })
+
   it("renders the app version as plain text without the shimmer animation", () => {
     renderLayout()
     const version = screen.getByTestId("app-version")
