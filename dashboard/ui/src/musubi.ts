@@ -1,7 +1,10 @@
 import { Socket } from "phoenix"
 import { createMusubi } from "@musubi/react"
 
-const SOCKET_URL = import.meta.env.DEV ? "ws://localhost:4000/socket" : "/socket"
+// Relative URL — phoenix.js Socket() prepends ws://<window.location.host>.
+// Dev: vite proxy at /socket forwards to phx:4000 (works for LAN clients too).
+// Prod: phx serves /socket directly.
+const SOCKET_URL = "/socket"
 
 export const socket = new Socket(SOCKET_URL, {})
 

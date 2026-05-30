@@ -1,8 +1,10 @@
 import { Component, type ReactNode, Suspense, useEffect, useMemo, useState } from "react"
 import {
+  Badge,
   Banner,
   Button,
   Checkbox,
+  ClipboardText,
   Dialog,
   Input,
   LayerCard,
@@ -395,56 +397,129 @@ function OutputsDrawerBody({
   const submitDisabled = isPending || !isValid
 
   return (
-    <Dialog size="lg">
-      <Dialog.Title>Complete workitem · {row.transition}</Dialog.Title>
-      <Dialog.Description>
-        Fill in the free variables the runner needs to fire this transition.
-        Controls below come from the transition's output-arc inscriptions.
-      </Dialog.Description>
-
-      <div className="mt-4 flex flex-col gap-4">
-        <DetailRow label="Enactment">
-          <code className="text-xs text-cf-ink-muted">{shortId(row.enactment_id)}</code>
-        </DetailRow>
-        <DetailRow label="State">
-          <StateDot state={row.state} />
-        </DetailRow>
-
-        {schema.length === 0 ? (
-          <Banner
-            variant="default"
-            title="No free variables"
-            description="This transition has no operator-supplied outputs — just submit to fire."
-          />
-        ) : (
-          <div
-            className="-mx-1 flex max-h-[55vh] flex-col gap-5 overflow-y-auto px-1"
-            data-testid="outputs-form"
+    <Dialog
+      size="lg"
+      className="
+        h-screen max-h-screen
+        w-full sm:w-[28rem] max-w-full sm:max-w-[28rem] sm:min-w-0
+        flex flex-col p-0 overflow-hidden
+        border-l border-cf-border
+      "
+      style={{
+        top: 0,
+        right: 0,
+        left: "auto",
+        transform: "none",
+        maxHeight: "100vh",
+        borderRadius: 0
+      }}
+    >
+      <header className="flex flex-col gap-3 border-b border-cf-border bg-cf-surface px-6 pt-6 pb-4">
+        <div className="flex items-center gap-3">
+          <Dialog.Title className="flex-1 text-lg font-semibold leading-tight text-cf-ink">
+            Complete workitem · {row.transition}
+          </Dialog.Title>
+          <Badge
+            variant={row.state === "started" ? "info" : "outline"}
+            className="capitalize"
           >
-            {schema.map((field) => (
-              <OutputField
-                key={field.name}
-                field={field}
-                value={values[field.name]}
-                error={fieldErrors[field.name] ?? null}
-                onChange={(next) =>
-                  setValues((prev) => ({ ...prev, [field.name]: next }))
-                }
-              />
-            ))}
-          </div>
-        )}
-
-        {inlineBanner ? (
-          <Banner
-            variant="error"
-            title={inlineBanner.title}
-            description={inlineBanner.description}
+            {row.state}
+          </Badge>
+        </div>
+        <Dialog.Description className="text-xs leading-relaxed text-cf-ink-muted">
+          Fill in the free variables the runner needs to fire this transition. Controls
+          below come from the transition's output-arc inscriptions.
+        </Dialog.Description>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
+            Workitem
+          </span>
+          <ClipboardText
+            text={row.id}
+            size="sm"
+            className="font-mono text-[11px] text-cf-ink"
+            tooltip={{ text: "Copy", copiedText: "Copied" }}
+            labels={{ copyAction: `Copy workitem id ${row.id}` }}
           />
+        </div>
+      </header>
+
+      <section className="flex flex-col gap-3 border-b border-cf-border bg-cf-surface-tint/40 px-6 py-4">
+        <DrawerMetaRow label="Enactment">
+          <div className="flex items-center gap-2">
+            <code className="font-mono text-xs text-cf-ink-muted">
+              {shortId(row.enactment_id)}
+            </code>
+            <Link
+              to={`/enactments/${row.enactment_id}`}
+              aria-label={`Open enactment ${row.enactment_id} detail`}
+              className="inline-flex h-6 items-center rounded-md border border-cf-border bg-cf-surface px-2 text-[11px] font-medium text-cf-ink-muted hover:bg-cf-surface/80"
+            >
+              Open detail
+            </Link>
+          </div>
+        </DrawerMetaRow>
+        <DrawerMetaRow label="Enabled at">
+          <span className="text-xs text-cf-ink">{formatTimestamp(row.enabled_at)}</span>
+        </DrawerMetaRow>
+        {row.binding_summary ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
+              Binding
+            </span>
+            <pre className="max-h-32 overflow-auto rounded-md border border-cf-border bg-cf-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-cf-ink whitespace-pre-wrap break-words">
+              {row.binding_summary}
+            </pre>
+          </div>
         ) : null}
+      </section>
+
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cf-ink-muted">
+              Outputs
+            </h3>
+            {schema.length > 0 ? (
+              <span className="text-[11px] text-cf-ink-muted">
+                {schema.length} {schema.length === 1 ? "field" : "fields"}
+              </span>
+            ) : null}
+          </div>
+
+          {schema.length === 0 ? (
+            <Banner
+              variant="default"
+              title="No free variables"
+              description="This transition has no operator-supplied outputs — just submit to fire."
+            />
+          ) : (
+            <div className="flex flex-col gap-5" data-testid="outputs-form">
+              {schema.map((field) => (
+                <OutputField
+                  key={field.name}
+                  field={field}
+                  value={values[field.name]}
+                  error={fieldErrors[field.name] ?? null}
+                  onChange={(next) =>
+                    setValues((prev) => ({ ...prev, [field.name]: next }))
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          {inlineBanner ? (
+            <Banner
+              variant="error"
+              title={inlineBanner.title}
+              description={inlineBanner.description}
+            />
+          ) : null}
+        </div>
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-3">
+      <footer className="flex items-center justify-end gap-3 border-t border-cf-border bg-cf-surface px-6 py-4">
         {!isValid && !isPending && schema.length > 0 ? (
           <span
             className="mr-auto text-xs text-kumo-subtle"
@@ -468,17 +543,17 @@ function OutputsDrawerBody({
         >
           {isPending ? "Submitting…" : "Submit"}
         </Button>
-      </div>
+      </footer>
     </Dialog>
   )
 }
 
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+function DrawerMetaRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="min-w-32">
-        <Text variant="secondary">{label}</Text>
-      </div>
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
+        {label}
+      </span>
       {children}
     </div>
   )
