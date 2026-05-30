@@ -130,37 +130,47 @@ function BrandHeader() {
   const { state } = useSidebar()
   const collapsed = state === "collapsed"
 
+  if (collapsed) {
+    return (
+      <div className="flex w-full flex-col items-center gap-1.5">
+        <span
+          data-testid="brand-wordmark"
+          aria-label="Coloured Flow"
+          className="grid h-7 w-7 place-items-center rounded-md bg-cf-accent-tint"
+        >
+          <AuroraText className="text-[13px] font-semibold tracking-tight">
+            C
+          </AuroraText>
+        </span>
+        <Sidebar.Trigger
+          data-testid="sidebar-toggle"
+          aria-label="Expand sidebar"
+        />
+        <ThemeToggle iconOnly />
+      </div>
+    )
+  }
+
   return (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full items-start justify-between gap-2">
       <div
-        className="flex min-w-0 items-center gap-2"
+        className="flex min-w-0 flex-col leading-tight"
         data-testid="brand-wordmark"
       >
-        {collapsed ? (
-          <span
-            aria-hidden="true"
-            className="grid h-7 w-7 place-items-center rounded-md bg-cf-accent-tint"
-          >
-            <AuroraText className="text-[13px] font-semibold tracking-tight">
-              C
-            </AuroraText>
-          </span>
-        ) : (
-          <div className="flex min-w-0 flex-col leading-tight">
-            <AuroraText className="text-[18px] font-bold tracking-tight">
-              CF
-            </AuroraText>
-            <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cf-ink-faint">
-              Dashboard
-            </span>
-          </div>
-        )}
+        <AuroraText className="text-[18px] font-bold tracking-tight">
+          Coloured Flow
+        </AuroraText>
+        <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cf-ink-faint">
+          Dashboard
+        </span>
       </div>
-      {!collapsed && <ThemeToggle />}
-      <Sidebar.Trigger
-        data-testid="sidebar-toggle"
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      />
+      <div className="flex items-center gap-1">
+        <Sidebar.Trigger
+          data-testid="sidebar-toggle"
+          aria-label="Collapse sidebar"
+        />
+        <ThemeToggle />
+      </div>
     </div>
   )
 }
@@ -244,12 +254,13 @@ function SidebarFooterContent() {
       className="flex w-full flex-col gap-1 px-1 leading-tight"
       data-testid="sidebar-footer-expanded"
     >
-      <AnimatedShinyText
-        className="text-[11px] font-medium"
+      <span
+        className="text-[11px] font-medium text-cf-ink"
         aria-label={`App version ${APP_VERSION}`}
+        data-testid="app-version"
       >
         v{APP_VERSION}
-      </AnimatedShinyText>
+      </span>
       <span className="flex items-center gap-1.5" data-testid="connection-status">
         <span
           aria-hidden="true"

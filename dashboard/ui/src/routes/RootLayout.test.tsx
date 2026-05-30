@@ -84,7 +84,26 @@ describe("RootLayout", () => {
     renderLayout()
     const brand = screen.getByTestId("brand-wordmark")
     const aurora = within(brand).getByTestId("aurora-text")
-    expect(aurora.textContent).toContain("CF")
+    expect(aurora.textContent).toContain("Coloured Flow")
+  })
+
+  it("keeps the theme toggle visible in both expanded and collapsed states", () => {
+    renderLayout()
+    expect(screen.getByTestId("theme-toggle")).toBeTruthy()
+    const toggle = screen.getByTestId("sidebar-toggle")
+    act(() => {
+      fireEvent.click(toggle)
+    })
+    expect(screen.getByTestId("theme-toggle")).toBeTruthy()
+  })
+
+  it("collapses the brand wordmark to a single 'C' aurora letter", () => {
+    window.localStorage.setItem("cf-sidebar-collapsed", "true")
+    renderLayout()
+    const brand = screen.getByTestId("brand-wordmark")
+    const aurora = within(brand).getByTestId("aurora-text")
+    expect(aurora.textContent).toContain("C")
+    expect(aurora.textContent).not.toContain("Coloured")
   })
 
   it("marks the active route", () => {
@@ -102,6 +121,14 @@ describe("RootLayout", () => {
     expect(within(footer).getByTestId("connection-status").textContent).toContain(
       "Connected"
     )
+  })
+
+  it("renders the app version as plain text without the shimmer animation", () => {
+    renderLayout()
+    const version = screen.getByTestId("app-version")
+    expect(version.tagName.toLowerCase()).toBe("span")
+    expect(version.getAttribute("data-testid")).toBe("app-version")
+    expect(within(version).queryByTestId("animated-shiny-text")).toBeNull()
   })
 
   it("uses shiny shimmer on the status line while connecting", () => {

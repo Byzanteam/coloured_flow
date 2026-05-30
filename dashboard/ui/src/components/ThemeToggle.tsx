@@ -44,13 +44,20 @@ if (typeof document !== "undefined") {
   applyTheme(readStored())
 }
 
+interface ThemeToggleProps {
+  /** Render icon-only (no text label). Used by collapsed sidebar where the
+   * 3rem width can't fit the "Dark / Light / System" label. */
+  iconOnly?: boolean
+  className?: string
+}
+
 /**
  * Manual dark/light/system toggle. Persisted in localStorage and applied via
  * `data-theme="dark|light"` on `<html>`. The CSS in `app.css` flips the
  * `--color-cf-*` tokens when the attribute is set; absence falls back to
  * `prefers-color-scheme`.
  */
-export default function ThemeToggle() {
+export default function ThemeToggle({ iconOnly = false, className }: ThemeToggleProps = {}) {
   const [theme, setTheme] = useState<Theme>(() => readStored())
 
   useEffect(() => {
@@ -85,6 +92,10 @@ export default function ThemeToggle() {
   // operator can predict every click without trial-and-error.
   const title = `Theme: ${theme}. Cycle: system → dark → light → system. Click for ${next}.`
 
+  const baseClass = iconOnly
+    ? "grid h-7 w-7 place-items-center rounded-md border border-cf-border bg-cf-surface text-cf-ink-muted transition-colors hover:text-cf-ink"
+    : "flex items-center gap-2 rounded-md border border-cf-border bg-cf-surface px-2.5 py-1.5 text-xs text-cf-ink-muted transition-colors hover:text-cf-ink"
+
   return (
     <button
       type="button"
@@ -93,14 +104,14 @@ export default function ThemeToggle() {
       title={title}
       data-testid="theme-toggle"
       data-theme-current={theme}
-      className="flex items-center gap-2 rounded-md border border-cf-border bg-cf-surface px-2.5 py-1.5 text-xs text-cf-ink-muted transition-colors hover:text-cf-ink"
+      className={className ? `${baseClass} ${className}` : baseClass}
     >
       {theme === "dark" ? (
         <SunIcon size={14} weight="bold" aria-hidden />
       ) : (
         <MoonIcon size={14} weight="bold" aria-hidden />
       )}
-      <span className="capitalize">{theme}</span>
+      {!iconOnly && <span className="capitalize">{theme}</span>}
     </button>
   )
 }
