@@ -1080,6 +1080,87 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe "live marking refresh on firing events" do
+    require ColouredFlow.Runner.Storage.InMemory, as: InMemory
+    alias ColouredFlow.Runner.Enactment.WorkitemTransition
+    alias ColouredFlowDashboard.Test.SimpleSequenceWorkflow
+
+    test "complete_workitems_stop pushes post-fire markings into the marking_index" do
+      flow = InMemory.insert_flow!(SimpleSequenceWorkflow.cpnet())
+      flow_id = InMemory.flow(flow, :id)
+      {:ok, enactment} = SimpleSequenceWorkflow.insert_enactment(flow_id)
+      enactment_id = InMemory.enactment(enactment, :id)
+      {:ok, _pid} = SimpleSequenceWorkflow.start_enactment(enactment_id, lifecycle_hooks: nil)
+
+      # Subscribe through the global bridge's default `cf:` topic so the
+      # actual runner-fired `:complete_workitems_stop` event reaches the
+      # store. (The per-test `topic_prefix` setup isolates pubsub fan-out
+      # for synthetic-event tests; this one needs the real bridge fan-out.)
+      page =
+        Musubi.Testing.mount(EnactmentDetailStore, %{
+          "id" => enactment_id
+        })
+
+      assert_eventually(fn ->
+        match?(%{tokens_count: 1}, marking_at(page, "input"))
+      end)
+
+      # Fire one workitem through the runner's public command surface; the
+      # bridge will broadcast `:complete_workitems_stop` and the store should
+      # peek the runner GenServer for fresh markings.
+      workitem_id = await_enabled_workitem_id!(enactment_id)
+      {:ok, _started} = WorkitemTransition.start_workitem(enactment_id, workitem_id)
+      {:ok, _completed} = WorkitemTransition.complete_workitem(enactment_id, {workitem_id, []})
+
+      assert_eventually(fn ->
+        match?(%{tokens_count: 1}, marking_at(page, "output")) and
+          marking_at(page, "input") in [nil, %{tokens_count: 0}]
+      end)
+
+      # Scrubber bound stretches with the refreshed version too.
+      assigns = Musubi.Testing.assigns(page)
+      assert assigns.summary.version_range.max >= 1
+    end
+
+    test "stale complete event does NOT trigger a marking refresh",
+         %{enactment_id: eid, topic: topic, topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      page = mount_store(eid, topic_prefix, flow_cache)
+
+      fresh =
+        :complete_workitems_stop
+        |> build_workitem_event(eid, Ecto.UUID.generate(), :completed, 5)
+        |> Map.put(:seq, 5)
+
+      broadcast!(topic, fresh)
+      assert_eventually(fn -> Musubi.Testing.assigns(page).last_seq == 5 end)
+
+      # Drain the scheduled refresh so `marking_refresh_pending` returns to
+      # false before we test the stale-event path.
+      assert_eventually(fn -> not Musubi.Testing.assigns(page).marking_refresh_pending end)
+
+      stale =
+        :complete_workitems_stop
+        |> build_workitem_event(eid, Ecto.UUID.generate(), :completed, 4)
+        |> Map.put(:seq, 3)
+
+      broadcast!(topic, stale)
+
+      # Stale event must NOT bump last_seq and must NOT flip
+      # marking_refresh_pending back on.
+      Process.sleep(30)
+      assigns = Musubi.Testing.assigns(page)
+      assert assigns.last_seq == 5
+      refute assigns.marking_refresh_pending
+    end
+
+    defp marking_at(page, place) do
+      case Map.get(Musubi.Testing.assigns(page).marking_index, place) do
+        nil -> nil
+        row -> %{tokens_count: row.tokens_count}
+      end
+    end
+  end
+
   describe "occurrence row keys" do
     test "synthesised ids are stable across replays of the same complete event", %{
       enactment_id: eid,

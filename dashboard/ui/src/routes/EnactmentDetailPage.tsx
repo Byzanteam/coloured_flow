@@ -715,15 +715,7 @@ function MarkingsTab({
             description="Markings and diagram place tokens are pinned to this version. Workitems, occurrences, and telemetry continue to update live."
           />
         </div>
-      ) : (
-        <div data-testid="markings-stale-banner">
-          <Banner
-            variant="default"
-            title="Markings are mount-time-accurate"
-            description="Live workitem events do not refresh this view. Take snapshot, then reload to refresh after recent activity."
-          />
-        </div>
-      )}
+      ) : null}
       {rows.length === 0 ? (
         <Banner
           variant="default"

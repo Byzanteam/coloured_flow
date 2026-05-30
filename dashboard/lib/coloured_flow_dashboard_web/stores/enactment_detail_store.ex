@@ -56,13 +56,20 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
 
   ## Marking refresh
 
-  The bridge payload does not carry post-event markings, so on
-  `:complete_workitems_stop` we cannot deterministically rebuild the
-  `:markings` stream from the event alone. M3a treats markings as
-  mount-time-accurate; a later phase will upgrade the bridge payload with
-  per-event marking deltas. Until then, the SPA shows an inline `Banner`
-  on the Markings tab telling the operator to take a snapshot and reload
-  the page to refresh.
+  The bridge payload does not carry post-event markings. Rather than
+  duplicate the runner's multiset arithmetic on the dashboard side, the
+  store schedules a bounded `peek_live_enactment/1` round-trip after every
+  firing event (`:complete_workitems_stop`, `:enactment_terminate`) and
+  rebuilds the `:markings` stream from the runner's authoritative state
+  (live runner GenServer → storage snapshot+replay fallback — same path as
+  the mount-time seed).
+
+  Concurrent fires are coalesced: a `marking_refresh_pending` flag gates
+  the deferred `:refresh_markings` self-message so a burst of fires queues
+  exactly one refresh. The dedupe relies on the per-enactment monotonic
+  `event.seq` that the bridge stamps inside the runner's
+  `:telemetry.execute/3` — stale events are dropped before they can
+  schedule a refresh.
 
   ## Storage / runner peek strategy
 
@@ -165,6 +172,10 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   # stuck runner GenServer never blocks the page mount past this. On
   # timeout we fall through to the snapshot+replay path.
   @peek_timeout_ms 500
+  # Coalescing delay for the post-fire live marking refresh. A burst of
+  # firings within this window queues exactly one `peek_live_enactment/1`
+  # round-trip because `marking_refresh_pending` gates the schedule.
+  @marking_refresh_delay_ms 50
 
   # Musubi's `state do` type walker resolves `Mod.t()` against the host
   # module's namespace ancestry, not its `alias` table. Inline FQN refs.
@@ -309,6 +320,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:enabled_workitems, enabled_workitems)
       |> assign(:transition_fired_at, %{})
       |> assign(:last_seq, 0)
+      |> assign(:marking_refresh_pending, false)
       |> assign(:workitem_ids, MapSet.new(Enum.map(workitems, & &1.id)))
       |> stream(:markings, markings, reset: true)
       |> stream(:workitems, workitems, reset: true)
@@ -359,9 +371,20 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           |> maybe_refresh_transitions()
           |> apply_diagram_event(event)
           |> refresh_diagram()
+          |> maybe_schedule_marking_refresh(event)
 
         {:noreply, socket}
     end
+  end
+
+  def handle_info(:refresh_markings, socket) do
+    socket =
+      socket
+      |> assign(:marking_refresh_pending, false)
+      |> refresh_markings_now()
+      |> refresh_diagram()
+
+    {:noreply, socket}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -1425,6 +1448,66 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   defp drop_enabled_workitems(socket, %Event{}), do: socket
+
+  # `:complete_workitems_stop` is the only event that consumes/produces tokens.
+  # `:enactment_terminate` doesn't move tokens but the marking view should
+  # reflect the final post-terminate state if the runner persisted any cleanup
+  # marking — schedule one last refresh.
+  defp maybe_schedule_marking_refresh(socket, %Event{kind: kind})
+       when kind in [:complete_workitems_stop, :enactment_terminate] do
+    schedule_marking_refresh(socket)
+  end
+
+  defp maybe_schedule_marking_refresh(socket, %Event{}), do: socket
+
+  defp schedule_marking_refresh(socket) do
+    if socket.assigns.marking_refresh_pending do
+      socket
+    else
+      Process.send_after(self(), :refresh_markings, @marking_refresh_delay_ms)
+      assign(socket, :marking_refresh_pending, true)
+    end
+  end
+
+  defp refresh_markings_now(socket) do
+    case peek_markings_world(socket.assigns.enactment_id) do
+      {:ok, rows, version} ->
+        marking_index = build_marking_index(rows)
+
+        socket
+        |> stream(:markings, rows, reset: true)
+        |> assign(:marking_index, marking_index)
+        |> bump_summary(version: version, markings_count: length(rows))
+
+      :error ->
+        socket
+    end
+  end
+
+  # Authoritative current markings + version (live runner peek → storage
+  # snapshot+replay fallback). Same hierarchy as `seed_world/1`; never
+  # re-derives markings from event payloads (would duplicate runner
+  # multiset arithmetic on the dashboard side).
+  defp peek_markings_world(enactment_id) do
+    case peek_live_enactment(enactment_id) do
+      {:ok, %RunnerEnactment{markings: markings, version: version}} ->
+        rows = markings |> Map.values() |> Enum.map(&marking_row/1)
+        {:ok, rows, version}
+
+      {:fallback, reason} ->
+        Logger.debug(fn ->
+          "EnactmentDetailStore: live marking peek unavailable for " <>
+            "#{inspect(enactment_id)} (#{inspect(reason)}); falling back to storage"
+        end)
+
+        if repo_configured?() do
+          {rows, version} = read_storage_markings(enactment_id)
+          {:ok, rows, version}
+        else
+          :error
+        end
+    end
+  end
 
   defp refresh_diagram(socket) do
     # When replay is active, the diagram reflects the derived marking

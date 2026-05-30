@@ -308,12 +308,10 @@ describe("EnactmentDetailPage", () => {
     expect(screen.queryByRole("button", { name: /Withdraw/ })).toBeNull()
   })
 
-  it("renders the stale-markings Banner on the Markings tab", () => {
+  it("omits the legacy stale-markings Banner from the Markings tab", () => {
     renderRoute(<EnactmentDetailPage />)
-    expect(screen.getByText(/Markings are mount-time-accurate/i)).toBeDefined()
-    expect(
-      screen.getByText(/Take snapshot, then reload to refresh/i)
-    ).toBeDefined()
+    expect(screen.queryByTestId("markings-stale-banner")).toBeNull()
+    expect(screen.queryByText(/Markings are mount-time-accurate/i)).toBeNull()
   })
 
   it("labels the occurrences position column with a hover tooltip", async () => {
