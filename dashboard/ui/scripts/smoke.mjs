@@ -130,9 +130,136 @@ async function assertConnectSucceeds() {
 }
 
 // ---------------------------------------------------------------------------
+// Step 3: Mount InboxStore root and prove the page server stays mounted
+// ---------------------------------------------------------------------------
+//
+// Pins the regression behind the `useMusubiRoot` swap on InboxPage /
+// EnactmentDetailPage: with `useMusubiRootSuspense`, @musubi/react@0.6.0's
+// `scheduleSuspenseOrphanSweep` races React 19's passive-effect flush and
+// the client tears down + re-mounts the InboxStore root forever (~25ms per
+// cycle, ~50% CPU on the BEAM, page stuck on the Suspense fallback). The
+// SPA itself no longer takes that path, but a real Phoenix Socket can still
+// drive the loop end-to-end. Mount once, watch for `patch` envelopes for a
+// short observation window, and FAIL if the server unmounts us — that would
+// only happen if a subsequent `mount` call returned `already_mounted`, which
+// is the loop's tell on the wire.
+
+async function assertInboxRootStaysMounted() {
+  const { Socket } = await import("phoenix")
+  const wsUrl = baseUrl.replace(/^http/, "ws") + "/socket"
+  const socket = new Socket(wsUrl, {})
+  socket.connect()
+  const channel = socket.channel("musubi:connection", {})
+
+  const joined = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, reason: "timeout (10s)" }), 10_000)
+    channel
+      .join()
+      .receive("ok", () => {
+        clearTimeout(timer)
+        resolve({ ok: true })
+      })
+      .receive("error", (reason) => {
+        clearTimeout(timer)
+        resolve({ ok: false, reason: JSON.stringify(reason) })
+      })
+  })
+
+  if (!joined.ok) {
+    try { socket.disconnect() } catch { /* best-effort */ }
+    die(`musubi:connection join failed: ${joined.reason}`)
+  }
+
+  let patches = 0
+  channel.on("patch", () => { patches += 1 })
+
+  const mounted = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, reason: "mount timeout (5s)" }), 5_000)
+    channel
+      .push("mount", {
+        module: "ColouredFlowDashboardWeb.Stores.InboxStore",
+        id: "default",
+        params: {}
+      })
+      .receive("ok", (reply) => {
+        clearTimeout(timer)
+        resolve({ ok: true, reply })
+      })
+      .receive("error", (reason) => {
+        clearTimeout(timer)
+        resolve({ ok: false, reason: JSON.stringify(reason) })
+      })
+  })
+
+  if (!mounted.ok) {
+    try { socket.disconnect() } catch { /* best-effort */ }
+    die(`InboxStore mount failed: ${mounted.reason}`)
+  }
+
+  // Observe for 1.5s. With a healthy mount the page server sends the initial
+  // patch envelope within a few ms and then idles. With the broken Suspense
+  // path the client would have sent another `mount` long before now — and the
+  // server would reply with `already_mounted` — but we only mount once here,
+  // so the spin signature is a second `mount` reply via push race. The robust
+  // tell is: did a SECOND mount push succeed? If yes, the server unmounted us
+  // (root already gone) and the loop's foot-shot would have repeated.
+  await new Promise((r) => setTimeout(r, 1_500))
+
+  // Re-mount and expect `already_mounted` — that's how we know the first mount
+  // is still alive. If the page server is gone (would happen if the server
+  // had unmounted us mid-window), this would succeed instead.
+  const remount = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, reason: "remount timeout (3s)" }), 3_000)
+    channel
+      .push("mount", {
+        module: "ColouredFlowDashboardWeb.Stores.InboxStore",
+        id: "default",
+        params: {}
+      })
+      .receive("ok", () => {
+        clearTimeout(timer)
+        resolve({ ok: true })
+      })
+      .receive("error", (reason) => {
+        clearTimeout(timer)
+        resolve({ ok: false, reason })
+      })
+  })
+
+  try {
+    channel.push("unmount", { root_id: "default" })
+    await new Promise((r) => setTimeout(r, 50))
+    channel.leave()
+    socket.disconnect()
+  } catch { /* best-effort */ }
+
+  if (patches < 1) {
+    die(`InboxStore mounted but no initial patch envelope arrived (patches=${patches})`)
+  }
+  if (remount.ok) {
+    die(
+      "InboxStore second mount returned ok — first mount is gone. The page server " +
+        "was unmounted from under us, which is the broken Suspense-sweep symptom."
+    )
+  }
+  const reason = remount.reason
+  const reasonText =
+    typeof reason === "string"
+      ? reason
+      : reason && typeof reason === "object" && typeof reason.reason === "string"
+        ? reason.reason
+        : JSON.stringify(reason)
+  if (!/already.?mounted/i.test(reasonText)) {
+    die(`unexpected remount rejection: ${reasonText}`)
+  }
+  log(`InboxStore mount stable — patches=${patches}, remount rejected with "${reasonText}"`)
+}
+
+// ---------------------------------------------------------------------------
 
 const bundle = findBundle()
 log(`scanning ${bundle}`)
 assertSingleReactCopy(bundle)
 await assertConnectSucceeds()
+await assertInboxRootStaysMounted()
 log("OK")

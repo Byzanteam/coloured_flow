@@ -32,7 +32,13 @@ const { dispatchMock, sampleRow, sampleCounts } = vi.hoisted(() => {
 })
 
 vi.mock("../musubi", () => ({
-  useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "inbox-proxy" }),
+  // `useMusubiRoot` returns the discriminated mount state ({status, store,
+  // error}); the page only reads `store` when `status === "ready"`.
+  useMusubiRoot: vi.fn().mockReturnValue({
+    status: "ready",
+    store: { __mock: "inbox-proxy" },
+    error: null
+  }),
   useMusubiSnapshot: vi.fn().mockReturnValue({
     workitems: [sampleRow],
     counts: sampleCounts

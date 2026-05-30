@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
 import {
   Badge,
@@ -11,8 +11,9 @@ import {
   Text,
   useKumoToastManager
 } from "@cloudflare/kumo"
+import type { MusubiRootMount } from "@musubi/react"
 
-import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
+import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 
 const ENACTMENT_DETAIL_STORE =
@@ -26,6 +27,9 @@ type BindingCandidate = ColouredFlowDashboardWeb.Views.BindingCandidate
 type TransitionDebugInfo = ColouredFlowDashboardWeb.Views.TransitionDebugInfo
 type EnactmentSummary = ColouredFlowDashboardWeb.Views.EnactmentSummary
 
+type DetailRootMount = MusubiRootMount<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
+type DetailProxy = NonNullable<Extract<DetailRootMount, { status: "ready" }>["store"]>
+
 type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 
 const TAB_ITEMS = [
@@ -36,6 +40,10 @@ const TAB_ITEMS = [
   { value: "debug", label: "Debug" }
 ] as const
 
+// `useMusubiRoot` (commit-phase effect) instead of `useMusubiRootSuspense`
+// (render-phase throw + setTimeout(0) orphan sweep) — the latter spin-loops
+// against React 19 passive-effect scheduling on @musubi/react@0.6.0.
+// See `InboxPage.tsx` for the full analysis.
 export default function EnactmentDetailPage() {
   const { id } = useParams<"id">()
 
@@ -54,11 +62,25 @@ export default function EnactmentDetailPage() {
     )
   }
 
-  return (
-    <Suspense fallback={<DetailFallback enactmentId={id} />}>
-      <DetailContent enactmentId={id} />
-    </Suspense>
-  )
+  return <DetailRoot enactmentId={id} />
+}
+
+function DetailRoot({ enactmentId }: { enactmentId: string }) {
+  const root = useMusubiRoot({
+    module: ENACTMENT_DETAIL_STORE,
+    id: enactmentId,
+    params: { id: enactmentId }
+  })
+
+  if (root.status === "error") {
+    return <DetailError enactmentId={enactmentId} message={root.error.message} />
+  }
+
+  if (root.status !== "ready") {
+    return <DetailFallback enactmentId={enactmentId} />
+  }
+
+  return <DetailContent detail={root.store} enactmentId={enactmentId} />
 }
 
 function DetailFallback({ enactmentId }: { enactmentId: string }) {
@@ -72,12 +94,24 @@ function DetailFallback({ enactmentId }: { enactmentId: string }) {
   )
 }
 
-function DetailContent({ enactmentId }: { enactmentId: string }) {
-  const detail = useMusubiRootSuspense({
-    module: ENACTMENT_DETAIL_STORE,
-    id: enactmentId,
-    params: { id: enactmentId }
-  })
+function DetailError({ enactmentId, message }: { enactmentId: string; message: string }) {
+  return (
+    <section className="flex flex-col gap-4">
+      <Text variant="heading1" as="h1">
+        Enactment {shortId(enactmentId)}
+      </Text>
+      <Banner variant="error" title="Detail unavailable" description={message} />
+    </section>
+  )
+}
+
+function DetailContent({
+  detail,
+  enactmentId
+}: {
+  detail: DetailProxy
+  enactmentId: string
+}) {
   const snapshot = useMusubiSnapshot(detail)
 
   const summary: EnactmentSummary | undefined = snapshot.summary
@@ -97,7 +131,7 @@ function DetailContent({ enactmentId }: { enactmentId: string }) {
   return (
     <section className="flex flex-col gap-4">
       <Header summary={summary} enactmentId={enactmentId} />
-      <ActionBar enactmentId={enactmentId} />
+      <ActionBar detail={detail} />
 
       <Tabs
         tabs={TAB_ITEMS as unknown as Array<{ value: string; label: string }>}
@@ -116,7 +150,7 @@ function DetailContent({ enactmentId }: { enactmentId: string }) {
         />
       )}
       {activeTab === "debug" && (
-        <DebugTab enactmentId={enactmentId} transitions={transitions} />
+        <DebugTab detail={detail} transitions={transitions} />
       )}
     </section>
   )
@@ -189,12 +223,7 @@ function StateBadge({ state }: { state: "running" | "exception" | "terminated" }
 type ForceTerminateCode = "ok" | "already_terminated" | "runner_error"
 type TakeSnapshotCode = "ok" | "not_running" | "runner_error"
 
-function ActionBar({ enactmentId }: { enactmentId: string }) {
-  const detail = useMusubiRootSuspense({
-    module: ENACTMENT_DETAIL_STORE,
-    id: enactmentId,
-    params: { id: enactmentId }
-  })
+function ActionBar({ detail }: { detail: DetailProxy }) {
   const toasts = useKumoToastManager()
 
   const forceTerminate = useMusubiCommand(detail, "force_terminate")
@@ -632,17 +661,12 @@ interface InspectReply extends Record<string, unknown> {
 }
 
 function DebugTab({
-  enactmentId,
+  detail,
   transitions
 }: {
-  enactmentId: string
+  detail: DetailProxy
   transitions: readonly string[]
 }) {
-  const detail = useMusubiRootSuspense({
-    module: ENACTMENT_DETAIL_STORE,
-    id: enactmentId,
-    params: { id: enactmentId }
-  })
   const inspect = useMusubiCommand(detail, "inspect_transition")
   const toasts = useKumoToastManager()
 

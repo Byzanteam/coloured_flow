@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useId, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useState } from "react"
 import {
   Badge,
   Banner,
@@ -10,19 +10,34 @@ import {
   Textarea,
   useKumoToastManager
 } from "@cloudflare/kumo"
-import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
+import type { MusubiRootMount } from "@musubi/react"
+import { useMusubiCommand, useMusubiRoot, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 
 const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
 type WorkitemRow = ColouredFlowDashboardWeb.Views.WorkitemRow
+type InboxRootMount = MusubiRootMount<typeof INBOX_STORE, Musubi.Stores>
+type InboxProxy = NonNullable<Extract<InboxRootMount, { status: "ready" }>["store"]>
 
+// The page deliberately avoids `useMusubiRootSuspense` — @musubi/react@0.6.0
+// schedules an orphan-sweep on every Suspense throw that races React 19's
+// passive-effect flush. When the sweep wins, it tears down the mount, the
+// re-render re-suspends, and the page spins at ~50% CPU pushing
+// mount/unmount/mount/unmount over the WS. `useMusubiRoot` mounts inside a
+// commit-phase effect and has no sweep, so the loop is impossible.
 export default function InboxPage() {
-  return (
-    <Suspense fallback={<InboxFallback />}>
-      <InboxContent />
-    </Suspense>
-  )
+  const root = useMusubiRoot({ module: INBOX_STORE, id: "default" })
+
+  if (root.status === "error") {
+    return <InboxError message={root.error.message} />
+  }
+
+  if (root.status !== "ready") {
+    return <InboxFallback />
+  }
+
+  return <InboxContent inbox={root.store} />
 }
 
 function InboxFallback() {
@@ -36,8 +51,18 @@ function InboxFallback() {
   )
 }
 
-function InboxContent() {
-  const inbox = useMusubiRootSuspense({ module: INBOX_STORE, id: "default" })
+function InboxError({ message }: { message: string }) {
+  return (
+    <section className="flex flex-col gap-4">
+      <Text variant="heading1" as="h1">
+        Inbox
+      </Text>
+      <Banner variant="error" title="Inbox unavailable" description={message} />
+    </section>
+  )
+}
+
+function InboxContent({ inbox }: { inbox: InboxProxy }) {
   const snapshot = useMusubiSnapshot(inbox)
 
   const workitems: readonly WorkitemRow[] = snapshot.workitems ?? []
@@ -119,6 +144,7 @@ function InboxContent() {
       )}
 
       <OutputsDrawer
+        inbox={inbox}
         row={drawerRow}
         onClose={() => setDrawerRow(null)}
       />
@@ -146,21 +172,29 @@ function StateBadge({ state }: { state: "enabled" | "started" }) {
 // ---------------------------------------------------------------------------
 
 interface OutputsDrawerProps {
+  inbox: InboxProxy
   row: WorkitemRow | null
   onClose: () => void
 }
 
-function OutputsDrawer({ row, onClose }: OutputsDrawerProps) {
+function OutputsDrawer({ inbox, row, onClose }: OutputsDrawerProps) {
   const open = row !== null
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      {row ? <OutputsDrawerBody row={row} onClose={onClose} /> : null}
+      {row ? <OutputsDrawerBody inbox={inbox} row={row} onClose={onClose} /> : null}
     </Dialog.Root>
   )
 }
 
-function OutputsDrawerBody({ row, onClose }: { row: WorkitemRow; onClose: () => void }) {
-  const inbox = useMusubiRootSuspense({ module: INBOX_STORE, id: "default" })
+function OutputsDrawerBody({
+  inbox,
+  row,
+  onClose
+}: {
+  inbox: InboxProxy
+  row: WorkitemRow
+  onClose: () => void
+}) {
   const { dispatch, isPending, reset } = useMusubiCommand(inbox, "complete_workitem")
   const toasts = useKumoToastManager()
   const textareaId = useId()

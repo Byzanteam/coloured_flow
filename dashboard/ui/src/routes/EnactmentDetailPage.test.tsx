@@ -69,7 +69,11 @@ const { takeSnapshotMock, forceTerminateMock, inspectTransitionMock, sampleSnaps
 })
 
 vi.mock("../musubi", () => ({
-  useMusubiRootSuspense: vi.fn().mockReturnValue({ __mock: "detail-proxy" }),
+  useMusubiRoot: vi.fn().mockReturnValue({
+    status: "ready",
+    store: { __mock: "detail-proxy" },
+    error: null
+  }),
   useMusubiSnapshot: vi.fn().mockReturnValue(sampleSnapshot),
   useMusubiCommand: vi.fn().mockImplementation((_proxy: unknown, name: string) => {
     const dispatch =
