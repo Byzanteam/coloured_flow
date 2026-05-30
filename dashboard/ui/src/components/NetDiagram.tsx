@@ -168,9 +168,9 @@ function buildGraph(
       type: PLACE_NODE,
       position: { x: pos.x - PLACE_W / 2, y: pos.y - PLACE_H / 2 },
       data: { ...place } as PlaceNodeData,
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-      draggable: false,
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      draggable: true,
       selectable: false
     }
   })
@@ -182,10 +182,10 @@ function buildGraph(
       type: TRANSITION_NODE,
       position: { x: pos.x - TRANSITION_W / 2, y: pos.y - TRANSITION_H / 2 },
       data: { ...transition, enactmentState } as TransitionNodeData,
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-      draggable: false,
-      selectable: false
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      draggable: true,
+      selectable: true
     }
   })
 
