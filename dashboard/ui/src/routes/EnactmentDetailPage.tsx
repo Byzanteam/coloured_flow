@@ -60,7 +60,13 @@ export default function EnactmentDetailPage() {
   if (!id) {
     return (
       <section className="flex flex-col gap-6">
-        <PageHeader title="Enactment" />
+        <PageHeader
+          title="Enactment"
+          breadcrumbs={[
+            { label: "Enactments", to: "/enactments" },
+            { label: "—" }
+          ]}
+        />
         <Banner
           variant="error"
           title="Missing enactment id"
@@ -111,6 +117,7 @@ function DetailFallback({ enactmentId }: { enactmentId: string }) {
       <PageHeader
         title="Enactment"
         byline={<code className="text-xs text-cf-ink-muted">{enactmentId}</code>}
+        breadcrumbs={detailBreadcrumbs(enactmentId)}
       />
       <LayerCard.Primary className="px-6 py-10">
         <Text variant="secondary">Loading enactment detail…</Text>
@@ -125,6 +132,7 @@ function DetailError({ enactmentId, message }: { enactmentId: string; message: s
       <PageHeader
         title="Enactment"
         byline={<code className="text-xs text-cf-ink-muted">{enactmentId}</code>}
+        breadcrumbs={detailBreadcrumbs(enactmentId)}
       />
       <Banner variant="error" title="Detail unavailable" description={message} />
     </section>
@@ -261,6 +269,7 @@ function DetailContent({
     <section className="flex flex-col gap-6">
       <PageHeader
         title="Enactment"
+        breadcrumbs={detailBreadcrumbs(enactmentId)}
         byline={
           <div className="flex flex-wrap items-center gap-2">
             <code className="text-xs text-cf-ink-muted">{enactmentId}</code>
@@ -295,25 +304,9 @@ function DetailContent({
       />
 
 
-      {embed ? null : (
-        <MetricsRow
-          items={[
-            { label: "Version", value: summary?.version ?? 0 },
-            { label: "Markings", value: summary?.markings_count ?? 0 },
-            { label: "Live workitems", value: summary?.workitems_count ?? 0 },
-            {
-              label: "Last occurrence",
-              value: summary?.last_occurrence_at
-                ? formatTimestamp(summary.last_occurrence_at)
-                : "—"
-            }
-          ]}
-        />
-      )}
-
-      {/* Immutable requirement: left = diagram, right = tabs. Stack on
-          screens narrower than lg (1024px) so the diagram doesn't crush
-          on mobile. */}
+      {/* Left = diagram, right = metrics + tabs. Stack on screens
+          narrower than lg (1024px) so the diagram doesn't crush on
+          mobile. */}
       <div
         className="flex flex-col gap-6 lg:flex-row lg:items-start"
         data-testid="detail-split"
@@ -335,6 +328,21 @@ function DetailContent({
           className="flex min-w-0 flex-col gap-4 lg:basis-2/5 lg:flex-1"
           data-testid="detail-tabs-pane"
         >
+          {embed ? null : (
+            <MetricsRow
+              items={[
+                { label: "Version", value: summary?.version ?? 0 },
+                { label: "Markings", value: summary?.markings_count ?? 0 },
+                { label: "Live workitems", value: summary?.workitems_count ?? 0 },
+                {
+                  label: "Last occurrence",
+                  value: summary?.last_occurrence_at
+                    ? formatTimestamp(summary.last_occurrence_at)
+                    : "—"
+                }
+              ]}
+            />
+          )}
           <div className="overflow-x-auto border-b border-cf-border">
             <Tabs
               variant="underline"
@@ -1279,6 +1287,17 @@ function GuardStatusBadge({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function detailBreadcrumbs(enactmentId: string) {
+  return [
+    { label: "Enactments", to: "/enactments" },
+    { label: shortEnactmentId(enactmentId) }
+  ] as const
+}
+
+function shortEnactmentId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id
+}
 
 function formatTimestamp(iso: string): string {
   try {

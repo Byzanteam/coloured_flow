@@ -136,9 +136,9 @@ function buildGraph(
   g.setDefaultEdgeLabel(() => ({}))
   const tight = places.length + transitions.length <= 6
   g.setGraph({
-    rankdir: "LR",
-    nodesep: tight ? 60 : 100,
-    ranksep: tight ? 100 : 160,
+    rankdir: "TB",
+    nodesep: tight ? 50 : 80,
+    ranksep: tight ? 80 : 140,
     edgesep: tight ? 20 : 30,
     marginx: 30,
     marginy: 30,
