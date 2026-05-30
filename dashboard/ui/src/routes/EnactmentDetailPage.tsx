@@ -28,6 +28,7 @@ import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
 import NetDiagram from "../components/NetDiagram"
+import ColourSetsPanel from "../components/ColourSetsPanel"
 import OutputsDrawer from "../components/OutputsDrawer"
 import TimelineScrubber, { type SpeedKey } from "../components/TimelineScrubber"
 import { useEmbedMode } from "../hooks/useEmbedMode"
@@ -391,6 +392,9 @@ function DetailContent({
         onSpeedChange={setSpeed}
       />
 
+      {embed ? null : (
+        <ColourSetsPanel colourSets={diagram.colour_sets ?? []} />
+      )}
 
       {/* Left = diagram, right = metrics + tabs. Stack on screens
           narrower than lg (1024px) so the diagram doesn't crush on

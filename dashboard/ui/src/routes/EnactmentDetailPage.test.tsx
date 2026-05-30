@@ -80,6 +80,14 @@ const {
     arcs: [
       { place: "pending", transition: "approve", orientation: "p_to_t" as const },
       { place: "decided", transition: "approve", orientation: "t_to_p" as const }
+    ],
+    colour_sets: [
+      { name: "trigger_t", type_summary: "boolean()", description: null },
+      {
+        name: "outcome",
+        type_summary: "{verdict_t(), note_t()}",
+        description: null
+      }
     ]
   }
 
@@ -244,6 +252,20 @@ describe("EnactmentDetailPage", () => {
     renderRoute(<EnactmentDetailPage />)
     expect(screen.getByTestId("net-diagram-card")).toBeDefined()
     expect(screen.getByTestId("net-diagram-stub")).toBeDefined()
+  })
+
+  it("renders the Colour sets panel from the snapshot diagram", async () => {
+    renderRoute(<EnactmentDetailPage />)
+    expect(screen.getByTestId("colour-sets-panel")).toBeDefined()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("colour-sets-toggle"))
+    })
+    expect(screen.getByTestId("colour-set-name-trigger_t").textContent).toBe(
+      "trigger_t"
+    )
+    expect(screen.getByTestId("colour-set-type-outcome").textContent).toMatch(
+      /\{verdict_t\(\), note_t\(\)\}/
+    )
   })
 
   it("lays out the diagram and the tabs as siblings under a split container", () => {

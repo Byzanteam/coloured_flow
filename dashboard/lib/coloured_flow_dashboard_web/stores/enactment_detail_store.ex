@@ -142,6 +142,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
   alias ColouredFlowDashboard.BindingInspector
+  alias ColouredFlowDashboard.ColourSetSummary
   alias ColouredFlowDashboard.OutputSchemaBuilder
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
@@ -1400,11 +1401,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         %NetDiagram{
           places: diagram_places(cpnet, marking_index),
           transitions: diagram_transitions(cpnet, counts, fired_at_index),
-          arcs: diagram_arcs(cpnet)
+          arcs: diagram_arcs(cpnet),
+          colour_sets: ColourSetSummary.build(cpnet.colour_sets)
         }
 
       :error ->
-        %NetDiagram{places: [], transitions: [], arcs: []}
+        %NetDiagram{places: [], transitions: [], arcs: [], colour_sets: []}
     end
   end
 

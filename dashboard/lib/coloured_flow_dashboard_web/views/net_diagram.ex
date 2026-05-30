@@ -24,6 +24,7 @@ defmodule ColouredFlowDashboardWeb.Views.NetDiagram do
 
   use Musubi.State
 
+  alias ColouredFlowDashboardWeb.Views.ColourSetDef
   alias ColouredFlowDashboardWeb.Views.NetDiagramArc
   alias ColouredFlowDashboardWeb.Views.NetDiagramPlace
   alias ColouredFlowDashboardWeb.Views.NetDiagramTransition
@@ -32,5 +33,6 @@ defmodule ColouredFlowDashboardWeb.Views.NetDiagram do
     field :places, list(NetDiagramPlace.t())
     field :transitions, list(NetDiagramTransition.t())
     field :arcs, list(NetDiagramArc.t())
+    field :colour_sets, list(ColourSetDef.t())
   end
 end

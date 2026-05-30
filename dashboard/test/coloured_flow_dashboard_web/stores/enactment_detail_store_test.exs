@@ -684,6 +684,14 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
         |> Enum.sort()
 
       assert orientations == [:p_to_t, :t_to_p]
+
+      # Colour sets surface per-cpnet definitions for the SPA panel.
+      colset_names = Enum.map(diagram.colour_sets, & &1.name)
+      assert "trigger_t" in colset_names
+      assert "outcome" in colset_names
+
+      outcome = Enum.find(diagram.colour_sets, &(&1.name == "outcome"))
+      assert outcome.type_summary == "{verdict_t(), note_t()}"
     end
 
     test "complete_workitems_stop updates the matching transition's last_fired_at",
@@ -730,6 +738,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
       assert diagram.places == []
       assert diagram.transitions == []
       assert diagram.arcs == []
+      assert diagram.colour_sets == []
     end
 
     test "start_workitems_stop drops the workitem out of enabled_count", %{

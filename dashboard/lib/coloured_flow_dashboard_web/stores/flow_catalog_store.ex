@@ -70,6 +70,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.InMemory
   alias ColouredFlow.Runner.Storage.Schemas
+  alias ColouredFlowDashboard.ColourSetSummary
   alias ColouredFlowDashboard.Repo
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
@@ -372,7 +373,8 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
             transition: arc.transition,
             orientation: arc.orientation
           }
-        end)
+        end),
+      colour_sets: ColourSetSummary.build(cpnet.colour_sets)
     }
   end
 

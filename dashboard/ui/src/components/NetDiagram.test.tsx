@@ -33,7 +33,8 @@ const baseDiagram = (): DiagramPayload => ({
   arcs: [
     { place: "pending", transition: "approve", orientation: "p_to_t" },
     { place: "decided", transition: "approve", orientation: "t_to_p" }
-  ]
+  ],
+  colour_sets: []
 })
 
 describe("NetDiagram", () => {

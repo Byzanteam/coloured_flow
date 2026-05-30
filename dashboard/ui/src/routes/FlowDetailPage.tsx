@@ -16,6 +16,7 @@ import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../m
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import NetDiagram from "../components/NetDiagram"
+import ColourSetsPanel from "../components/ColourSetsPanel"
 
 const FLOW_CATALOG_STORE = "ColouredFlowDashboardWeb.Stores.FlowCatalogStore" as const
 
@@ -100,13 +101,7 @@ function DetailError({ message }: { message: string }) {
 }
 
 function DetailContent({ catalog, flowId }: { catalog: CatalogProxy; flowId: string }) {
-  const snapshot = useMusubiSnapshot(catalog)
-  const flows: readonly FlowSummary[] = snapshot.flows ?? []
-  const summary = flows.find((f) => f.id === flowId) ?? null
-
-  if (!summary) return <NotFoundBody flowId={flowId} />
-
-  return <FoundBody catalog={catalog} summary={summary} />
+  return <DetailBody catalog={catalog} flowId={flowId} />
 }
 
 function NotFoundBody({ flowId }: { flowId: string }) {
@@ -136,25 +131,46 @@ function NotFoundBody({ flowId }: { flowId: string }) {
   )
 }
 
+function LoadingBody({ flowId }: { flowId: string }) {
+  return (
+    <>
+      <PageHeader
+        title="Flow"
+        breadcrumbs={[{ label: "Flows", to: "/flows" }, { label: shortId(flowId) }]}
+      />
+      <LayerCard.Primary className="px-6 py-10" data-testid="flow-detail-loading">
+        <Text variant="secondary">Loading flow…</Text>
+      </LayerCard.Primary>
+    </>
+  )
+}
+
 type DetailState =
   | { status: "loading" }
   | { status: "ready"; detail: FlowDetail }
   | { status: "not_found" }
   | { status: "error"; message: string }
 
-function FoundBody({ catalog, summary }: { catalog: CatalogProxy; summary: FlowSummary }) {
+function DetailBody({ catalog, flowId }: { catalog: CatalogProxy; flowId: string }) {
+  const snapshot = useMusubiSnapshot(catalog)
+  const flows: readonly FlowSummary[] = snapshot.flows ?? []
+  const summary = flows.find((f) => f.id === flowId) ?? null
+
   const [startOpen, setStartOpen] = useState(false)
   const [detailState, setDetailState] = useState<DetailState>({ status: "loading" })
   const { dispatch: fetchDetail } = useMusubiCommand(catalog, "fetch_flow_detail")
   const fetchRef = useRef(fetchDetail)
   fetchRef.current = fetchDetail
 
-  // Initial fetch + refetch whenever the lightweight summary's enactment
-  // count or live state changes — live deltas from the catalog stream
-  // surface here as a totals diff and trigger a fresh detail pull so the
-  // diagram + full enactments list stay in sync without holding a heavy
-  // payload on every catalog row.
-  const refetchKey = `${summary.id}:${summary.total_enactments}:${summary.live_enactments}`
+  // Unconditional fetch on mount + whenever flowId changes — does NOT gate on
+  // a live FlowSummary landing in the catalog snapshot, so a direct hard
+  // reload doesn't flash a false "Flow not found" before the stream catches
+  // up. Live deltas from the catalog stream (total_enactments / live count
+  // changing) also retrigger a fetch so the diagram + enactments list stay
+  // in sync without holding a heavy payload on every catalog row.
+  const refetchKey = summary
+    ? `${flowId}:${summary.total_enactments}:${summary.live_enactments}`
+    : `${flowId}:bootstrap`
   useEffect(() => {
     let cancelled = false
     setDetailState({ status: "loading" })
@@ -162,7 +178,7 @@ function FoundBody({ catalog, summary }: { catalog: CatalogProxy; summary: FlowS
       fetchRef.current as unknown as (
         payload: Record<string, unknown>
       ) => Promise<{ code?: string } & Record<string, unknown>>,
-      { flow_id: summary.id },
+      { flow_id: flowId },
       {
         onReply: (code, reply) => {
           if (cancelled) return
@@ -189,42 +205,61 @@ function FoundBody({ catalog, summary }: { catalog: CatalogProxy; summary: FlowS
     return () => {
       cancelled = true
     }
-  }, [refetchKey, summary.id])
+  }, [refetchKey, flowId])
 
-  const startable = summary.name !== "(unknown)" && summary.name !== ""
+  if (detailState.status === "not_found") return <NotFoundBody flowId={flowId} />
+  if (detailState.status === "loading" && !summary) return <LoadingBody flowId={flowId} />
+
+  // Detail reply is authoritative for name/version/diagram/enactments; the
+  // live FlowSummary (when present) supplies fresher count chips.
+  const detail = detailState.status === "ready" ? detailState.detail : null
+  const displayName =
+    detail?.name ?? summary?.name ?? "(unnamed)"
+  const displayVersion = detail?.version ?? summary?.version ?? ""
+  const placeCount = detail?.place_count ?? summary?.place_count ?? 0
+  const transitionCount = detail?.transition_count ?? summary?.transition_count ?? 0
+  const liveEnactments = summary?.live_enactments ?? detail?.live_enactments ?? 0
+  const startable = summary
+    ? summary.name !== "(unknown)" && summary.name !== ""
+    : detail
+      ? detail.name !== "(unknown)" && detail.name !== ""
+      : false
   const enactments =
     detailState.status === "ready" ? detailState.detail.enactments : []
   const diagram = detailState.status === "ready" ? detailState.detail.diagram : null
+  const startDialogFlow: FlowSummary | null = startOpen
+    ? (summary ?? synthesizeSummary(flowId, detail))
+    : null
 
   return (
     <>
       <PageHeader
-        title={summary.name || "(unnamed)"}
+        title={displayName}
         breadcrumbs={[
           { label: "Flows", to: "/flows" },
-          { label: summary.name || "(unnamed)" }
+          { label: displayName }
         ]}
         subtitle={
           <span className="text-xs text-cf-ink-muted">
-            {summary.place_count}{" "}
-            {summary.place_count === 1 ? "place" : "places"} ·{" "}
-            {summary.transition_count}{" "}
-            {summary.transition_count === 1 ? "transition" : "transitions"}
+            {placeCount}{" "}
+            {placeCount === 1 ? "place" : "places"} ·{" "}
+            {transitionCount}{" "}
+            {transitionCount === 1 ? "transition" : "transitions"}
           </span>
         }
         byline={
           <div className="flex items-center gap-2">
-            {summary.version ? (
+            {displayVersion ? (
               <Badge variant="outline" className="text-[10px]">
-                v{summary.version}
+                v{displayVersion}
               </Badge>
             ) : null}
             <Badge
-              variant={summary.live_enactments > 0 ? "info" : "outline"}
+              variant={liveEnactments > 0 ? "info" : "outline"}
               className="bg-cf-accent-tint text-cf-accent-ink"
               data-testid="flow-detail-live-count"
             >
-              {summary.live_enactments} live
+              {liveEnactments} live
             </Badge>
           </div>
         }
@@ -234,13 +269,17 @@ function FoundBody({ catalog, summary }: { catalog: CatalogProxy; summary: FlowS
             size="sm"
             disabled={!startable}
             onClick={() => setStartOpen(true)}
-            aria-label={`Start a new enactment of ${summary.name}`}
+            aria-label={`Start a new enactment of ${displayName}`}
             data-testid="flow-detail-start"
           >
             Start enactment
           </Button>
         }
       />
+
+      {diagram && diagram.colour_sets.length > 0 ? (
+        <ColourSetsPanel colourSets={diagram.colour_sets} />
+      ) : null}
 
       <LayerCard.Primary
         className="flex h-[420px] flex-col overflow-hidden p-0"
@@ -265,11 +304,26 @@ function FoundBody({ catalog, summary }: { catalog: CatalogProxy; summary: FlowS
 
       <StartEnactmentDialog
         catalog={catalog}
-        flow={startOpen ? summary : null}
+        flow={startDialogFlow}
         onClose={() => setStartOpen(false)}
       />
     </>
   )
+}
+
+function synthesizeSummary(flowId: string, detail: FlowDetail | null): FlowSummary | null {
+  if (!detail) return null
+  return {
+    id: flowId,
+    name: detail.name,
+    version: detail.version,
+    place_count: detail.place_count,
+    transition_count: detail.transition_count,
+    live_enactments: detail.live_enactments,
+    total_enactments: detail.total_enactments,
+    last_started_at: detail.last_started_at,
+    recent_enactments: []
+  }
 }
 
 function EnactmentsSection({

@@ -256,6 +256,12 @@ declare namespace ColouredFlowDashboardWeb {
       value: string
     }
 
+    interface ColourSetDef {
+      name: string
+      type_summary: string
+      description: string | null
+    }
+
     interface EnactmentRow {
       id: string
       flow_id: string
@@ -344,6 +350,7 @@ declare namespace ColouredFlowDashboardWeb {
       places: ColouredFlowDashboardWeb.Views.NetDiagramPlace[]
       transitions: ColouredFlowDashboardWeb.Views.NetDiagramTransition[]
       arcs: ColouredFlowDashboardWeb.Views.NetDiagramArc[]
+      colour_sets: ColouredFlowDashboardWeb.Views.ColourSetDef[]
     }
 
     interface NetDiagramArc {

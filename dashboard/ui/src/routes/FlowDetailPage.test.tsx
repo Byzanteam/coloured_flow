@@ -28,6 +28,14 @@ const { startDispatchMock, fetchDispatchMock, snapshotMock, navigateMock, sample
       arcs: [
         { place: "pending", transition: "approve", orientation: "p_to_t" },
         { place: "decided", transition: "approve", orientation: "t_to_p" }
+      ],
+      colour_sets: [
+        { name: "trigger_t", type_summary: "boolean()", description: null },
+        {
+          name: "outcome",
+          type_summary: "{verdict_t(), note_t()}",
+          description: null
+        }
       ]
     }
 
@@ -307,15 +315,21 @@ describe("FlowDetailPage", () => {
     expect(button.disabled).toBe(true)
   })
 
-  it("renders a not-found banner with a Back-to-Flows link when no flow matches the id", async () => {
+  it("renders a not-found banner with a Back-to-Flows link when the detail reply is :not_found", async () => {
     loadSnapshot([makeFlow({ id: "flow-other" })])
-    primeDetail(makeDetail())
+    primeDetail(null)
     await act(async () => {
       renderAt("/flows/missing-id")
     })
-    expect(screen.getByText(/No flow matches that id/i)).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText(/No flow matches that id/i)).toBeDefined()
+    })
     const back = screen.getByTestId("flow-detail-back-to-flows") as HTMLAnchorElement
     expect(back.getAttribute("href")).toBe("/flows")
+    // No diagram, no enactments shell when not_found
+    expect(screen.queryByTestId("flow-detail-diagram-card")).toBeNull()
+    expect(screen.queryByTestId("flow-detail-enactments")).toBeNull()
+    expect(screen.queryByTestId("flow-detail-live-count")).toBeNull()
   })
 
   it("renders an empty-state message when the detail reply carries no enactments", async () => {
@@ -327,5 +341,62 @@ describe("FlowDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/No enactments yet for this flow/i)).toBeDefined()
     })
+  })
+
+  it("direct load with NO FlowSummary in catalog still dispatches fetch and renders detail", async () => {
+    // Catalog snapshot empty — simulates a hard reload landing on /flows/:id
+    // before the live stream lands. Old behavior would flash a false
+    // "Flow not found" banner; new behavior must wait for the detail reply.
+    loadSnapshot([])
+    primeDetail(makeDetail({ enactments: [makeEntry("en-aaaa")] }))
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+    await waitFor(() => {
+      expect(fetchDispatchMock).toHaveBeenCalledWith({ flow_id: "flow-1" })
+    })
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: "Approval Demo" })).toBeDefined()
+      expect(screen.getByTestId("flow-detail-diagram-card")).toBeDefined()
+      expect(screen.getByTestId("flow-detail-enactments")).toBeDefined()
+    })
+    // Never flashed a not-found banner.
+    expect(screen.queryByText(/No flow matches that id/i)).toBeNull()
+  })
+
+  it("renders the Colour sets panel when the diagram carries colour set definitions", async () => {
+    loadSnapshot([makeFlow()])
+    primeDetail(makeDetail())
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId("colour-sets-panel")).toBeDefined()
+    })
+    // Collapsed by default — clicking the toggle exposes the rows.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("colour-sets-toggle"))
+    })
+    expect(screen.getByTestId("colour-set-name-trigger_t").textContent).toBe(
+      "trigger_t"
+    )
+    expect(screen.getByTestId("colour-set-type-trigger_t").textContent).toMatch(
+      /boolean\(\)/
+    )
+    expect(screen.getByTestId("colour-set-type-outcome").textContent).toMatch(
+      /\{verdict_t\(\), note_t\(\)\}/
+    )
+  })
+
+  it("hides the Colour sets panel when the diagram has zero colour sets", async () => {
+    loadSnapshot([makeFlow()])
+    primeDetail(makeDetail({ diagram: { ...sampleDiagram, colour_sets: [] } }))
+    await act(async () => {
+      renderAt("/flows/flow-1")
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId("flow-detail-diagram-card")).toBeDefined()
+    })
+    expect(screen.queryByTestId("colour-sets-panel")).toBeNull()
   })
 })

@@ -125,6 +125,20 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
       assert length(detail.diagram.transitions) == length(cpnet.transitions)
       assert length(detail.diagram.arcs) == length(cpnet.arcs)
       assert Enum.all?(detail.diagram.places, &(&1.tokens_count == 0))
+
+      # Diagram exposes one ColourSetDef per cpnet colset, in declaration
+      # order, with Elixir-source-shaped type summaries.
+      assert length(detail.diagram.colour_sets) == length(cpnet.colour_sets)
+
+      assert Enum.map(detail.diagram.colour_sets, & &1.name) ==
+               Enum.map(cpnet.colour_sets, &Atom.to_string(&1.name))
+
+      by_name = Map.new(detail.diagram.colour_sets, &{&1.name, &1})
+      assert %{type_summary: "boolean()"} = Map.fetch!(by_name, "trigger_t")
+      assert %{type_summary: "binary()"} = Map.fetch!(by_name, "verdict_t")
+
+      assert %{type_summary: "{verdict_t(), note_t()}"} =
+               Map.fetch!(by_name, "outcome")
     end
 
     test "returns :not_found for an unknown flow_id", %{topic: topic} do

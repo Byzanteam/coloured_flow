@@ -44,6 +44,14 @@ const { sampleSnapshot } = vi.hoisted(() => {
     arcs: [
       { place: "pending", transition: "approve", orientation: "p_to_t" as const },
       { place: "decided", transition: "approve", orientation: "t_to_p" as const }
+    ],
+    colour_sets: [
+      { name: "trigger_t", type_summary: "boolean()", description: null },
+      {
+        name: "outcome",
+        type_summary: "{verdict_t(), note_t()}",
+        description: null
+      }
     ]
   }
 
