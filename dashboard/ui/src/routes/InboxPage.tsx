@@ -1,9 +1,10 @@
-import { useEffect, useId, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
-  Badge,
   Banner,
   Button,
+  Checkbox,
   Dialog,
+  Input,
   LayerCard,
   Table,
   Text,
@@ -20,6 +21,7 @@ import MetricsRow from "../components/MetricsRow"
 const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
 type WorkitemRow = ColouredFlowDashboardWeb.Views.WorkitemRow
+type OutputVar = ColouredFlowDashboardWeb.Views.OutputVar
 type InboxRootMount = MusubiRootMount<typeof INBOX_STORE, Musubi.Stores>
 type InboxProxy = NonNullable<Extract<InboxRootMount, { status: "ready" }>["store"]>
 
@@ -227,46 +229,44 @@ function OutputsDrawerBody({
 }) {
   const { dispatch, isPending, reset } = useMusubiCommand(inbox, "complete_workitem")
   const toasts = useKumoToastManager()
-  const textareaId = useId()
 
-  const initialJson = useMemo(
-    () => buildOutputsTemplate(row.output_vars ?? []),
-    [row.output_vars]
-  )
-  const [json, setJson] = useState(initialJson)
+  const schema: readonly OutputVar[] = row.output_vars ?? []
+  const initialValues = useMemo(() => buildInitialValues(schema), [schema])
+  const [values, setValues] = useState<Record<string, FieldValue>>(initialValues)
+
   // Inline banner only for *actionable* server replies the operator can fix
-  // by editing the JSON (unknown_variable, invalid_outputs). Transient errors
-  // (race losses, runner exceptions) surface as toasts so the drawer either
-  // closes (race) or stays open without claiming the textarea is wrong.
+  // by editing the form (unknown_variable, invalid_outputs, type_mismatch).
+  // Transient errors (race losses, runner exceptions) surface as toasts so
+  // the drawer either closes (race) or stays open without claiming a
+  // specific field is wrong.
   const [inlineBanner, setInlineBanner] = useState<{
     title: string
     description: string
   } | null>(null)
 
-  // Derive parse state on every render so submit stays disabled the instant
-  // the textarea contents become invalid — no blur required.
-  const parseError = useMemo(() => validateJson(json), [json])
+  // Per-field validation. Derived on every render so submit stays disabled
+  // the instant a field becomes invalid — no blur required (the M2b r3
+  // pattern carried over).
+  const fieldErrors = useMemo(() => validateValues(schema, values), [schema, values])
+  const isValid = useMemo(
+    () => Object.values(fieldErrors).every((err) => err === null),
+    [fieldErrors]
+  )
 
-  // New row → reset textarea + clear stale banner state.
+  // New row → reset form + clear stale banner state.
   useEffect(() => {
-    setJson(initialJson)
+    setValues(initialValues)
     setInlineBanner(null)
     reset()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row.id, initialJson])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.id, initialValues])
 
   const onSubmit = async () => {
-    if (parseError) return
+    if (!isValid) return
 
     setInlineBanner(null)
 
-    let outputs: Record<string, unknown>
-    try {
-      outputs = JSON.parse(json) as Record<string, unknown>
-    } catch {
-      // useMemo above already covered this; defensive guard.
-      return
-    }
+    const outputs = serializeValues(schema, values)
 
     await dispatchWithReply<ReplyCode>(
       dispatch as (payload: Record<string, unknown>) => Promise<{ code?: string } & Record<string, unknown>>,
@@ -308,10 +308,11 @@ function OutputsDrawerBody({
         })
         return
 
-      // Actionable: operator can fix by editing the JSON. Keep the drawer
-      // open and surface inline so the message sits next to the textarea.
+      // Actionable: operator can fix by editing the form. Keep the drawer
+      // open and surface inline so the message sits next to the controls.
       case "unknown_variable":
       case "invalid_outputs":
+      case "type_mismatch":
         setInlineBanner({
           title: replyTitle(code),
           description: replyDescription(code, reply)
@@ -332,15 +333,14 @@ function OutputsDrawerBody({
     }
   }
 
-  const submitDisabled = isPending || parseError !== null
+  const submitDisabled = isPending || !isValid
 
   return (
     <Dialog size="lg">
       <Dialog.Title>Complete workitem · {row.transition}</Dialog.Title>
       <Dialog.Description>
-        Submit the JSON object the runner needs to bind the transition's free
-        variables. Hint: only the variables listed below are required;
-        everything else is ignored.
+        Fill in the free variables the runner needs to fire this transition.
+        Controls below come from the transition's output-arc inscriptions.
       </Dialog.Description>
 
       <div className="mt-4 flex flex-col gap-4">
@@ -350,26 +350,28 @@ function OutputsDrawerBody({
         <DetailRow label="State">
           <StateDot state={row.state} />
         </DetailRow>
-        <DetailRow label="Expected variables">
-          <ExpectedVars vars={row.output_vars ?? []} />
-        </DetailRow>
 
-        <label htmlFor={textareaId} className="flex flex-col gap-1">
-          <Text variant="secondary">Outputs (JSON object)</Text>
-          <Textarea
-            id={textareaId}
-            value={json}
-            onChange={(event) => setJson(event.target.value)}
-            rows={8}
-            spellCheck={false}
-            aria-invalid={parseError !== null}
-            data-testid="outputs-textarea"
+        {schema.length === 0 ? (
+          <Banner
+            variant="default"
+            title="No free variables"
+            description="This transition has no operator-supplied outputs — just submit to fire."
           />
-        </label>
-
-        {parseError ? (
-          <Banner variant="error" title="JSON invalid" description={parseError} />
-        ) : null}
+        ) : (
+          <div className="flex flex-col gap-4" data-testid="outputs-form">
+            {schema.map((field) => (
+              <OutputField
+                key={field.name}
+                field={field}
+                value={values[field.name]}
+                error={fieldErrors[field.name] ?? null}
+                onChange={(next) =>
+                  setValues((prev) => ({ ...prev, [field.name]: next }))
+                }
+              />
+            ))}
+          </div>
+        )}
 
         {inlineBanner ? (
           <Banner
@@ -412,39 +414,247 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-function ExpectedVars({ vars }: { vars: readonly string[] }) {
-  if (vars.length === 0) {
-    return <Text variant="secondary">(no free variables)</Text>
+// ---------------------------------------------------------------------------
+// Per-field rendering
+// ---------------------------------------------------------------------------
+
+type FieldValue = string | number | boolean | null
+
+interface OutputFieldProps {
+  field: OutputVar
+  value: FieldValue
+  error: string | null
+  onChange: (next: FieldValue) => void
+}
+
+function OutputField({ field, value, error, onChange }: OutputFieldProps) {
+  const helper = field.hint ?? `Colour set: ${field.colour_set || "(unknown)"}`
+  const testId = `outputs-field-${field.name}`
+
+  switch (field.kind) {
+    case "integer":
+      return (
+        <Input
+          label={field.name}
+          type="number"
+          step={1}
+          value={value === null || value === undefined ? "" : String(value)}
+          onChange={(event) => onChange(parseIntegerInput(event.target.value))}
+          description={helper}
+          error={error ?? undefined}
+          aria-invalid={error !== null}
+          data-testid={testId}
+        />
+      )
+
+    case "boolean":
+      return (
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={value === true}
+            onCheckedChange={(checked) => onChange(checked === true)}
+            data-testid={testId}
+          />
+          <span className="text-sm text-cf-ink">{field.name}</span>
+          {helper ? (
+            <span className="text-xs text-cf-ink-muted">· {helper}</span>
+          ) : null}
+        </label>
+      )
+
+    case "enum": {
+      // A native <select> sits inside a Kumo-styled wrapper. Kumo's `Select`
+      // uses Base UI's headless primitive which renders inside a portal; that
+      // works fine in production but resists deterministic interaction in
+      // jsdom. The native element keeps testability + accessibility +
+      // styling parity with `Input` while preserving the OKLCH chrome.
+      return (
+        <label className="flex flex-col gap-1">
+          <Text variant="secondary">{field.name}</Text>
+          <select
+            className="h-9 rounded-lg border border-cf-border bg-cf-surface px-3 text-sm text-cf-ink focus:outline-none focus:ring-1 focus:ring-cf-accent"
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => onChange(event.target.value)}
+            aria-invalid={error !== null}
+            data-testid={testId}
+          >
+            <option value="" disabled>
+              {`Select ${field.name}…`}
+            </option>
+            {(field.enum_values ?? []).map((choice) => (
+              <option key={choice} value={choice}>
+                {choice}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-cf-ink-muted">{helper}</span>
+          {error ? (
+            <span className="text-xs text-cf-danger">{error}</span>
+          ) : null}
+        </label>
+      )
+    }
+
+    case "json":
+      return (
+        <label className="flex flex-col gap-1">
+          <Text variant="secondary">{field.name}</Text>
+          <Textarea
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => onChange(event.target.value)}
+            rows={5}
+            spellCheck={false}
+            aria-invalid={error !== null}
+            data-testid={`${testId}-json`}
+          />
+          <span className="text-xs text-cf-ink-muted">
+            {helper || "This variable's type is complex; provide JSON."}
+          </span>
+          {error ? (
+            <span className="text-xs text-cf-danger">{error}</span>
+          ) : null}
+        </label>
+      )
+
+    case "string":
+    default:
+      return (
+        <Input
+          label={field.name}
+          type="text"
+          value={typeof value === "string" ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+          description={helper}
+          error={error ?? undefined}
+          aria-invalid={error !== null}
+          data-testid={testId}
+        />
+      )
   }
-  return (
-    <div className="flex flex-wrap gap-1">
-      {vars.map((name) => (
-        <Badge key={name} variant="neutral">
-          {name}
-        </Badge>
-      ))}
-    </div>
-  )
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Form helpers
 // ---------------------------------------------------------------------------
 
-function buildOutputsTemplate(vars: readonly string[]): string {
-  if (vars.length === 0) return "{}"
-  const body = vars.map((v) => `  ${JSON.stringify(v)}: ""`).join(",\n")
-  return `{\n${body}\n}`
+function buildInitialValues(schema: readonly OutputVar[]): Record<string, FieldValue> {
+  const acc: Record<string, FieldValue> = {}
+  for (const field of schema) {
+    switch (field.kind) {
+      case "boolean":
+        acc[field.name] = false
+        break
+      case "integer":
+        acc[field.name] = null
+        break
+      case "enum":
+        // Empty string forces an explicit operator choice — the Select's
+        // placeholder is visible and validation rejects until a value is
+        // picked.
+        acc[field.name] = ""
+        break
+      case "json":
+        acc[field.name] = "{}"
+        break
+      case "string":
+      default:
+        acc[field.name] = ""
+        break
+    }
+  }
+  return acc
+}
+
+function validateValues(
+  schema: readonly OutputVar[],
+  values: Record<string, FieldValue>
+): Record<string, string | null> {
+  const errors: Record<string, string | null> = {}
+  for (const field of schema) {
+    const value = values[field.name]
+    switch (field.kind) {
+      case "integer":
+        if (typeof value !== "number" || Number.isNaN(value)) {
+          errors[field.name] = "Enter a whole number."
+        } else {
+          errors[field.name] = null
+        }
+        break
+
+      case "boolean":
+        errors[field.name] = typeof value === "boolean" ? null : "Pick true or false."
+        break
+
+      case "enum":
+        errors[field.name] =
+          typeof value === "string" && value.length > 0 && (field.enum_values ?? []).includes(value)
+            ? null
+            : "Pick a value."
+        break
+
+      case "json":
+        errors[field.name] = validateJson(typeof value === "string" ? value : "")
+        break
+
+      case "string":
+      default:
+        errors[field.name] = null
+        break
+    }
+  }
+  return errors
+}
+
+function serializeValues(
+  schema: readonly OutputVar[],
+  values: Record<string, FieldValue>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const field of schema) {
+    const value = values[field.name]
+    switch (field.kind) {
+      case "integer":
+        out[field.name] = typeof value === "number" ? value : 0
+        break
+      case "boolean":
+        out[field.name] = value === true
+        break
+      case "enum":
+        out[field.name] = typeof value === "string" ? value : ""
+        break
+      case "json":
+        try {
+          out[field.name] = JSON.parse(typeof value === "string" ? value : "null")
+        } catch {
+          out[field.name] = null
+        }
+        break
+      case "string":
+      default:
+        out[field.name] = typeof value === "string" ? value : ""
+        break
+    }
+  }
+  return out
+}
+
+function parseIntegerInput(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === "") return null
+  const parsed = Number(trimmed)
+  if (Number.isNaN(parsed) || !Number.isFinite(parsed)) return null
+  // Reject decimals — the integer colour set expects an Elixir integer; the
+  // backend rejects floats with `:type_mismatch`. Truncating here would mask
+  // the operator's typo.
+  if (!Number.isInteger(parsed)) return Number.NaN
+  return parsed
 }
 
 function validateJson(value: string): string | null {
   const trimmed = value.trim()
-  if (trimmed === "") return "Outputs must be a JSON object."
+  if (trimmed === "") return "Provide a JSON value."
   try {
-    const parsed = JSON.parse(trimmed)
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return "Outputs must be a JSON object, not a list or primitive."
-    }
+    JSON.parse(trimmed)
     return null
   } catch (cause) {
     return cause instanceof Error ? cause.message : "Invalid JSON."
@@ -457,6 +667,7 @@ type ReplyCode =
   | "unknown_workitem"
   | "unknown_variable"
   | "invalid_outputs"
+  | "type_mismatch"
   | "runner_error"
 
 function replyTitle(code: string): string {
@@ -469,6 +680,8 @@ function replyTitle(code: string): string {
       return "Unknown variable"
     case "invalid_outputs":
       return "Invalid outputs"
+    case "type_mismatch":
+      return "Wrong type"
     case "runner_error":
       return "Runner rejected the completion"
     default:
@@ -488,6 +701,15 @@ function replyDescription(code: string, reply: Record<string, unknown>): string 
     }
     case "invalid_outputs":
       return "The runner rejected the outputs payload shape. It must be a JSON object."
+    case "type_mismatch": {
+      const variable = typeof reply.variable === "string" ? reply.variable : "(unknown)"
+      const expected = typeof reply.expected_kind === "string" ? reply.expected_kind : "?"
+      const message =
+        typeof reply.message === "string"
+          ? reply.message
+          : `Output "${variable}" must be a ${expected}.`
+      return message
+    }
     case "runner_error": {
       const message = typeof reply.message === "string" ? reply.message : "No message."
       return `Runner error: ${message}`

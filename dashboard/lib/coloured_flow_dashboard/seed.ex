@@ -3,8 +3,10 @@ defmodule ColouredFlowDashboard.Seed do
   Boots the demo flows on app start so an operator hitting `/` sees a live
   workitem immediately (and Phase 9's end-to-end story is observable).
 
-  Currently seeds `ColouredFlowDashboard.Seeds.ApprovalFlow`. Future demo
-  flows (`traffic_light`, `pi_agent`) plug in alongside.
+  Currently seeds `ColouredFlowDashboard.Seeds.ApprovalFlow` (drives the
+  binary-output drawer demo) and `ColouredFlowDashboard.Seeds.IncidentTriageFlow`
+  (drives the M5 enum + boolean + string structured form). Future demo flows
+  (`traffic_light`, `pi_agent`) plug in alongside.
 
   ## Gating
 
@@ -44,10 +46,11 @@ defmodule ColouredFlowDashboard.Seed do
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.InMemory
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
+  alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
 
   require Logger
 
-  @seeded_flows [ApprovalFlow]
+  @seeded_flows [ApprovalFlow, IncidentTriageFlow]
 
   @doc """
   Insert + start every demo flow. Idempotent.
@@ -110,7 +113,7 @@ defmodule ColouredFlowDashboard.Seed do
   end
 
   defp do_seed(flow_module) do
-    with {:ok, flow_ref} <- insert_flow(flow_module.cpnet()),
+    with {:ok, flow_ref} <- insert_flow(flow_module),
          {:ok, enactment_id} <-
            insert_enactment(flow_ref, flow_module.__cpn__(:initial_markings)),
          {:ok, _pid} <- EnactmentSupervisor.start_enactment(enactment_id) do
@@ -131,7 +134,9 @@ defmodule ColouredFlowDashboard.Seed do
   # `{:in_memory, flow_record}` (`InMemory.insert_enactment!/2` wants the
   # record) or `{:default, uuid_string}` (Default backend keys on the bare
   # id). The dispatch in `insert_enactment/2` peels the variant.
-  defp insert_flow(cpnet) do
+  defp insert_flow(flow_module) do
+    cpnet = flow_module.cpnet()
+
     case Storage.__storage__() do
       InMemory ->
         flow = InMemory.insert_flow!(cpnet)
@@ -142,7 +147,7 @@ defmodule ColouredFlowDashboard.Seed do
 
         flow =
           ColouredFlowDashboard.Repo.insert!(%Schemas.Flow{
-            name: "Approval Demo",
+            name: flow_module.__cpn__(:name),
             definition: cpnet
           })
 

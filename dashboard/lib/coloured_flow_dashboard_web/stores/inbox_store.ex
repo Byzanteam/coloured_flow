@@ -52,9 +52,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
   use Musubi.Store, root: true
 
-  alias ColouredFlow.Definition.Action
   alias ColouredFlow.Definition.ColouredPetriNet
-  alias ColouredFlow.Definition.Transition
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Runner.Enactment.Workitem, as: RunnerWorkitem
   alias ColouredFlow.Runner.Enactment.WorkitemTransition
@@ -62,9 +60,11 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   alias ColouredFlow.Runner.Exceptions.NonLiveWorkitem
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
+  alias ColouredFlowDashboard.OutputSchemaBuilder
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Views.InboxCounts
+  alias ColouredFlowDashboardWeb.Views.OutputVar
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
 
   require Logger
@@ -113,6 +113,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
             | :unknown_workitem
             | :unknown_variable
             | :invalid_outputs
+            | :type_mismatch
             | :runner_error
     end
   end
@@ -219,11 +220,23 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   # `:complete_workitem` needs to map a bare workitem id back to its
   # enactment + transition without re-querying storage. The mount seed
   # supplies both directly from `WorkitemRow`; live PubSub events refresh
-  # the entry whenever a workitem appears or transitions state.
+  # the entry whenever a workitem appears or transitions state. The schema
+  # map (`%{var_name :: String.t() => OutputVar.t()}`) is stored alongside
+  # so the command handler can coerce typed values without re-walking the
+  # cpnet.
   defp build_meta_index(rows) do
-    Map.new(rows, fn %WorkitemRow{id: id, enactment_id: eid, transition: name} ->
-      {id, %{enactment_id: eid, transition: name}}
+    Map.new(rows, fn %WorkitemRow{
+                       id: id,
+                       enactment_id: eid,
+                       transition: name,
+                       output_vars: schema
+                     } ->
+      {id, %{enactment_id: eid, transition: name, schema: index_schema(schema)}}
     end)
+  end
+
+  defp index_schema(schema) when is_list(schema) do
+    Map.new(schema, fn %OutputVar{name: name} = var -> {name, var} end)
   end
 
   defp compute_counts(rows, enactment_index) do
@@ -290,13 +303,20 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
          id: id,
          enactment_id: eid,
          state: state,
-         transition: name
+         transition: name,
+         output_vars: schema
        }) do
     index = socket.assigns.enactment_workitems
     next_index = Map.update(index, eid, MapSet.new([id]), &MapSet.put(&1, id))
 
     state_index = Map.put(socket.assigns.workitem_states, id, state)
-    meta_index = Map.put(socket.assigns.workitem_meta, id, %{enactment_id: eid, transition: name})
+
+    meta_index =
+      Map.put(
+        socket.assigns.workitem_meta,
+        id,
+        %{enactment_id: eid, transition: name, schema: index_schema(schema)}
+      )
 
     socket
     |> assign(:enactment_workitems, next_index)
@@ -363,7 +383,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       transition: transition_label(w.binding_element),
       state: w.state,
       binding_summary: format_binding(w.binding_element),
-      output_vars: resolve_output_vars(w.enactment_id, w.binding_element, flow_cache),
+      output_vars: resolve_output_schema(w.enactment_id, w.binding_element, flow_cache),
       enabled_at: datetime_to_iso(w.inserted_at),
       updated_at: datetime_to_iso(w.updated_at)
     }
@@ -379,7 +399,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
       transition: transition_label(wi.binding_element),
       state: wi.state,
       binding_summary: format_binding(wi.binding_element),
-      output_vars: resolve_output_vars(eid, wi.binding_element, flow_cache),
+      output_vars: resolve_output_schema(eid, wi.binding_element, flow_cache),
       enabled_at: iso,
       updated_at: iso
     }
@@ -413,36 +433,32 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
   # Walks the per-transition `Action.outputs` list — auto-populated by
   # `ColouredFlow.Builder.SetActionOutputs` as
-  # `output_arc_vars MINUS input_arc_vars MINUS constants` — to surface the
-  # free-variable names the operator must supply in the outputs drawer.
+  # `output_arc_vars MINUS input_arc_vars MINUS constants` — and pairs each
+  # free variable with its colour-set descriptor via
+  # `OutputSchemaBuilder.build/2`, producing a list of `OutputVar.t()` for the
+  # structured drawer form.
   #
   # Falls back to `[]` when the bridge cache misses (no Repo / enactment row
   # not yet visible to storage) — the drawer renders an empty hint and the
-  # operator can still type raw JSON. The command handler re-resolves at
-  # dispatch time, so the missing hint never causes a wrong dispatch.
-  @spec resolve_output_vars(String.t(), BindingElement.t(), atom() | nil) :: [String.t()]
-  defp resolve_output_vars(enactment_id, %BindingElement{transition: transition}, flow_cache)
+  # operator can still type raw JSON in the fallback Textarea. The command
+  # handler re-resolves at dispatch time, so the missing hint never causes a
+  # wrong dispatch.
+  @spec resolve_output_schema(String.t(), BindingElement.t(), atom() | nil) :: [OutputVar.t()]
+  defp resolve_output_schema(enactment_id, %BindingElement{transition: transition}, flow_cache)
        when is_binary(enactment_id) and is_atom(flow_cache) and not is_nil(flow_cache) do
-    with {:ok, %ColouredPetriNet{} = cpnet} <- fetch_cpnet(enactment_id, flow_cache),
-         %Transition{action: %Action{outputs: outputs}} <- find_transition(cpnet, transition) do
-      Enum.map(outputs, &Atom.to_string/1)
-    else
-      _miss -> []
+    case fetch_cpnet(enactment_id, flow_cache) do
+      {:ok, %ColouredPetriNet{} = cpnet} -> OutputSchemaBuilder.build(cpnet, transition)
+      :error -> []
     end
   end
 
-  defp resolve_output_vars(_eid, _binding_element, _cache), do: []
+  defp resolve_output_schema(_eid, _binding_element, _cache), do: []
 
   defp fetch_cpnet(enactment_id, flow_cache) do
     case :ets.whereis(flow_cache) do
       :undefined -> :error
       _table -> TelemetryBridge.lookup_cpnet(enactment_id, flow_cache)
     end
-  end
-
-  defp find_transition(%ColouredPetriNet{transitions: transitions}, transition_name)
-       when is_binary(transition_name) do
-    Enum.find(transitions, fn %Transition{name: name} -> name == transition_name end)
   end
 
   # ---------------------------------------------------------------------------
@@ -465,14 +481,20 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   #                          an atom anywhere in the BEAM; `to_existing_atom/1`
   #                          rejected it before reaching the runner.
   #   :invalid_outputs     — payload's `outputs` field was not a JSON object.
+  #   :type_mismatch       — the operator supplied a value whose wire shape
+  #                          does not match the declared colour-set kind
+  #                          (e.g. a string where the schema expected an
+  #                          integer, or an enum value not in `enum_values`).
+  #                          Reply carries `:variable` + `:expected_kind` so
+  #                          the SPA can pin a field-level error.
   #   :runner_error        — any other exception from the runner — reason
   #                          surfaced in `:message` for debugging.
 
   defp complete_workitem_reply(workitem_id, outputs_json, socket) do
-    with {:ok, %{enactment_id: eid}} <- fetch_meta(workitem_id, socket),
+    with {:ok, meta} <- fetch_meta(workitem_id, socket),
          {:ok, outputs_map} <- ensure_map(outputs_json),
-         {:ok, free_binding} <- coerce_outputs(outputs_map) do
-      dispatch_completion(eid, workitem_id, free_binding)
+         {:ok, free_binding} <- coerce_outputs(outputs_map, meta.schema) do
+      dispatch_completion(meta.enactment_id, workitem_id, free_binding)
     else
       {:error, :unknown_workitem} ->
         %{code: :unknown_workitem, workitem_id: workitem_id}
@@ -482,6 +504,22 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
       {:error, :invalid_outputs} ->
         %{code: :invalid_outputs, message: "outputs must be a JSON object"}
+
+      {:error, {:type_mismatch, key, expected}} ->
+        %{
+          code: :type_mismatch,
+          variable: key,
+          expected_kind: expected,
+          message: "Output `#{key}` must be a #{expected}."
+        }
+
+      {:error, {:unknown_enum, key, value}} ->
+        %{
+          code: :type_mismatch,
+          variable: key,
+          expected_kind: "enum",
+          message: "Output `#{key}` does not accept value #{inspect(value)}."
+        }
     end
   end
 
@@ -497,13 +535,28 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   defp ensure_map(map) when is_map(map), do: {:ok, map}
   defp ensure_map(_other), do: {:error, :invalid_outputs}
 
-  defp coerce_outputs(outputs_map) do
+  defp coerce_outputs(outputs_map, schema) when is_map(outputs_map) and is_map(schema) do
     Enum.reduce_while(outputs_map, {:ok, []}, fn {key, value}, {:ok, acc} ->
-      case to_existing_atom_safe(key) do
-        {:ok, atom} -> {:cont, {:ok, [{atom, value} | acc]}}
-        :error -> {:halt, {:error, {:unknown_variable, to_string(key)}}}
+      key_str = to_string(key)
+
+      with {:ok, atom} <- to_existing_atom_safe(key),
+           {:ok, coerced} <- coerce_one(Map.get(schema, key_str), key_str, value) do
+        {:cont, {:ok, [{atom, coerced} | acc]}}
+      else
+        :error ->
+          {:halt, {:error, {:unknown_variable, key_str}}}
+
+        {:error, {:type_mismatch, expected}} ->
+          {:halt, {:error, {:type_mismatch, key_str, expected}}}
+
+        {:error, {:unknown_enum, value}} ->
+          {:halt, {:error, {:unknown_enum, key_str, value}}}
       end
     end)
+  end
+
+  defp coerce_one(schema_var, _key, value) do
+    OutputSchemaBuilder.coerce_value(schema_var, value)
   end
 
   defp to_existing_atom_safe(key) when is_atom(key), do: {:ok, key}

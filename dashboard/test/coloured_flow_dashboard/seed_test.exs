@@ -12,16 +12,27 @@ defmodule ColouredFlowDashboard.SeedTest do
   alias ColouredFlow.Runner.Enactment.Registry, as: EnactmentRegistry
   alias ColouredFlowDashboard.Seed
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
+  alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
+
+  @flows [ApprovalFlow, IncidentTriageFlow]
 
   setup do
-    prior_pt = :persistent_term.get({Seed, ApprovalFlow}, nil)
-    if prior_pt, do: :persistent_term.erase({Seed, ApprovalFlow})
+    snapshots =
+      Map.new(@flows, fn flow ->
+        {flow, :persistent_term.get({Seed, flow}, nil)}
+      end)
+
+    for {flow, prior} <- snapshots, prior != nil do
+      :persistent_term.erase({Seed, flow})
+    end
 
     on_exit(fn ->
-      if prior_pt do
-        :persistent_term.put({Seed, ApprovalFlow}, prior_pt)
-      else
-        :persistent_term.erase({Seed, ApprovalFlow})
+      for {flow, prior} <- snapshots do
+        if prior do
+          :persistent_term.put({Seed, flow}, prior)
+        else
+          :persistent_term.erase({Seed, flow})
+        end
       end
     end)
 
@@ -36,23 +47,25 @@ defmodule ColouredFlowDashboard.SeedTest do
   end
 
   describe "run/1 with enabled: true" do
-    test "inserts a flow + enactment and registers the runner GenServer" do
+    test "inserts both seeded flows + enactments and registers the runner GenServers" do
       assert :ok = Seed.run(enabled: true)
 
-      assert enactment_id = Seed.enactment_id(ApprovalFlow)
-      assert is_binary(enactment_id)
+      for flow <- @flows do
+        assert enactment_id = Seed.enactment_id(flow)
+        assert is_binary(enactment_id)
 
-      assert [{_pid, _value}] =
-               Registry.lookup(EnactmentRegistry, {:enactment, enactment_id})
+        assert [{_pid, _value}] =
+                 Registry.lookup(EnactmentRegistry, {:enactment, enactment_id})
+      end
     end
 
     test "running twice in the same BEAM is idempotent" do
       assert :ok = Seed.run(enabled: true)
-      first_id = Seed.enactment_id(ApprovalFlow)
-      assert is_binary(first_id)
+      first_ids = Map.new(@flows, &{&1, Seed.enactment_id(&1)})
+      for {_flow, id} <- first_ids, do: assert(is_binary(id))
 
       assert :ok = Seed.run(enabled: true)
-      assert Seed.enactment_id(ApprovalFlow) == first_id
+      for flow <- @flows, do: assert(Seed.enactment_id(flow) == first_ids[flow])
     end
   end
 end

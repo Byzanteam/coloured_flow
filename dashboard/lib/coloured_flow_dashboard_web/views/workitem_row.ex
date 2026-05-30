@@ -12,15 +12,18 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
   (`#{inspect(ColouredFlow.Runner.Enactment.Workitem.__live_states__())}`)
   is ever streamed.
 
-  `output_vars` is the flat list of free-variable names (`Variable.name()`
-  serialised as strings) the operator must supply when completing this
-  workitem. Inferred at row construction from the transition's
-  `Action.outputs` — auto-populated by `ColouredFlow.Builder.SetActionOutputs`
-  as `output_arc_vars MINUS input_arc_vars MINUS constants`. Empty list when
-  the transition has no free variables (terminal step / pure side effect).
+  `output_vars` is the ordered list of
+  `ColouredFlowDashboardWeb.Views.OutputVar`s describing the free variables
+  the operator must supply when completing this workitem. Resolved at row
+  construction by `ColouredFlowDashboard.OutputSchemaBuilder.build/2`; carries
+  enough type info for the M5 structured form (Input / Number / Checkbox /
+  Select / JSON fallback). Empty list when the transition has no free
+  variables (terminal step / pure side effect).
   """
 
   use Musubi.State
+
+  alias ColouredFlowDashboardWeb.Views.OutputVar
 
   state do
     field :id, String.t()
@@ -29,7 +32,7 @@ defmodule ColouredFlowDashboardWeb.Views.WorkitemRow do
     field :transition, String.t()
     field :state, :enabled | :started
     field :binding_summary, String.t()
-    field :output_vars, list(String.t())
+    field :output_vars, list(OutputVar.t())
     field :enabled_at, String.t()
     field :updated_at, String.t()
   end

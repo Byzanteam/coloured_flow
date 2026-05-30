@@ -143,7 +143,7 @@ declare namespace Musubi {
             outputs: Record<string, unknown>
           }
           reply: {
-            code: "ok" | "already_completed" | "unknown_workitem" | "unknown_variable" | "invalid_outputs" | "runner_error"
+            code: "ok" | "already_completed" | "unknown_workitem" | "unknown_variable" | "invalid_outputs" | "type_mismatch" | "runner_error"
           }
         }
       }
@@ -221,6 +221,14 @@ declare namespace ColouredFlowDashboardWeb {
       outputs_summary: string
     }
 
+    interface OutputVar {
+      name: string
+      colour_set: string
+      kind: "string" | "integer" | "boolean" | "enum" | "json"
+      enum_values: string[] | null
+      hint: string | null
+    }
+
     interface TelemetryEntry {
       id: string
       kind: string
@@ -246,7 +254,7 @@ declare namespace ColouredFlowDashboardWeb {
       transition: string
       state: "enabled" | "started"
       binding_summary: string
-      output_vars: string[]
+      output_vars: ColouredFlowDashboardWeb.Views.OutputVar[]
       enabled_at: string
       updated_at: string
     }
