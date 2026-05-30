@@ -26,6 +26,12 @@ importers:
       '@xyflow/react':
         specifier: ^12.4.4
         version: 12.10.2(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      motion:
+        specifier: ^12.0.0
+        version: 12.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       phoenix:
         specifier: file:../deps/phoenix
         version: file:../deps/phoenix
@@ -38,6 +44,9 @@ importers:
       react-router-dom:
         specifier: ^7.1.5
         version: 7.16.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      tailwind-merge:
+        specifier: ^3.0.0
+        version: 3.6.0
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.16
