@@ -485,9 +485,8 @@ interface OutputsDrawerProps {
 function OutputsDrawer({ inbox, row, onClose }: OutputsDrawerProps) {
   const open = row !== null
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }} modal={false}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         {row ? <OutputsDrawerBody inbox={inbox} row={row} onClose={onClose} /> : null}
       </Dialog.Portal>
     </Dialog.Root>
