@@ -22,6 +22,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge.Event do
   """
   @type topic() ::
           :inbox
+          | :flows
           | {:enactment, enactment_id()}
           | {:flow, String.t()}
 

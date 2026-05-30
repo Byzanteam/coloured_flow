@@ -154,6 +154,31 @@ declare namespace Musubi {
       }
     >
 
+    "ColouredFlowDashboardWeb.Stores.FlowCatalogStore": StoreDef<
+      "ColouredFlowDashboardWeb.Stores.FlowCatalogStore",
+      {
+        flows: Musubi.StreamField<ColouredFlowDashboardWeb.Views.FlowSummary>
+        counts: ColouredFlowDashboardWeb.Views.FlowCatalogCounts
+      },
+      {
+        start_enactment: {
+          payload: {
+            flow_id: string
+          }
+          reply: {
+            code: "ok" | "unknown_flow" | "no_initial_markings" | "storage_error" | "runner_error"
+            enactment_id: string | null
+          }
+        }
+        refresh_catalog: {
+          payload: {}
+          reply: {
+            code: "ok"
+          }
+        }
+      }
+    >
+
     "ColouredFlowDashboardWeb.Stores.InboxStore": StoreDef<
       "ColouredFlowDashboardWeb.Stores.InboxStore",
       {
@@ -195,6 +220,28 @@ declare namespace ColouredFlowDashboardWeb {
       last_exception_banner: string | null
       replay_state: ColouredFlowDashboardWeb.Views.ReplayState | null
       version_range: ColouredFlowDashboardWeb.Views.VersionRange
+    }
+
+    interface FlowCatalogCounts {
+      total_flows: number
+      total_live_enactments: number
+    }
+
+    interface FlowEnactmentEntry {
+      id: string
+      state: "running" | "exception" | "terminated"
+      inserted_at: string
+    }
+
+    interface FlowSummary {
+      id: string
+      name: string
+      version: string
+      place_count: number
+      transition_count: number
+      live_enactments: number
+      last_started_at: string | null
+      recent_enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
     }
 
     interface InboxCounts {

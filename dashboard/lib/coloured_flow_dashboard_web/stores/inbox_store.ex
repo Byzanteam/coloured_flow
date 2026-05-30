@@ -66,6 +66,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   alias ColouredFlowDashboard.Repo
   alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
+  alias ColouredFlowDashboardWeb.Stores.SeqTracker
   alias ColouredFlowDashboardWeb.Views.InboxCounts
   alias ColouredFlowDashboardWeb.Views.OutputVar
   alias ColouredFlowDashboardWeb.Views.WorkitemRow
@@ -179,10 +180,10 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
     # asynchronously so a late `produce_workitems_stop` for the same
     # enactment could otherwise resurrect a workitem already completed by
     # a higher-seq event. Drop stale events here.
-    if stale?(event, socket) do
+    if SeqTracker.stale?(event, socket.assigns.last_seq) do
       {:noreply, socket}
     else
-      socket = bump_last_seq(socket, event)
+      socket = assign(socket, :last_seq, SeqTracker.bump(socket.assigns.last_seq, event))
       {:noreply, route_event(event, socket)}
     end
   end
@@ -190,23 +191,6 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
   # Drop unrelated mailbox traffic — Phoenix.PubSub-adjacent stores can also
   # receive `:DOWN` and adapter probe messages.
   def handle_info(_other, socket), do: {:noreply, socket}
-
-  defp stale?(%Event{enactment_id: eid, seq: seq}, socket)
-       when is_binary(eid) and is_integer(seq) and seq > 0 do
-    case Map.get(socket.assigns.last_seq, eid) do
-      nil -> false
-      prev when is_integer(prev) -> seq <= prev
-    end
-  end
-
-  defp stale?(%Event{}, _socket), do: false
-
-  defp bump_last_seq(socket, %Event{enactment_id: eid, seq: seq})
-       when is_binary(eid) and is_integer(seq) and seq > 0 do
-    assign(socket, :last_seq, Map.put(socket.assigns.last_seq, eid, seq))
-  end
-
-  defp bump_last_seq(socket, %Event{}), do: socket
 
   # ---------------------------------------------------------------------------
   # Mount-time seed

@@ -13,6 +13,10 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
     * `"cf:inbox"` — every workitem-shape or lifecycle change, regardless of
       enactment. Drives the operator inbox.
+    * `"cf:flows"` — enactment lifecycle changes only
+      (`:enactment_start`, `:enactment_terminate`, `:enactment_exception`).
+      Drives the `/flows` catalog's live-count refresh; workitem-op events
+      are intentionally dropped to keep the catalog off the hot path.
     * `"cf:enactment:<id>"` — every event scoped to a single enactment. Drives
       the detail page.
     * `"cf:flow:<flow_id>"` — every event scoped to a single flow definition.
@@ -329,6 +333,8 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
        struct!(Event, Map.put(common, :topic, {:enactment, state.enactment_id}))}
     ]
 
+    base = base ++ flows_topic(prefix, kind, common)
+
     case lookup_flow_topic_id(state.enactment_id, config.flow_cache) do
       {:ok, flow_id} ->
         flow_topic =
@@ -340,6 +346,18 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
         base
     end
   end
+
+  # `cf:flows` is the catalog-level fan-out subscribed to by
+  # `ColouredFlowDashboardWeb.Stores.FlowCatalogStore`. Only enactment
+  # lifecycle events change the catalog's per-flow live count + last-started
+  # rollup; workitem-op events are dropped here so the catalog never wakes
+  # up on a non-event.
+  defp flows_topic(prefix, kind, common)
+       when kind in [:enactment_start, :enactment_terminate, :enactment_exception] do
+    [{"#{prefix}flows", struct!(Event, Map.put(common, :topic, :flows))}]
+  end
+
+  defp flows_topic(_prefix, _kind, _common), do: []
 
   @doc """
   Looks up (or resolves and caches) the flow topic id for an enactment.
