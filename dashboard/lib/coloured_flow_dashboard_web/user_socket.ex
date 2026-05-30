@@ -10,6 +10,7 @@ defmodule ColouredFlowDashboardWeb.UserSocket do
     roots: [
       ColouredFlowDashboardWeb.Stores.InboxStore,
       ColouredFlowDashboardWeb.Stores.EnactmentDetailStore,
+      ColouredFlowDashboardWeb.Stores.EnactmentListStore,
       ColouredFlowDashboardWeb.Stores.FlowCatalogStore,
       ColouredFlowDashboardWeb.Stores.TelemetryFeedStore
     ]

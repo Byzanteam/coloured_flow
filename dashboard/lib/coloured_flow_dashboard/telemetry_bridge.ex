@@ -339,7 +339,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
       {"#{prefix}telemetry", struct!(Event, Map.put(common, :topic, :telemetry))}
     ]
 
-    base = base ++ flows_topic(prefix, kind, common)
+    base = base ++ flows_topic(prefix, kind, common) ++ enactments_topic(prefix, kind, common)
 
     case lookup_flow_topic_id(state.enactment_id, config.flow_cache) do
       {:ok, flow_id} ->
@@ -364,6 +364,18 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   end
 
   defp flows_topic(_prefix, _kind, _common), do: []
+
+  # `cf:enactments` is the top-level enactment-list fan-out subscribed to by
+  # `ColouredFlowDashboardWeb.Stores.EnactmentListStore`. Lifecycle events
+  # (start / terminate / exception) are the only deltas that change a row's
+  # `state` column in the catalog; workitem-op events would force a no-op
+  # refresh for every operator click.
+  defp enactments_topic(prefix, kind, common)
+       when kind in [:enactment_start, :enactment_terminate, :enactment_exception] do
+    [{"#{prefix}enactments", struct!(Event, Map.put(common, :topic, :enactments))}]
+  end
+
+  defp enactments_topic(_prefix, _kind, _common), do: []
 
   @doc """
   Looks up (or resolves and caches) the flow topic id for an enactment.

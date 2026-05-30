@@ -9,6 +9,7 @@ import { Link, Outlet, useLocation } from "react-router-dom"
 import {
   GraphIcon,
   type Icon,
+  ListChecksIcon,
   PulseIcon,
   TrayIcon
 } from "@phosphor-icons/react"
@@ -43,6 +44,7 @@ interface NavItem {
 const PRIMARY_NAV: readonly NavItem[] = [
   { to: "/", label: "Inbox", icon: TrayIcon, end: true },
   { to: "/flows", label: "Flows", icon: GraphIcon, end: false },
+  { to: "/enactments", label: "Enactments", icon: ListChecksIcon, end: false },
   { to: "/telemetry", label: "Telemetry", icon: PulseIcon, end: false }
 ]
 

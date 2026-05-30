@@ -64,11 +64,13 @@ describe("RootLayout", () => {
     window.localStorage.clear()
   })
 
-  it("renders Inbox / Flows / Telemetry nav links and omits Settings", () => {
+  it("renders Inbox / Flows / Enactments / Telemetry nav links and omits Settings", () => {
     renderLayout()
 
     expect(screen.getByRole("link", { name: /inbox/i })).toBeTruthy()
     expect(screen.getByRole("link", { name: /flows/i })).toBeTruthy()
+    const enactmentsLink = screen.getByRole("link", { name: /enactments/i })
+    expect(enactmentsLink.getAttribute("href")).toBe("/enactments")
     expect(screen.getByRole("link", { name: /telemetry/i })).toBeTruthy()
     expect(screen.queryByText(/settings/i)).toBeNull()
     expect(screen.queryByText(/Soon/i)).toBeNull()
