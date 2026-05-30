@@ -1,5 +1,5 @@
 import { Component, type ReactNode, Suspense, useMemo, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import {
   Badge,
   Banner,
@@ -37,29 +37,22 @@ type StartReplyCode =
   | "runner_error"
 
 export default function FlowCatalogPage() {
-  // The catalog index and per-flow detail share a placeholder route at
-  // `/flows/:module`. Detail surface is out of scope for this phase; the
-  // shell below renders the same catalog with a banner pointing the
-  // operator back to the index. Avoids a second placeholder file while
-  // keeping the route mapping live.
-  const { module } = useParams<"module">()
-
   return (
     <CatalogShell>
       <CatalogBoundary fallback={<CatalogFallback />}>
-        <CatalogRoot detailModule={module ?? null} />
+        <CatalogRoot />
       </CatalogBoundary>
     </CatalogShell>
   )
 }
 
-function CatalogRoot({ detailModule }: { detailModule: string | null }) {
+function CatalogRoot() {
   const catalog = useMusubiRootSuspense({
     module: FLOW_CATALOG_STORE,
     id: "default"
   })
 
-  return <CatalogContent catalog={catalog} detailModule={detailModule} />
+  return <CatalogContent catalog={catalog} />
 }
 
 type BoundaryProps = { fallback: ReactNode; children: ReactNode }
@@ -110,13 +103,7 @@ function flowMatchesQuery(flow: FlowSummary, q: string): boolean {
   return flow.name.toLowerCase().includes(q.toLowerCase())
 }
 
-function CatalogContent({
-  catalog,
-  detailModule
-}: {
-  catalog: CatalogProxy
-  detailModule: string | null
-}) {
+function CatalogContent({ catalog }: { catalog: CatalogProxy }) {
   const snapshot = useMusubiSnapshot(catalog)
   const { embed } = useEmbedMode()
   const params = useListSearchParams()
@@ -154,14 +141,6 @@ function CatalogContent({
           ]}
         />
       )}
-
-      {detailModule ? (
-        <Banner
-          variant="default"
-          title={`Flow detail (${detailModule})`}
-          description="A per-flow detail surface is not part of this phase. Use the catalog cards below."
-        />
-      ) : null}
 
       <ListControls
         q={params.q}

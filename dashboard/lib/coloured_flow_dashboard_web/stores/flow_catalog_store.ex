@@ -80,6 +80,10 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   alias ColouredFlowDashboardWeb.Views.FlowCatalogCounts
   alias ColouredFlowDashboardWeb.Views.FlowEnactmentEntry
   alias ColouredFlowDashboardWeb.Views.FlowSummary
+  alias ColouredFlowDashboardWeb.Views.NetDiagram
+  alias ColouredFlowDashboardWeb.Views.NetDiagramArc
+  alias ColouredFlowDashboardWeb.Views.NetDiagramPlace
+  alias ColouredFlowDashboardWeb.Views.NetDiagramTransition
 
   require InMemory
 
@@ -253,17 +257,27 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
         list -> list |> Enum.max(DateTime, fn -> nil end) |> datetime_to_iso()
       end
 
-    recent =
-      enactments
-      |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
-      |> Enum.take(@recent_limit)
-      |> Enum.map(fn e ->
+    # InMemory backend stores no inserted_at column, so nil is a valid value
+    # across the rollup. `DateTime.compare/2` rejects nil; bucket nil rows to
+    # the tail and sort the rest descending.
+    sorted_enactments =
+      Enum.sort_by(enactments, & &1.inserted_at, fn
+        nil, nil -> true
+        nil, _b -> false
+        _a, nil -> true
+        a, b -> DateTime.compare(a, b) != :lt
+      end)
+
+    full_entries =
+      Enum.map(sorted_enactments, fn e ->
         %FlowEnactmentEntry{
           id: e.id,
           state: e.state,
           inserted_at: datetime_to_iso(e.inserted_at) || ""
         }
       end)
+
+    recent = Enum.take(full_entries, @recent_limit)
 
     %FlowSummary{
       id: id,
@@ -273,9 +287,52 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
       transition_count: length(cpnet.transitions),
       live_enactments: live,
       last_started_at: last_started_at,
-      recent_enactments: recent
+      recent_enactments: recent,
+      enactments: full_entries,
+      diagram: build_diagram(cpnet)
     }
   end
+
+  # Static, marking-free NetDiagram for the per-flow detail page. The detail
+  # page renders the structure read-only — no token counts, no glow, no
+  # firing pulse — so we emit the cpnet topology with zeroed marking fields.
+  defp build_diagram(%ColouredPetriNet{} = cpnet) do
+    %NetDiagram{
+      places:
+        Enum.map(cpnet.places, fn place ->
+          %NetDiagramPlace{
+            name: place.name,
+            colour_set: colour_set_to_string(place.colour_set),
+            tokens_count: 0,
+            tokens_summary: ""
+          }
+        end),
+      transitions:
+        Enum.map(cpnet.transitions, fn transition ->
+          %NetDiagramTransition{
+            name: transition.name,
+            enabled_count: 0,
+            rejected_by_guard_count: 0,
+            rejected_by_arc_eval_count: 0,
+            rejected_by_marking_count: 0,
+            last_fired_at: nil
+          }
+        end),
+      arcs:
+        Enum.map(cpnet.arcs, fn arc ->
+          %NetDiagramArc{
+            place: arc.place,
+            transition: arc.transition,
+            orientation: arc.orientation
+          }
+        end)
+    }
+  end
+
+  defp colour_set_to_string(nil), do: ""
+  defp colour_set_to_string(name) when is_atom(name), do: Atom.to_string(name)
+  defp colour_set_to_string(name) when is_binary(name), do: name
+  defp colour_set_to_string(other), do: inspect(other)
 
   defp compute_counts(rows) do
     %FlowCatalogCounts{

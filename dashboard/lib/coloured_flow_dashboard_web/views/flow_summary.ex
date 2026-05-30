@@ -8,9 +8,13 @@ defmodule ColouredFlowDashboardWeb.Views.FlowSummary do
   it as the stream item key AND as the `:start_enactment` command payload.
 
   `recent_enactments` is capped to the 3 most recently-started enactments so
-  the SPA can surface them as short-id links without paginating; the full
-  enactment list lives on a per-flow detail page (out of scope for this
-  phase).
+  the catalog grid can render short-id links without paginating.
+  `enactments` carries the full per-flow enactment list (newest first) so the
+  per-flow detail page at `/flows/:flow_id` can render every row.
+
+  `diagram` mirrors the wire shape used by `EnactmentDetailStore` so the
+  per-flow detail page can render the same NetDiagram component with zero
+  marking data (tokens_count = 0, no glow, no firing pulse).
   """
 
   use Musubi.State
@@ -26,5 +30,10 @@ defmodule ColouredFlowDashboardWeb.Views.FlowSummary do
 
     field :recent_enactments,
           list(ColouredFlowDashboardWeb.Views.FlowEnactmentEntry.t())
+
+    field :enactments,
+          list(ColouredFlowDashboardWeb.Views.FlowEnactmentEntry.t())
+
+    field :diagram, ColouredFlowDashboardWeb.Views.NetDiagram.t() | nil
   end
 end

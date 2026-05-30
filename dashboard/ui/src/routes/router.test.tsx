@@ -32,7 +32,7 @@ describe("router config", () => {
 
   it("mounts the flow catalog index and detail", () => {
     expect(paths).toContain("/flows")
-    expect(paths).toContain("/flows/:module")
+    expect(paths).toContain("/flows/:flow_id")
   })
 
   it("has a fallback route", () => {

@@ -63,6 +63,46 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
       assert assigns.counts.total_live_enactments == before_live + 1
       assert MapSet.member?(assigns.flow_ids, flow_id)
     end
+
+    test "FlowSummary carries the full enactments list + a NetDiagram payload",
+         %{topic: topic} do
+      flow_record = InMemory.insert_flow!(ApprovalFlow.cpnet())
+      flow_id = InMemory.flow(flow_record, :id)
+
+      {:ok, _e1} =
+        ColouredFlow.Runner.Storage.insert_enactment(%{
+          flow_id: flow_id,
+          initial_markings: ApprovalFlow.__cpn__(:initial_markings)
+        })
+
+      {:ok, _e2} =
+        ColouredFlow.Runner.Storage.insert_enactment(%{
+          flow_id: flow_id,
+          initial_markings: ApprovalFlow.__cpn__(:initial_markings)
+        })
+
+      _page = mount_store(topic)
+      summary = await_flow_summary(flow_id, 2_000)
+
+      # Per-flow detail page reads BOTH new fields. The wire shape is
+      # string-keyed (post `Musubi.Wire` encoding).
+      enactments = Map.fetch!(summary, "enactments")
+      recent = Map.fetch!(summary, "recent_enactments")
+      assert is_list(enactments)
+      # `enactments` is uncapped (catalog grid still caps `recent_enactments`
+      # at 3, but the detail page wants every row).
+      assert length(enactments) >= 2
+      assert length(recent) <= 3
+
+      # Static, marking-free NetDiagram shape with the cpnet topology.
+      diagram = Map.fetch!(summary, "diagram")
+      assert is_map(diagram)
+      cpnet = ApprovalFlow.cpnet()
+      assert length(diagram["places"]) == length(cpnet.places)
+      assert length(diagram["transitions"]) == length(cpnet.transitions)
+      assert length(diagram["arcs"]) == length(cpnet.arcs)
+      assert Enum.all?(diagram["places"], &(&1["tokens_count"] == 0))
+    end
   end
 
   describe ":start_enactment command" do
@@ -223,5 +263,63 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
     InMemory |> Module.safe_concat("Enactment") |> :ets.tab2list() |> length()
   rescue
     _error -> 0
+  end
+
+  # Reads the FlowSummary item out of the mount-time patch envelope's
+  # stream_ops. The catalog stream emits an `insert` op per flow with the
+  # native FlowSummary struct as the `item` field. Mailbox is drained in
+  # case earlier tests (or the mount itself for other flows) queued ops.
+  defp await_flow_summary(flow_id, timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_await_flow_summary(flow_id, deadline)
+  end
+
+  defp do_await_flow_summary(flow_id, deadline) do
+    timeout = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:patch, %{stream_ops: ops}} ->
+        match =
+          Enum.find_value(ops, fn op ->
+            item = op_field(op, :item)
+
+            cond do
+              op_field(op, :op) != "insert" ->
+                nil
+
+              op_field(op, :stream) != "flows" ->
+                nil
+
+              is_nil(item) ->
+                nil
+
+              true ->
+                case item do
+                  %{"id" => ^flow_id} -> item
+                  %{id: ^flow_id} -> item
+                  _other -> nil
+                end
+            end
+          end)
+
+        if match, do: match, else: do_await_flow_summary(flow_id, deadline)
+
+      _other ->
+        do_await_flow_summary(flow_id, deadline)
+    after
+      timeout ->
+        flunk("timed out waiting for FlowSummary item for flow_id=#{flow_id}")
+    end
+  end
+
+  defp op_field(op, key) when is_map(op) do
+    case op do
+      %{^key => v} ->
+        v
+
+      %{} ->
+        stringified = Map.new(op, fn {k, v} -> {to_string(k), v} end)
+        Map.get(stringified, Atom.to_string(key))
+    end
   end
 end
