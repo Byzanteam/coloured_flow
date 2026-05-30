@@ -32,26 +32,46 @@ defmodule ColouredFlowDashboard.Seed do
 
   Within a single BEAM the seed runs at most once per flow: the resulting
   enactment id is stashed in `:persistent_term` keyed by the flow module.
-  A second call observes the term, checks the registry, and skips. After a
-  BEAM restart the term is gone; the Default (Postgres) backend then sees
-  the historical enactment row but a fresh `start_enactment/1` call
-  re-spawns the GenServer (the runner replays from snapshot/occurrences).
+  A second call observes the term, checks the registry, and skips.
+
+  Across BEAM restarts the term is gone, so `do_seed/1` falls back to
+  database lookups against `Schemas.Flow` (by `__cpn__(:name)`) and
+  `Schemas.Enactment` (by `flow_id`). If a row exists from a prior boot it
+  is reused — no fresh insert — and the runner's `start_enactment/1`
+  re-spawns the GenServer (replaying from snapshot/occurrences). This is
+  why the live dev DB does not accumulate one extra `Schemas.Flow` /
+  `Schemas.Enactment` row per `mix phx.server` boot.
+
+  ## Public-API deviation
+
+  Querying `Schemas.Flow` + `Schemas.Enactment` directly via the dashboard
+  `Repo` is a knowing deviation from the "main-repo public surface only"
+  rule, in the same class as `InboxStore.query_enactment_states`,
+  `EnactmentDetailStore.authoritative_enactment_state`, and
+  `FlowCatalogStore.list_flow_rows_default`. The seed already had to insert
+  rows on these schemas; reading them back to dedupe is the same exposure.
 
   ## Cross-backend support
 
-  | Backend     | flow insert                            | enactment insert                   |
-  | ----------- | -------------------------------------- | ---------------------------------- |
-  | `Default`   | `Repo.insert!(%Schemas.Flow{...})`     | `Storage.insert_enactment/1`       |
+  | Backend     | flow insert                            | enactment insert                       |
+  | ----------- | -------------------------------------- | -------------------------------------- |
+  | `Default`   | `Repo.insert!(%Schemas.Flow{...})`     | `Storage.insert_enactment/1`           |
   | `InMemory`  | `Storage.InMemory.insert_flow!/1`      | `Storage.InMemory.insert_enactment!/2` |
 
   The Default backend's `insert_enactment/1` returns a `Schemas.Enactment`;
   the InMemory record is an Erlang record. Both expose `:id` (UUID) via the
-  `enactment_id/1` extractor.
+  `enactment_id/1` extractor. The InMemory backend is process-scoped and
+  rebuilt on every boot, so the dedupe lookups only run on the Default
+  (Postgres) backend.
   """
+
+  import Ecto.Query, only: [from: 2]
 
   alias ColouredFlow.Runner
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.InMemory
+  alias ColouredFlow.Runner.Storage.Schemas
+  alias ColouredFlowDashboard.Repo
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
   alias ColouredFlowDashboard.Seeds.PiAgentFlow
@@ -122,12 +142,20 @@ defmodule ColouredFlowDashboard.Seed do
   end
 
   defp do_seed(flow_module) do
-    with {:ok, flow_ref} <- insert_flow(flow_module),
-         {:ok, enactment_id} <-
+    with {:ok, flow_ref, flow_status} <- insert_flow(flow_module),
+         {:ok, enactment_id, enactment_status} <-
            insert_enactment(flow_ref, flow_module.__cpn__(:initial_markings)),
          {:ok, _pid} <- Runner.start_enactment(enactment_id) do
       :persistent_term.put({__MODULE__, flow_module}, enactment_id)
-      Logger.info("[#{inspect(__MODULE__)}] seeded #{inspect(flow_module)} → #{enactment_id}")
+
+      verb =
+        if flow_status == :reused and enactment_status == :reused do
+          "reused"
+        else
+          "seeded"
+        end
+
+      Logger.info("[#{inspect(__MODULE__)}] #{verb} #{inspect(flow_module)} → #{enactment_id}")
       :ok
     end
   end
@@ -143,41 +171,51 @@ defmodule ColouredFlowDashboard.Seed do
     is_pid(GenServer.whereis(via))
   end
 
-  # Returns a backend-specific opaque flow reference:
-  # `{:in_memory, flow_record}` (`InMemory.insert_enactment!/2` wants the
-  # record) or `{:default, uuid_string}` (Default backend keys on the bare
-  # id). The dispatch in `insert_enactment/2` peels the variant.
+  # Returns a backend-specific opaque flow reference plus an `:inserted |
+  # :reused` status. `{:in_memory, flow_record}` (`InMemory.insert_enactment!/2`
+  # wants the record) or `{:default, uuid_string}` (Default backend keys on
+  # the bare id). The dispatch in `insert_enactment/2` peels the variant.
   defp insert_flow(flow_module) do
     cpnet = flow_module.cpnet()
 
     case Storage.__storage__() do
       InMemory ->
         flow = InMemory.insert_flow!(cpnet)
-        {:ok, {:in_memory, flow}}
+        {:ok, {:in_memory, flow}, :inserted}
 
       _default ->
-        alias ColouredFlow.Runner.Storage.Schemas
+        name = flow_module.__cpn__(:name)
+        query = from f in Schemas.Flow, where: f.name == ^name, limit: 1
 
-        flow =
-          ColouredFlowDashboard.Repo.insert!(%Schemas.Flow{
-            name: flow_module.__cpn__(:name),
-            definition: cpnet
-          })
+        case Repo.one(query) do
+          nil ->
+            flow = Repo.insert!(%Schemas.Flow{name: name, definition: cpnet})
+            {:ok, {:default, flow.id}, :inserted}
 
-        {:ok, {:default, flow.id}}
+          %Schemas.Flow{} = existing ->
+            {:ok, {:default, existing.id}, :reused}
+        end
     end
   end
 
   defp insert_enactment({:in_memory, flow_record}, initial_markings) do
     require InMemory
     enactment = InMemory.insert_enactment!(flow_record, initial_markings)
-    {:ok, InMemory.enactment(enactment, :id)}
+    {:ok, InMemory.enactment(enactment, :id), :inserted}
   end
 
   defp insert_enactment({:default, flow_id}, initial_markings) do
-    {:ok, enactment} =
-      Storage.insert_enactment(%{flow_id: flow_id, initial_markings: initial_markings})
+    query = from e in Schemas.Enactment, where: e.flow_id == ^flow_id, limit: 1
 
-    {:ok, enactment.id}
+    case Repo.one(query) do
+      nil ->
+        {:ok, enactment} =
+          Storage.insert_enactment(%{flow_id: flow_id, initial_markings: initial_markings})
+
+        {:ok, enactment.id, :inserted}
+
+      %Schemas.Enactment{} = existing ->
+        {:ok, existing.id, :reused}
+    end
   end
 end
