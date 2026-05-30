@@ -11,6 +11,7 @@ import {
   type NodeProps
 } from "@xyflow/react"
 import dagre from "@dagrejs/dagre"
+import { Badge, Surface } from "@cloudflare/kumo"
 
 type NetDiagramPayload = ColouredFlowDashboardWeb.Views.NetDiagram
 type DiagramPlace = ColouredFlowDashboardWeb.Views.NetDiagramPlace
@@ -226,7 +227,8 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
   const hasTokens = data.tokens_count > 0
   const tooltip = data.tokens_summary || `${data.tokens_count} token(s)`
   return (
-    <div
+    <Surface
+      as="div"
       title={tooltip}
       className="relative flex h-[96px] w-[96px] items-center justify-center rounded-full border bg-cf-surface text-center shadow-sm"
       style={{
@@ -243,11 +245,13 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
       />
       <div className="flex flex-col items-center gap-0.5 px-2">
         {hasTokens ? (
-          <span
-            className="text-lg font-semibold leading-none tabular-nums text-cf-accent-ink"
-            data-testid={`place-tokens-${data.name}`}
-          >
-            {data.tokens_count}
+          <span data-testid={`place-tokens-${data.name}`} className="contents">
+            <Badge
+              variant="primary"
+              className="bg-cf-accent-tint px-2 py-0 text-base font-semibold leading-none tabular-nums text-cf-accent-ink"
+            >
+              {data.tokens_count}
+            </Badge>
           </span>
         ) : null}
         <span className="max-w-[80px] truncate text-xs font-medium text-cf-ink">
@@ -265,7 +269,7 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
         style={PLACE_HANDLE_STYLE}
         isConnectable={false}
       />
-    </div>
+    </Surface>
   )
 }
 
@@ -297,7 +301,8 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
     : null
 
   return (
-    <div
+    <Surface
+      as="div"
       className="flex h-[56px] w-[128px] items-center justify-center rounded-md border bg-cf-surface text-center shadow-sm"
       style={{
         borderColor: "var(--color-cf-border)",
@@ -327,7 +332,7 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
         style={PLACE_HANDLE_STYLE}
         isConnectable={false}
       />
-    </div>
+    </Surface>
   )
 }
 
