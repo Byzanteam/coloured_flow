@@ -1052,7 +1052,7 @@ function TelemetryTab({
           }
         />
       ) : (
-        <LayerCard.Primary className="overflow-hidden p-0">
+        <LayerCard.Primary className="overflow-x-auto p-0">
           <Table>
             <Table.Header>
               <Table.Row>
