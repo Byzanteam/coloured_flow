@@ -5,12 +5,13 @@ import {
   Button,
   Checkbox,
   ClipboardText,
+  CodeBlock,
   Dialog,
   Input,
+  InputArea,
   LayerCard,
   Table,
   Text,
-  Textarea,
   useKumoToastManager
 } from "@cloudflare/kumo"
 import { TrayIcon } from "@phosphor-icons/react"
@@ -374,6 +375,7 @@ function OutputsDrawerBody({
       case "unknown_variable":
       case "invalid_outputs":
       case "type_mismatch":
+      case "invalid_elixir":
         setInlineBanner({
           title: replyTitle(code),
           description: replyDescription(code, reply)
@@ -467,9 +469,12 @@ function OutputsDrawerBody({
             <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
               Binding
             </span>
-            <pre className="max-h-32 overflow-auto rounded-md border border-cf-border bg-cf-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-cf-ink whitespace-pre-wrap break-words">
-              {row.binding_summary}
-            </pre>
+            <div
+              className="max-h-32 overflow-auto"
+              data-testid="drawer-binding-code"
+            >
+              <CodeBlock lang="bash" code={row.binding_summary} />
+            </div>
           </div>
         ) : null}
       </section>
@@ -637,18 +642,20 @@ function OutputField({ field, value, error, onChange }: OutputFieldProps) {
       )
     }
 
-    case "json":
+    case "elixir":
       return (
-        <Textarea
+        <InputArea
           label={field.name}
           description={helper}
           error={error ?? undefined}
           value={typeof value === "string" ? value : ""}
           onChange={(event) => onChange(event.target.value)}
+          placeholder={field.example ?? ":your_term"}
           rows={5}
           spellCheck={false}
+          className="font-mono"
           aria-invalid={error !== null}
-          data-testid={`${testId}-json`}
+          data-testid={`${testId}-elixir`}
         />
       )
 
@@ -697,7 +704,7 @@ function FieldShell({
 
 // Helper text per kind. Boolean and enum self-document via the control, so
 // the colour-set jargon only surfaces when `field.hint` was provided
-// explicitly. String/integer/json keep the colour-set fallback because the
+// explicitly. String/integer/elixir keep the colour-set fallback because the
 // control alone does not communicate the value space.
 function fieldHelper(field: OutputVar): string | null {
   if (field.hint) return field.hint
@@ -725,8 +732,8 @@ function buildInitialValues(schema: readonly OutputVar[]): Record<string, FieldV
         // picked.
         acc[field.name] = ""
         break
-      case "json":
-        acc[field.name] = "{}"
+      case "elixir":
+        acc[field.name] = ""
         break
       case "string":
       default:
@@ -766,8 +773,8 @@ function validateValues(
             : `Choose a ${field.name}.`
         break
 
-      case "json":
-        errors[field.name] = validateJson(typeof value === "string" ? value : "")
+      case "elixir":
+        errors[field.name] = validateElixirText(typeof value === "string" ? value : "")
         break
 
       case "string":
@@ -796,12 +803,12 @@ function serializeValues(
       case "enum":
         out[field.name] = typeof value === "string" ? value : ""
         break
-      case "json":
-        try {
-          out[field.name] = JSON.parse(typeof value === "string" ? value : "null")
-        } catch {
-          out[field.name] = null
-        }
+      case "elixir":
+        // Wire the raw Elixir source text to the backend. The store's
+        // `coerce_outputs/2` path runs it through ElixirTermDecoder
+        // (Code.string_to_quoted + literal-only walker). No JSON parsing or
+        // eval happens on the client.
+        out[field.name] = typeof value === "string" ? value : ""
         break
       case "string":
       default:
@@ -824,18 +831,12 @@ function parseIntegerInput(raw: string): number | null {
   return parsed
 }
 
-function validateJson(value: string): string | null {
-  const trimmed = value.trim()
-  if (trimmed === "") return "Provide a JSON value."
-  try {
-    JSON.parse(trimmed)
-    return null
-  } catch (cause) {
-    // Trim and reframe the raw parser message so operators don't see
-    // developer-flavoured "Unexpected token … at position N" prose alone.
-    const detail = cause instanceof Error ? cause.message.split("\n")[0] : ""
-    return detail ? `Invalid JSON: ${detail}` : "Invalid JSON."
-  }
+function validateElixirText(value: string): string | null {
+  // The backend's literal walker is authoritative — the client only enforces
+  // "non-empty" so submit can stay disabled before the operator types
+  // anything. Real validation happens server-side via Code.string_to_quoted/2
+  // plus the literal walker; the reply surfaces actionable errors inline.
+  return value.trim() === "" ? "Provide an Elixir term literal." : null
 }
 
 type ReplyCode =
@@ -845,6 +846,7 @@ type ReplyCode =
   | "unknown_variable"
   | "invalid_outputs"
   | "type_mismatch"
+  | "invalid_elixir"
   | "runner_error"
 
 function replyTitle(code: string): string {
@@ -859,6 +861,8 @@ function replyTitle(code: string): string {
       return "Invalid outputs"
     case "type_mismatch":
       return "Wrong type"
+    case "invalid_elixir":
+      return "Invalid Elixir term"
     case "runner_error":
       return "Runner rejected the completion"
     default:
@@ -885,6 +889,14 @@ function replyDescription(code: string, reply: Record<string, unknown>): string 
         typeof reply.message === "string"
           ? reply.message
           : `Output "${variable}" must be a ${expected}.`
+      return message
+    }
+    case "invalid_elixir": {
+      const variable = typeof reply.variable === "string" ? reply.variable : "(unknown)"
+      const message =
+        typeof reply.message === "string"
+          ? reply.message
+          : `Output "${variable}" must be an Elixir term literal.`
       return message
     }
     case "runner_error": {

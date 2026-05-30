@@ -154,31 +154,6 @@ declare namespace Musubi {
       }
     >
 
-    "ColouredFlowDashboardWeb.Stores.FlowCatalogStore": StoreDef<
-      "ColouredFlowDashboardWeb.Stores.FlowCatalogStore",
-      {
-        flows: Musubi.StreamField<ColouredFlowDashboardWeb.Views.FlowSummary>
-        counts: ColouredFlowDashboardWeb.Views.FlowCatalogCounts
-      },
-      {
-        start_enactment: {
-          payload: {
-            flow_id: string
-          }
-          reply: {
-            code: "ok" | "unknown_flow" | "no_initial_markings" | "storage_error" | "runner_error"
-            enactment_id: string | null
-          }
-        }
-        refresh_catalog: {
-          payload: {}
-          reply: {
-            code: "ok"
-          }
-        }
-      }
-    >
-
     "ColouredFlowDashboardWeb.Stores.InboxStore": StoreDef<
       "ColouredFlowDashboardWeb.Stores.InboxStore",
       {
@@ -192,7 +167,7 @@ declare namespace Musubi {
             outputs: Record<string, unknown>
           }
           reply: {
-            code: "ok" | "already_completed" | "unknown_workitem" | "unknown_variable" | "invalid_outputs" | "type_mismatch" | "runner_error"
+            code: "ok" | "already_completed" | "unknown_workitem" | "unknown_variable" | "invalid_outputs" | "type_mismatch" | "invalid_elixir" | "runner_error"
           }
         }
       }
@@ -202,132 +177,13 @@ declare namespace Musubi {
 
 declare namespace ColouredFlowDashboardWeb {
   namespace Views {
-    interface BindingCandidate {
-      transition: string
-      binding_summary: string
-      guard_status: "enabled" | "rejected_by_guard" | "rejected_by_arc_eval" | "rejected_by_marking"
-      reason: string | null
-    }
-
-    interface EnactmentSummary {
-      enactment_id: string
-      flow_topic_id: string | null
-      state: "running" | "exception" | "terminated"
-      version: number
-      markings_count: number
-      workitems_count: number
-      last_occurrence_at: string | null
-      last_exception_banner: string | null
-      replay_state: ColouredFlowDashboardWeb.Views.ReplayState | null
-      version_range: ColouredFlowDashboardWeb.Views.VersionRange
-    }
-
-    interface FlowCatalogCounts {
-      total_flows: number
-      total_live_enactments: number
-    }
-
-    interface FlowEnactmentEntry {
-      id: string
-      state: "running" | "exception" | "terminated"
-      inserted_at: string
-    }
-
-    interface FlowSummary {
-      id: string
-      name: string
-      version: string
-      place_count: number
-      transition_count: number
-      live_enactments: number
-      last_started_at: string | null
-      recent_enactments: ColouredFlowDashboardWeb.Views.FlowEnactmentEntry[]
-    }
-
-    interface InboxCounts {
-      enabled: number
-      started: number
-      by_enactment: Record<string, unknown>
-    }
-
-    interface MarkingRow {
-      place: string
-      colour_set: string
-      tokens_count: number
-      tokens_summary: string
-    }
-
-    interface NetDiagram {
-      places: ColouredFlowDashboardWeb.Views.NetDiagramPlace[]
-      transitions: ColouredFlowDashboardWeb.Views.NetDiagramTransition[]
-      arcs: ColouredFlowDashboardWeb.Views.NetDiagramArc[]
-    }
-
-    interface NetDiagramArc {
-      place: string
-      transition: string
-      orientation: "p_to_t" | "t_to_p"
-    }
-
-    interface NetDiagramPlace {
-      name: string
-      colour_set: string
-      tokens_count: number
-      tokens_summary: string
-    }
-
-    interface NetDiagramTransition {
-      name: string
-      enabled_count: number
-      rejected_by_guard_count: number
-      rejected_by_arc_eval_count: number
-      rejected_by_marking_count: number
-      last_fired_at: string | null
-    }
-
-    interface OccurrenceRow {
-      id: string
-      step_number: number
-      transition: string
-      binding_summary: string
-      occurred_at: string
-      outputs_summary: string
-    }
-
     interface OutputVar {
       name: string
       colour_set: string
-      kind: "string" | "integer" | "boolean" | "enum" | "json"
+      kind: "string" | "integer" | "boolean" | "enum" | "elixir"
       enum_values: string[] | null
       hint: string | null
-    }
-
-    interface ReplayState {
-      version: number
-      derived_at: string
-    }
-
-    interface TelemetryEntry {
-      id: string
-      kind: string
-      at: string
-      summary: string
-      severity: "info" | "warning" | "error"
-      payload_json: string
-    }
-
-    interface TransitionDebugInfo {
-      transition: string
-      candidates_count: number
-      enabled_count: number
-      rejected_by_guard_count: number
-      rejected_by_arc_eval_count: number
-      rejected_by_marking_count: number
-    }
-
-    interface VersionRange {
-      min: number
-      max: number
+      example: string | null
     }
 
     interface WorkitemRow {

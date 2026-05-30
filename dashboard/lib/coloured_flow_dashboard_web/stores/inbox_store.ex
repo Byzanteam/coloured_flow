@@ -120,6 +120,7 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
             | :unknown_variable
             | :invalid_outputs
             | :type_mismatch
+            | :invalid_elixir
             | :runner_error
     end
   end
@@ -632,6 +633,13 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
           expected_kind: "enum",
           message: "Output `#{key}` does not accept value #{inspect(value)}."
         }
+
+      {:error, {:invalid_elixir, key, reason}} ->
+        %{
+          code: :invalid_elixir,
+          variable: key,
+          message: "Output `#{key}` is not a valid Elixir term literal: #{reason}"
+        }
     end
   end
 
@@ -678,6 +686,9 @@ defmodule ColouredFlowDashboardWeb.Stores.InboxStore do
 
       {:error, {:unknown_enum, value}} ->
         {:halt, {:error, {:unknown_enum, key_str, value}}}
+
+      {:error, {:invalid_elixir, reason}} ->
+        {:halt, {:error, {:invalid_elixir, key_str, reason}}}
     end
   end
 

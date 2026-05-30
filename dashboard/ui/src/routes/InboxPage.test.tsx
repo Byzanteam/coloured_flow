@@ -15,15 +15,16 @@ import { Toasty } from "@cloudflare/kumo"
 type OutputVar = ColouredFlowDashboardWeb.Views.OutputVar
 type WorkitemRow = ColouredFlowDashboardWeb.Views.WorkitemRow
 
-const { dispatchMock, snapshotMock, makeRow, schemaMix, schemaBinary, schemaJson } = vi.hoisted(
+const { dispatchMock, snapshotMock, makeRow, schemaMix, schemaBinary, schemaElixir } = vi.hoisted(
   () => {
-    type SchemaInput = { name: string; colour_set: string; kind: OutputVar["kind"]; enum_values?: string[] | null; hint?: string | null }
+    type SchemaInput = { name: string; colour_set: string; kind: OutputVar["kind"]; enum_values?: string[] | null; hint?: string | null; example?: string | null }
     const v = (s: SchemaInput): OutputVar => ({
       name: s.name,
       colour_set: s.colour_set,
       kind: s.kind,
       enum_values: s.enum_values ?? null,
-      hint: s.hint ?? null
+      hint: s.hint ?? null,
+      example: s.example ?? null
     })
 
     const binary: OutputVar[] = [
@@ -43,12 +44,13 @@ const { dispatchMock, snapshotMock, makeRow, schemaMix, schemaBinary, schemaJson
       v({ name: "note", colour_set: "note_t", kind: "string" })
     ]
 
-    const json: OutputVar[] = [
+    const elixir: OutputVar[] = [
       v({
         name: "payload",
-        colour_set: "complex_t",
-        kind: "json",
-        hint: "Complex shape; provide JSON."
+        colour_set: "tool_call",
+        kind: "elixir",
+        hint: "Colour set `tool_call` is complex; provide an Elixir term literal.",
+        example: '{:read, "text"}'
       })
     ]
 
@@ -75,7 +77,7 @@ const { dispatchMock, snapshotMock, makeRow, schemaMix, schemaBinary, schemaJson
       makeRow: buildRow,
       schemaBinary: binary,
       schemaMix: mixed,
-      schemaJson: json
+      schemaElixir: elixir
     }
   }
 )
@@ -185,6 +187,23 @@ describe("InboxPage outputs drawer — render", () => {
     expect(screen.getByTestId("outputs-field-verdict")).toBeDefined()
     expect(screen.getByTestId("outputs-field-note")).toBeDefined()
   })
+
+  it("renders binding_summary inside Kumo CodeBlock", async () => {
+    const row = {
+      ...makeRow("wi-bind", "approve", schemaBinary),
+      binding_summary: "x = 1, y = :foo"
+    }
+    loadSnapshot(row)
+    renderWithProviders(<InboxPage />)
+    await openDrawer("wi-bind")
+
+    const wrap = screen.getByTestId("drawer-binding-code")
+    expect(wrap).toBeDefined()
+    expect(wrap.textContent).toContain("x = 1, y = :foo")
+    // CodeBlock renders a <code> child inside its bordered container; the
+    // wrapper itself is not a <pre>, but Kumo's CodeBlock injects one.
+    expect(wrap.querySelector("pre")).not.toBeNull()
+  })
 })
 
 describe("InboxPage outputs drawer — control types", () => {
@@ -238,13 +257,15 @@ describe("InboxPage outputs drawer — control types", () => {
     expect(submit.disabled).toBe(true)
   })
 
-  it("falls back to a JSON Textarea for unknown shapes", async () => {
-    loadSnapshot(makeRow("wi-3", "weird", schemaJson))
+  it("falls back to an Elixir InputArea for unknown shapes", async () => {
+    loadSnapshot(makeRow("wi-3", "weird", schemaElixir))
     renderWithProviders(<InboxPage />)
     await openDrawer("wi-3")
 
-    expect(screen.getByTestId("outputs-field-payload-json")).toBeDefined()
-    expect(screen.getByText(/Complex shape; provide JSON/i)).toBeDefined()
+    const textarea = screen.getByTestId("outputs-field-payload-elixir") as HTMLTextAreaElement
+    expect(textarea.tagName).toBe("TEXTAREA")
+    expect(textarea.placeholder).toBe('{:read, "text"}')
+    expect(screen.getByText(/provide an Elixir term literal/i)).toBeDefined()
   })
 })
 
@@ -302,16 +323,16 @@ describe("InboxPage outputs drawer — submission", () => {
     expect(args.outputs.note).toBe("loud")
   })
 
-  it("dispatches parsed JSON for fallback :json vars", async () => {
+  it("dispatches raw Elixir source for fallback :elixir vars", async () => {
     dispatchMock.mockResolvedValueOnce({ code: "ok" })
 
-    loadSnapshot(makeRow("wi-3", "weird", schemaJson))
+    loadSnapshot(makeRow("wi-3", "weird", schemaElixir))
     renderWithProviders(<InboxPage />)
     await openDrawer("wi-3")
 
-    const textarea = screen.getByTestId("outputs-field-payload-json") as HTMLTextAreaElement
+    const textarea = screen.getByTestId("outputs-field-payload-elixir") as HTMLTextAreaElement
     await act(async () => {
-      fireEvent.change(textarea, { target: { value: '{"k":1}' } })
+      fireEvent.change(textarea, { target: { value: '{:read, "lib/"}' } })
     })
 
     await act(async () => {
@@ -320,24 +341,25 @@ describe("InboxPage outputs drawer — submission", () => {
 
     expect(dispatchMock).toHaveBeenCalledWith({
       workitem_id: "wi-3",
-      outputs: { payload: { k: 1 } }
+      outputs: { payload: '{:read, "lib/"}' }
     })
   })
 
-  it("keeps submit disabled while JSON fallback text is invalid", async () => {
-    loadSnapshot(makeRow("wi-3", "weird", schemaJson))
+  it("keeps submit disabled while :elixir fallback text is empty", async () => {
+    loadSnapshot(makeRow("wi-3", "weird", schemaElixir))
     renderWithProviders(<InboxPage />)
     await openDrawer("wi-3")
 
-    const textarea = screen.getByTestId("outputs-field-payload-json") as HTMLTextAreaElement
+    // Initial value is empty string → required.
     const submit = screen.getByTestId("outputs-submit") as HTMLButtonElement
-    expect(submit.disabled).toBe(false)
+    expect(submit.disabled).toBe(true)
 
+    const textarea = screen.getByTestId("outputs-field-payload-elixir") as HTMLTextAreaElement
     await act(async () => {
-      fireEvent.change(textarea, { target: { value: "{not json" } })
+      fireEvent.change(textarea, { target: { value: ":approve" } })
     })
 
-    expect(submit.disabled).toBe(true)
+    expect(submit.disabled).toBe(false)
   })
 })
 
@@ -444,6 +466,42 @@ describe("InboxPage outputs drawer — reply handling (M2b regressions)", () => 
 
     expect(screen.getByTestId("outputs-form")).toBeDefined()
     expect(screen.getByText(/invalid outputs/i)).toBeDefined()
+  })
+
+  it("surfaces :invalid_elixir reply inline as actionable Banner", async () => {
+    dispatchMock.mockRejectedValueOnce(
+      new MusubiCommandError({
+        kind: "failed",
+        command: "complete_workitem",
+        storeId: ["ColouredFlowDashboardWeb.Stores.InboxStore", "default"],
+        reply: {
+          code: "invalid_elixir",
+          variable: "payload",
+          message:
+            "Output `payload` is not a valid Elixir term literal: calls and variables are not allowed (`puts`)"
+        }
+      })
+    )
+
+    loadSnapshot(makeRow("wi-3", "weird", schemaElixir))
+    renderWithProviders(<InboxPage />)
+    await openDrawer("wi-3")
+
+    const textarea = screen.getByTestId("outputs-field-payload-elixir") as HTMLTextAreaElement
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: 'IO.puts("x")' } })
+    })
+
+    await waitFor(() =>
+      expect((screen.getByTestId("outputs-submit") as HTMLButtonElement).disabled).toBe(false)
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("outputs-submit"))
+    })
+
+    expect(screen.getByTestId("outputs-form")).toBeDefined()
+    expect(screen.getByText(/invalid elixir term/i)).toBeDefined()
+    expect(screen.getByText(/calls and variables are not allowed/i)).toBeDefined()
   })
 
   it("surfaces new :type_mismatch reply inline (M5 actionable path)", async () => {

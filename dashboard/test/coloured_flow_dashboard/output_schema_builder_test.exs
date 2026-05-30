@@ -6,6 +6,10 @@ defmodule ColouredFlowDashboard.OutputSchemaBuilderTest do
   alias ColouredFlowDashboard.Seeds.IncidentTriageFlow
   alias ColouredFlowDashboardWeb.Views.OutputVar
 
+  # Pin atoms used by `:elixir` decode tests onto the BEAM so
+  # `Code.string_to_quoted(_, existing_atoms_only: true)` accepts them.
+  _atom_pins = [:tool_read, :approve, :running]
+
   describe "build/2 on ApprovalFlow (binary-only colour sets)" do
     test "resolves :approve transition to two :string slots" do
       schema = OutputSchemaBuilder.build(ApprovalFlow.cpnet(), "approve")
@@ -54,10 +58,55 @@ defmodule ColouredFlowDashboard.OutputSchemaBuilderTest do
     end
   end
 
+  describe "build/2 + example generation on tuple colour sets" do
+    test "PiAgentFlow's think_tool surfaces tc as :elixir with a tuple example" do
+      alias ColouredFlowDashboard.Seeds.PiAgentFlow
+
+      schema = OutputSchemaBuilder.build(PiAgentFlow.cpnet(), "think_tool")
+      tc = Enum.find(schema, &(&1.name == "tc"))
+
+      assert %OutputVar{kind: :elixir, colour_set: "tool_call"} = tc
+      # `tool_call :: {tool_name(), binary()}` → tool_name resolves to its
+      # first enum atom (`:read`), binary to "text". The exact rendering is
+      # deterministic given the descriptor walker.
+      assert tc.example == ~s|{:read, "text"}|
+      assert is_binary(tc.hint)
+    end
+  end
+
   describe "coerce_value/2" do
-    test "passes :json through unchanged" do
-      schema_var = %OutputVar{name: "x", colour_set: "", kind: :json, enum_values: nil, hint: nil}
-      assert {:ok, %{"a" => 1}} = OutputSchemaBuilder.coerce_value(schema_var, %{"a" => 1})
+    test "parses :elixir text into an Elixir literal" do
+      schema_var = %OutputVar{
+        name: "x",
+        colour_set: "",
+        kind: :elixir,
+        enum_values: nil,
+        hint: nil,
+        example: ":your_term"
+      }
+
+      assert {:ok, :approve} = OutputSchemaBuilder.coerce_value(schema_var, ":approve")
+
+      assert {:ok, {:tool_read, "path"}} =
+               OutputSchemaBuilder.coerce_value(schema_var, ~s({:tool_read, "path"}))
+
+      assert {:error, {:invalid_elixir, reason}} =
+               OutputSchemaBuilder.coerce_value(schema_var, ~s|IO.puts("x")|)
+
+      assert is_binary(reason)
+    end
+
+    test "rejects non-binary :elixir input as type mismatch" do
+      v = %OutputVar{
+        name: "x",
+        colour_set: "",
+        kind: :elixir,
+        enum_values: nil,
+        hint: nil,
+        example: ":your_term"
+      }
+
+      assert {:error, {:type_mismatch, "elixir"}} = OutputSchemaBuilder.coerce_value(v, 42)
     end
 
     test "accepts integers" do

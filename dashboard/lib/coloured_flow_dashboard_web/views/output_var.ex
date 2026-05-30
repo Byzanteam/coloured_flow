@@ -15,12 +15,16 @@ defmodule ColouredFlowDashboardWeb.Views.OutputVar do
     * `:enum`    — `:a | :b | :c` → Kumo `Select` populated from
       `enum_values` (atoms surface as strings; the runner re-atomises via
       `String.to_existing_atom/1`).
-    * `:json`    — fallback for `:tuple`, `:map`, `:union`, `:list`, `:float`,
-      or any unknown construct. The SPA renders a `Textarea` and treats the
-      contents as raw JSON.
+    * `:elixir`  — fallback for `:tuple`, `:map`, `:union`, `:list`, `:float`,
+      or any unknown construct. The SPA renders a Kumo `InputArea` and
+      expects the operator to type an Elixir term literal (e.g.
+      `{:approve, "note"}`, `[user: "hi"]`, `:running`). The backend parses
+      it with `Code.string_to_quoted/2` plus a literal-only walker.
 
   `hint` carries a short reason whenever the resolver could not pick a
-  richer kind — the SPA shows it as helper text under the field.
+  richer kind — the SPA shows it as helper text under the field. `example`
+  carries a short literal preview suitable for the textarea placeholder when
+  `kind` is `:elixir`.
   """
 
   use Musubi.State
@@ -28,8 +32,9 @@ defmodule ColouredFlowDashboardWeb.Views.OutputVar do
   state do
     field :name, String.t()
     field :colour_set, String.t()
-    field :kind, :string | :integer | :boolean | :enum | :json
+    field :kind, :string | :integer | :boolean | :enum | :elixir
     field :enum_values, list(String.t()) | nil
     field :hint, String.t() | nil
+    field :example, String.t() | nil
   end
 end
