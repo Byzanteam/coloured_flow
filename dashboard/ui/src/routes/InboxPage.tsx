@@ -66,7 +66,11 @@ class StoreBoundary extends Component<StoreBoundaryProps, StoreBoundaryState> {
 function InboxShell({ children }: { children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-6">
-      <PageHeader title="Inbox" subtitle="Live workitems across every enactment" />
+      <PageHeader
+        title="Inbox"
+        subtitle="Live workitems across every enactment"
+        breadcrumbs={[{ label: "Inbox" }]}
+      />
       {children}
     </section>
   )

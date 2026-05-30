@@ -1,7 +1,13 @@
 import type { ReactNode } from "react"
+import { Breadcrumbs } from "@cloudflare/kumo"
 
 import ConnectionPill from "./ConnectionPill"
 import { useEmbedMode } from "../hooks/useEmbedMode"
+
+export interface BreadcrumbItem {
+  label: string
+  to?: string
+}
 
 interface PageHeaderProps {
   title: ReactNode
@@ -10,6 +16,12 @@ interface PageHeaderProps {
   actions?: ReactNode
   /** Slot below the title row, e.g. a short stat / id readout. */
   byline?: ReactNode
+  /**
+   * Optional breadcrumb trail rendered above the title. The last item is
+   * treated as the current page (non-link); earlier items render as links
+   * when `to` is provided, otherwise as plain labels.
+   */
+  breadcrumbs?: ReadonlyArray<BreadcrumbItem>
 }
 
 /**
@@ -17,7 +29,13 @@ interface PageHeaderProps {
  * sit on the left; the connection pill (and any contextual actions) sit on
  * the right. Padding lives on the route container, not here.
  */
-export default function PageHeader({ title, subtitle, byline, actions }: PageHeaderProps) {
+export default function PageHeader({
+  title,
+  subtitle,
+  byline,
+  actions,
+  breadcrumbs
+}: PageHeaderProps) {
   const { embed } = useEmbedMode()
 
   // Embed mode keeps the live status + action chips so operators can still
@@ -37,18 +55,56 @@ export default function PageHeader({ title, subtitle, byline, actions }: PageHea
   }
 
   return (
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-cf-ink">
-          {title}
-        </h1>
-        {subtitle ? <p className="text-sm text-cf-ink-muted">{subtitle}</p> : null}
-        {byline ? <div className="pt-1">{byline}</div> : null}
-      </div>
-      <div className="flex items-center gap-2">
-        <ConnectionPill />
-        {actions}
-      </div>
-    </header>
+    <div className="flex flex-col gap-2">
+      {breadcrumbs && breadcrumbs.length > 0 ? (
+        <BreadcrumbTrail items={breadcrumbs} />
+      ) : null}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-cf-ink">
+            {title}
+          </h1>
+          {subtitle ? <p className="text-sm text-cf-ink-muted">{subtitle}</p> : null}
+          {byline ? <div className="pt-1">{byline}</div> : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <ConnectionPill />
+          {actions}
+        </div>
+      </header>
+    </div>
+  )
+}
+
+function BreadcrumbTrail({ items }: { items: ReadonlyArray<BreadcrumbItem> }) {
+  const lastIndex = items.length - 1
+  return (
+    <div data-testid="page-header-breadcrumbs">
+      <Breadcrumbs size="sm">
+        {items.flatMap((item, index) => {
+          const isCurrent = index === lastIndex
+          const nodes: ReactNode[] = []
+          if (index > 0) {
+            nodes.push(<Breadcrumbs.Separator key={`sep-${index}`} />)
+          }
+          if (isCurrent) {
+            nodes.push(
+              <Breadcrumbs.Current key={`crumb-${index}`}>{item.label}</Breadcrumbs.Current>
+            )
+          } else if (item.to) {
+            nodes.push(
+              <Breadcrumbs.Link key={`crumb-${index}`} href={item.to}>
+                {item.label}
+              </Breadcrumbs.Link>
+            )
+          } else {
+            nodes.push(
+              <Breadcrumbs.Current key={`crumb-${index}`}>{item.label}</Breadcrumbs.Current>
+            )
+          }
+          return nodes
+        })}
+      </Breadcrumbs>
+    </div>
   )
 }

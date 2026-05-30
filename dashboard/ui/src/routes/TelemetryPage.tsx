@@ -66,6 +66,7 @@ function TelemetryShell({ children }: { children: ReactNode }) {
       <PageHeader
         title="Telemetry"
         subtitle="Live runner event stream across every enactment"
+        breadcrumbs={[{ label: "Telemetry" }]}
       />
       {children}
     </section>

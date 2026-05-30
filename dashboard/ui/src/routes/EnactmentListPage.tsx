@@ -69,6 +69,7 @@ function ListShell({ children }: { children: ReactNode }) {
       <PageHeader
         title="Enactments"
         subtitle="Every running, terminated, or excepted enactment"
+        breadcrumbs={[{ label: "Enactments" }]}
       />
       {children}
     </section>

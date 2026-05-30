@@ -84,6 +84,7 @@ function CatalogShell({ children }: { children: ReactNode }) {
       <PageHeader
         title="Flows"
         subtitle="Reusable workflow definitions and their running enactments"
+        breadcrumbs={[{ label: "Flows" }]}
       />
       {children}
     </section>

@@ -1296,7 +1296,9 @@ function detailBreadcrumbs(enactmentId: string) {
 }
 
 function shortEnactmentId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id
+  // Six-char prefix keeps the breadcrumb crumb visibly shorter than the full
+  // id rendered below in the byline, so the two never collide visually.
+  return id.length > 6 ? id.slice(0, 6) : id
 }
 
 function formatTimestamp(iso: string): string {
