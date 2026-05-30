@@ -7,6 +7,7 @@ import {
   ClipboardText,
   CodeBlock,
   Dialog,
+  Empty,
   Input,
   InputArea,
   LayerCard,
@@ -21,7 +22,10 @@ import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../m
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
+import ListControls from "../components/ListControls"
+import ListPagination from "../components/ListPagination"
 import { useEmbedMode } from "../hooks/useEmbedMode"
+import { useListSearchParams } from "../hooks/useListSearchParams"
 
 const INBOX_STORE = "ColouredFlowDashboardWeb.Stores.InboxStore" as const
 
@@ -81,13 +85,72 @@ function InboxError({ message }: { message: string }) {
   return <Banner variant="error" title="Inbox unavailable" description={message} />
 }
 
+const INBOX_STATE_OPTIONS: ReadonlyArray<WorkitemRow["state"] | "exception" | "terminated"> = [
+  "enabled",
+  "started",
+  "exception",
+  "terminated"
+]
+const INBOX_STATE_PARAM = "state"
+const INBOX_TRANSITION_PARAM = "transition"
+
+function rowMatchesState(
+  row: WorkitemRow,
+  selected: ReadonlyArray<string>
+): boolean {
+  if (selected.length === 0) return true
+  // A row "matches" the enactment lifecycle pills when its enactment_state
+  // appears in the selection — that way operators can filter to e.g. just
+  // exception-enactment rows even though the workitem itself is still
+  // enabled/started.
+  if (selected.includes(row.enactment_state)) return true
+  return selected.includes(row.state)
+}
+
+function rowMatchesQuery(row: WorkitemRow, q: string): boolean {
+  if (q === "") return true
+  const needle = q.toLowerCase()
+  const haystacks = [
+    row.transition,
+    row.enactment_id.slice(0, 8),
+    row.binding_summary ?? ""
+  ]
+  return haystacks.some((s) => s.toLowerCase().includes(needle))
+}
+
 function InboxContent({ inbox }: { inbox: InboxProxy }) {
   const snapshot = useMusubiSnapshot(inbox)
   const { embed } = useEmbedMode()
+  const params = useListSearchParams()
 
   const workitems: readonly WorkitemRow[] = snapshot.workitems ?? []
   const counts = snapshot.counts ?? { enabled: 0, started: 0, by_enactment: {} }
   const enactmentCount = Object.keys(counts.by_enactment ?? {}).length
+
+  const selectedStates = params.readList(INBOX_STATE_PARAM)
+  const selectedTransitions = params.readList(INBOX_TRANSITION_PARAM)
+
+  const transitionOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const wi of workitems) set.add(wi.transition)
+    return Array.from(set).sort()
+  }, [workitems])
+
+  const filteredRows = useMemo(() => {
+    const transitionFilter = new Set(selectedTransitions)
+    const stateFilter = selectedStates
+    return workitems.filter((row) => {
+      if (transitionFilter.size > 0 && !transitionFilter.has(row.transition)) return false
+      if (!rowMatchesState(row, stateFilter)) return false
+      if (!rowMatchesQuery(row, params.q)) return false
+      return true
+    })
+  }, [workitems, params.q, selectedStates, selectedTransitions])
+
+  const pageRows = useMemo(() => {
+    const start = (params.page - 1) * params.pageSize
+    return filteredRows.slice(start, start + params.pageSize)
+  }, [filteredRows, params.page, params.pageSize])
 
   const [drawerRow, setDrawerRow] = useState<WorkitemRow | null>(null)
 
@@ -99,6 +162,16 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
     const stillLive = workitems.some((wi) => wi.id === drawerRow.id)
     if (!stillLive) setDrawerRow(null)
   }, [workitems, drawerRow])
+
+  const hasActiveFilters =
+    params.q !== "" || selectedStates.length > 0 || selectedTransitions.length > 0
+
+  const clearFilters = () =>
+    params.clear([
+      "q",
+      INBOX_STATE_PARAM,
+      INBOX_TRANSITION_PARAM
+    ])
 
   return (
     <>
@@ -112,13 +185,41 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
         />
       )}
 
+      <ListControls
+        q={params.q}
+        onQChange={params.setQ}
+        searchPlaceholder="Search transition, enactment, binding…"
+        pageSize={params.pageSize}
+        onPageSizeChange={params.setPageSize}
+      >
+        <InboxStateFilter
+          selected={selectedStates}
+          onChange={(next) => params.setList(INBOX_STATE_PARAM, next)}
+        />
+        <InboxTransitionFilter
+          options={transitionOptions}
+          selected={selectedTransitions}
+          onChange={(next) => params.setList(INBOX_TRANSITION_PARAM, next)}
+        />
+      </ListControls>
+
       <LayerCard.Primary className="overflow-hidden p-0">
         {workitems.length === 0 ? (
           <InboxEmpty />
+        ) : filteredRows.length === 0 ? (
+          <InboxFiltersEmpty onClear={clearFilters} canClear={hasActiveFilters} />
         ) : (
-          <InboxTable rows={workitems} onOpen={setDrawerRow} />
+          <InboxTable rows={pageRows} onOpen={setDrawerRow} />
         )}
       </LayerCard.Primary>
+
+      <ListPagination
+        page={params.page}
+        pageSize={params.pageSize}
+        totalCount={workitems.length}
+        filteredCount={filteredRows.length}
+        setPage={params.setPage}
+      />
 
       <OutputsDrawer
         inbox={inbox}
@@ -126,6 +227,116 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
         onClose={() => setDrawerRow(null)}
       />
     </>
+  )
+}
+
+function InboxStateFilter({
+  selected,
+  onChange
+}: {
+  selected: ReadonlyArray<string>
+  onChange: (next: string[]) => void
+}) {
+  const selectedSet = new Set(selected)
+  const toggle = (value: string) => {
+    const next = new Set(selectedSet)
+    if (next.has(value)) next.delete(value)
+    else next.add(value)
+    onChange(Array.from(next))
+  }
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      role="group"
+      aria-label="Filter by state"
+      data-testid="inbox-state-filter"
+    >
+      {INBOX_STATE_OPTIONS.map((value) => {
+        const active = selectedSet.has(value)
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => toggle(value)}
+            aria-pressed={active}
+            data-testid={`inbox-state-filter-${value}`}
+            className={
+              "inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-medium capitalize transition-colors " +
+              (active
+                ? "border-cf-accent-ink/60 bg-cf-accent-tint text-cf-accent-ink"
+                : "border-cf-border bg-cf-surface text-cf-ink-muted hover:bg-cf-surface-tint/60")
+            }
+          >
+            {value}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function InboxTransitionFilter({
+  options,
+  selected,
+  onChange
+}: {
+  options: readonly string[]
+  selected: ReadonlyArray<string>
+  onChange: (next: string[]) => void
+}) {
+  if (options.length === 0 && selected.length === 0) {
+    return null
+  }
+  return (
+    <label className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-cf-ink-muted">
+      Transition
+      <select
+        multiple
+        size={1}
+        className="min-w-[8rem] rounded-md border border-cf-border bg-cf-surface px-2 py-1 text-xs font-medium text-cf-ink outline-none focus:ring-[1.5px] focus:ring-kumo-focus/50"
+        value={selected as string[]}
+        onChange={(event) => {
+          const next: string[] = []
+          for (const opt of Array.from(event.target.selectedOptions)) {
+            next.push(opt.value)
+          }
+          onChange(next)
+        }}
+        aria-label="Filter by transition"
+        data-testid="inbox-transition-filter"
+      >
+        {options.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function InboxFiltersEmpty({
+  onClear,
+  canClear
+}: {
+  onClear: () => void
+  canClear: boolean
+}) {
+  return (
+    <div className="px-6 py-10" data-testid="inbox-filters-empty">
+      <Empty
+        size="sm"
+        title="No workitems match these filters"
+        description="Adjust the search, state, or transition filters to widen the result set."
+        contents={
+          canClear ? (
+            <Button variant="secondary" size="sm" onClick={onClear}>
+              Clear filters
+            </Button>
+          ) : null
+        }
+      />
+    </div>
   )
 }
 

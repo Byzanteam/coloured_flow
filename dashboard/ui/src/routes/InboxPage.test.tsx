@@ -606,8 +606,9 @@ describe("InboxPage row — enactment_state affordances (P19 M6)", () => {
     loadSnapshot(makeRowWithEnactmentState("wi-exc", "exception"))
     renderWithRouter(<InboxPage />)
 
-    expect(screen.getByTestId("inbox-enactment-chip-exception")).toBeDefined()
-    expect(screen.getByText(/Exception/i)).toBeDefined()
+    const chip = screen.getByTestId("inbox-enactment-chip-exception")
+    expect(chip).toBeDefined()
+    expect(chip.textContent).toMatch(/Exception/i)
 
     const link = screen.getByTestId("inbox-open-detail-wi-exc") as HTMLAnchorElement
     expect(link.tagName).toBe("A")
@@ -623,8 +624,9 @@ describe("InboxPage row — enactment_state affordances (P19 M6)", () => {
     loadSnapshot(makeRowWithEnactmentState("wi-term", "terminated"))
     renderWithRouter(<InboxPage />)
 
-    expect(screen.getByTestId("inbox-enactment-chip-terminated")).toBeDefined()
-    expect(screen.getByText(/Terminated/i)).toBeDefined()
+    const chip = screen.getByTestId("inbox-enactment-chip-terminated")
+    expect(chip).toBeDefined()
+    expect(chip.textContent).toMatch(/Terminated/i)
 
     const link = screen.getByTestId("inbox-open-detail-wi-term") as HTMLAnchorElement
     expect(link.tagName).toBe("A")
@@ -633,5 +635,142 @@ describe("InboxPage row — enactment_state affordances (P19 M6)", () => {
     expect(
       screen.queryByRole("button", { name: /open outputs drawer for workitem wi-term/i })
     ).toBeNull()
+  })
+})
+
+describe("InboxPage controls — search/filter/pagination", () => {
+  beforeEach(() => {
+    dispatchMock.mockReset()
+    snapshotMock.mockReset()
+  })
+
+  function loadMany(rows: WorkitemRow[]) {
+    snapshotMock.mockReturnValue({
+      workitems: rows,
+      counts: {
+        enabled: rows.filter((r) => r.state === "enabled").length,
+        started: rows.filter((r) => r.state === "started").length,
+        by_enactment: rows.reduce<Record<string, number>>((acc, r) => {
+          acc[r.enactment_id] = (acc[r.enactment_id] ?? 0) + 1
+          return acc
+        }, {})
+      }
+    })
+  }
+
+  function buildN(n: number, transitions: readonly string[] = ["approve"]): WorkitemRow[] {
+    return Array.from({ length: n }, (_, i) =>
+      makeRow(`wi-${i}`, transitions[i % transitions.length]!, schemaBinary)
+    )
+  }
+
+  function renderAt(initialEntries: string[] = ["/"]) {
+    return render(
+      <MemoryRouter initialEntries={initialEntries}>
+        <Toasty>
+          <InboxPage />
+        </Toasty>
+      </MemoryRouter>
+    )
+  }
+
+  it("filters rows by free-text search against transition", async () => {
+    const rows = [
+      makeRow("wi-a", "approve", schemaBinary),
+      makeRow("wi-b", "notify", schemaBinary),
+      makeRow("wi-c", "submit", schemaBinary)
+    ]
+    loadMany(rows)
+    renderAt()
+
+    expect(screen.getByTestId("inbox-row-wi-a")).toBeDefined()
+    expect(screen.getByTestId("inbox-row-wi-b")).toBeDefined()
+    expect(screen.getByTestId("inbox-row-wi-c")).toBeDefined()
+
+    const search = screen.getByTestId("list-controls-search") as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "notify" } })
+    })
+
+    expect(screen.queryByTestId("inbox-row-wi-a")).toBeNull()
+    expect(screen.getByTestId("inbox-row-wi-b")).toBeDefined()
+    expect(screen.queryByTestId("inbox-row-wi-c")).toBeNull()
+  })
+
+  it("narrows by state filter chip", async () => {
+    const rows: WorkitemRow[] = [
+      { ...makeRow("wi-en", "approve", schemaBinary), state: "enabled" },
+      { ...makeRow("wi-st", "approve", schemaBinary), state: "started" }
+    ]
+    loadMany(rows)
+    renderAt()
+
+    expect(screen.getByTestId("inbox-row-wi-en")).toBeDefined()
+    expect(screen.getByTestId("inbox-row-wi-st")).toBeDefined()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("inbox-state-filter-started"))
+    })
+
+    expect(screen.queryByTestId("inbox-row-wi-en")).toBeNull()
+    expect(screen.getByTestId("inbox-row-wi-st")).toBeDefined()
+  })
+
+  it("paginates with the page-size selector and exposes total count", async () => {
+    loadMany(buildN(30))
+    renderAt()
+
+    // Default page size 25 → 25 rows visible + pagination info reflects total.
+    expect(screen.queryByTestId("inbox-row-wi-24")).toBeDefined()
+    expect(screen.queryByTestId("inbox-row-wi-25")).toBeNull()
+    expect(screen.getByTestId("list-pagination-info").textContent).toMatch(
+      /Showing 1–25 of 30/
+    )
+
+    const pageSize = screen.getByTestId("list-controls-page-size") as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(pageSize, { target: { value: "10" } })
+    })
+
+    expect(screen.queryByTestId("inbox-row-wi-9")).toBeDefined()
+    expect(screen.queryByTestId("inbox-row-wi-10")).toBeNull()
+    expect(screen.getByTestId("list-pagination-info").textContent).toMatch(
+      /Showing 1–10 of 30/
+    )
+  })
+
+  it("hydrates from URL search params (q + pageSize + page)", () => {
+    // Mix transitions so search narrows by transition substring, the only
+    // text the rows expose to the matcher.
+    loadMany(buildN(30, ["approve", "notify", "submit"]))
+    renderAt(["/?q=notify&pageSize=10&page=2"])
+
+    expect((screen.getByTestId("list-controls-search") as HTMLInputElement).value).toBe(
+      "notify"
+    )
+    expect((screen.getByTestId("list-controls-page-size") as HTMLSelectElement).value).toBe(
+      "10"
+    )
+    // pageSize=10, only ~10 notify rows; page 2 shows nothing → pagination
+    // clamps back to page 1 and renders the rows.
+    expect(screen.getAllByTestId(/inbox-row-wi-/).length).toBeGreaterThan(0)
+  })
+
+  it("shows the Empty + Clear filters affordance when filters strand every row", async () => {
+    loadMany([makeRow("wi-1", "approve", schemaBinary)])
+    renderAt()
+
+    const search = screen.getByTestId("list-controls-search") as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "zzzzz-no-match" } })
+    })
+
+    expect(screen.getByTestId("inbox-filters-empty")).toBeDefined()
+    const clear = screen.getByRole("button", { name: /clear filters/i })
+    await act(async () => {
+      fireEvent.click(clear)
+    })
+
+    expect(screen.getByTestId("inbox-row-wi-1")).toBeDefined()
   })
 })

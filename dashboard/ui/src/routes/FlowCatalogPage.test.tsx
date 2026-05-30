@@ -211,3 +211,102 @@ describe("FlowCatalogPage — start enactment", () => {
     expect(navigateMock).not.toHaveBeenCalled()
   })
 })
+
+describe("FlowCatalogPage controls — search/filter/pagination", () => {
+  beforeEach(() => {
+    dispatchMock.mockReset()
+    snapshotMock.mockReset()
+    navigateMock.mockReset()
+  })
+
+  function renderAt(initialEntries: string[] = ["/flows"]) {
+    return render(
+      <MemoryRouter initialEntries={initialEntries}>
+        <Toasty>
+          <FlowCatalogPage />
+        </Toasty>
+      </MemoryRouter>
+    )
+  }
+
+  it("filters cards by name substring", async () => {
+    loadSnapshot([
+      makeFlow("flow-1", "Approval Demo"),
+      makeFlow("flow-2", "Traffic Light"),
+      makeFlow("flow-3", "Pi Agent")
+    ])
+    renderAt()
+
+    expect(screen.getByTestId("flow-card-flow-1")).toBeDefined()
+    expect(screen.getByTestId("flow-card-flow-2")).toBeDefined()
+    expect(screen.getByTestId("flow-card-flow-3")).toBeDefined()
+
+    const search = screen.getByTestId("list-controls-search") as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "traffic" } })
+    })
+
+    expect(screen.queryByTestId("flow-card-flow-1")).toBeNull()
+    expect(screen.getByTestId("flow-card-flow-2")).toBeDefined()
+    expect(screen.queryByTestId("flow-card-flow-3")).toBeNull()
+  })
+
+  it("hides idle flows when the Live only switch is toggled on", async () => {
+    loadSnapshot([
+      makeFlow("flow-1", "Approval Demo", { live_enactments: 0 }),
+      makeFlow("flow-2", "Traffic Light", { live_enactments: 3 })
+    ])
+    renderAt()
+
+    expect(screen.getByTestId("flow-card-flow-1")).toBeDefined()
+    expect(screen.getByTestId("flow-card-flow-2")).toBeDefined()
+
+    const toggle = screen.getByTestId("flow-catalog-live-only") as HTMLButtonElement
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+
+    expect(screen.queryByTestId("flow-card-flow-1")).toBeNull()
+    expect(screen.getByTestId("flow-card-flow-2")).toBeDefined()
+  })
+
+  it("paginates cards according to the page-size selector", async () => {
+    const flows = Array.from({ length: 14 }, (_, i) => makeFlow(`flow-${i}`, `Flow ${i}`))
+    loadSnapshot(flows)
+    renderAt(["/flows?pageSize=10"])
+
+    expect(screen.getByTestId("flow-card-flow-0")).toBeDefined()
+    expect(screen.getByTestId("flow-card-flow-9")).toBeDefined()
+    expect(screen.queryByTestId("flow-card-flow-10")).toBeNull()
+    expect(screen.getByTestId("list-pagination-info").textContent).toMatch(
+      /Showing 1–10 of 14/
+    )
+  })
+
+  it("hydrates Live only state from the URL", () => {
+    loadSnapshot([
+      makeFlow("flow-1", "Approval Demo", { live_enactments: 0 }),
+      makeFlow("flow-2", "Traffic Light", { live_enactments: 1 })
+    ])
+    renderAt(["/flows?live_only=1"])
+
+    expect(screen.queryByTestId("flow-card-flow-1")).toBeNull()
+    expect(screen.getByTestId("flow-card-flow-2")).toBeDefined()
+  })
+
+  it("shows Empty + Clear filters when no flow matches", async () => {
+    loadSnapshot([makeFlow("flow-1", "Approval Demo")])
+    renderAt()
+
+    const search = screen.getByTestId("list-controls-search") as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "no-match" } })
+    })
+
+    expect(screen.getByTestId("flow-catalog-filters-empty")).toBeDefined()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /clear filters/i }))
+    })
+    expect(screen.getByTestId("flow-card-flow-1")).toBeDefined()
+  })
+})

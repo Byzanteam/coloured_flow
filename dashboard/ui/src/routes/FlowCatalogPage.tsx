@@ -1,11 +1,13 @@
-import { Component, type ReactNode, Suspense, useState } from "react"
+import { Component, type ReactNode, Suspense, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   Badge,
   Banner,
   Button,
   Dialog,
+  Empty,
   LayerCard,
+  Switch,
   Text,
   useKumoToastManager
 } from "@cloudflare/kumo"
@@ -16,7 +18,10 @@ import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../m
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
 import MetricsRow from "../components/MetricsRow"
+import ListControls from "../components/ListControls"
+import ListPagination from "../components/ListPagination"
 import { useEmbedMode } from "../hooks/useEmbedMode"
+import { useListSearchParams } from "../hooks/useListSearchParams"
 
 const FLOW_CATALOG_STORE = "ColouredFlowDashboardWeb.Stores.FlowCatalogStore" as const
 
@@ -97,6 +102,13 @@ function CatalogError({ message }: { message: string }) {
   return <Banner variant="error" title="Catalog unavailable" description={message} />
 }
 
+const LIVE_ONLY_PARAM = "live_only"
+
+function flowMatchesQuery(flow: FlowSummary, q: string): boolean {
+  if (q === "") return true
+  return flow.name.toLowerCase().includes(q.toLowerCase())
+}
+
 function CatalogContent({
   catalog,
   detailModule
@@ -106,11 +118,30 @@ function CatalogContent({
 }) {
   const snapshot = useMusubiSnapshot(catalog)
   const { embed } = useEmbedMode()
+  const params = useListSearchParams()
 
   const flows: readonly FlowSummary[] = snapshot.flows ?? []
   const counts = snapshot.counts ?? { total_flows: 0, total_live_enactments: 0 }
 
+  const liveOnly = params.read(LIVE_ONLY_PARAM) === "1"
+
+  const filteredFlows = useMemo(() => {
+    return flows.filter((flow) => {
+      if (liveOnly && (flow.live_enactments ?? 0) === 0) return false
+      if (!flowMatchesQuery(flow, params.q)) return false
+      return true
+    })
+  }, [flows, params.q, liveOnly])
+
+  const pageFlows = useMemo(() => {
+    const start = (params.page - 1) * params.pageSize
+    return filteredFlows.slice(start, start + params.pageSize)
+  }, [filteredFlows, params.page, params.pageSize])
+
   const [startTarget, setStartTarget] = useState<FlowSummary | null>(null)
+
+  const hasActiveFilters = params.q !== "" || liveOnly
+  const clearFilters = () => params.clear(["q", LIVE_ONLY_PARAM])
 
   return (
     <>
@@ -131,18 +162,48 @@ function CatalogContent({
         />
       ) : null}
 
+      <ListControls
+        q={params.q}
+        onQChange={params.setQ}
+        searchPlaceholder="Search by flow name…"
+        pageSize={params.pageSize}
+        onPageSizeChange={params.setPageSize}
+      >
+        <Switch
+          size="sm"
+          variant="neutral"
+          label="Live only"
+          controlFirst={false}
+          checked={liveOnly}
+          onCheckedChange={(checked) =>
+            params.setParam(LIVE_ONLY_PARAM, checked ? "1" : null)
+          }
+          data-testid="flow-catalog-live-only"
+        />
+      </ListControls>
+
       {flows.length === 0 ? (
         <CatalogEmpty />
+      ) : filteredFlows.length === 0 ? (
+        <CatalogFiltersEmpty onClear={clearFilters} canClear={hasActiveFilters} />
       ) : (
         <div
           className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
           data-testid="flow-catalog-grid"
         >
-          {flows.map((flow) => (
+          {pageFlows.map((flow) => (
             <FlowCard key={flow.id} flow={flow} onStart={() => setStartTarget(flow)} />
           ))}
         </div>
       )}
+
+      <ListPagination
+        page={params.page}
+        pageSize={params.pageSize}
+        totalCount={flows.length}
+        filteredCount={filteredFlows.length}
+        setPage={params.setPage}
+      />
 
       <StartEnactmentDialog
         catalog={catalog}
@@ -150,6 +211,31 @@ function CatalogContent({
         onClose={() => setStartTarget(null)}
       />
     </>
+  )
+}
+
+function CatalogFiltersEmpty({
+  onClear,
+  canClear
+}: {
+  onClear: () => void
+  canClear: boolean
+}) {
+  return (
+    <LayerCard.Primary className="px-6 py-10" data-testid="flow-catalog-filters-empty">
+      <Empty
+        size="sm"
+        title="No flows match these filters"
+        description="Adjust the search or toggle the live-only filter."
+        contents={
+          canClear ? (
+            <Button variant="secondary" size="sm" onClick={onClear}>
+              Clear filters
+            </Button>
+          ) : null
+        }
+      />
+    </LayerCard.Primary>
   )
 }
 
