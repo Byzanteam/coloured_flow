@@ -183,7 +183,7 @@ function TelemetryContent({
         />
       </ListControls>
 
-      <LayerCard.Primary className="overflow-hidden p-0">
+      <LayerCard.Primary className="overflow-x-auto p-0">
         {entries.length === 0 ? (
           <TelemetryEmpty />
         ) : filteredRows.length === 0 ? (

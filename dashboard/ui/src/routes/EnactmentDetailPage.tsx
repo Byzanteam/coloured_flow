@@ -895,7 +895,7 @@ function MarkingsTab({
           description="The enactment currently has no tokens on any place."
         />
       ) : (
-        <LayerCard.Primary className="overflow-hidden p-0">
+        <LayerCard.Primary className="overflow-x-auto p-0">
           <Table>
             <Table.Header>
               <Table.Row>
@@ -944,7 +944,7 @@ function WorkitemsTab({
   }
 
   return (
-    <LayerCard.Primary className="overflow-hidden p-0">
+    <LayerCard.Primary className="overflow-x-auto p-0">
       <Table>
         <Table.Header>
           <Table.Row>
@@ -1008,7 +1008,7 @@ function OccurrencesTab({ rows }: { rows: readonly OccurrenceRow[] }) {
   }
 
   return (
-    <LayerCard.Primary className="overflow-hidden p-0">
+    <LayerCard.Primary className="overflow-x-auto p-0">
       <Table>
         <Table.Header>
           <Table.Row>
@@ -1393,7 +1393,7 @@ function DebugTab({
             data-testid="debug-no-candidates"
           />
         ) : (
-          <LayerCard.Primary className="overflow-hidden p-0">
+          <LayerCard.Primary className="overflow-x-auto p-0">
             <Table>
               <Table.Header>
                 <Table.Row>

@@ -354,7 +354,7 @@ function EnactmentsSection({
 }) {
   return (
     <LayerCard.Primary
-      className="overflow-hidden p-0"
+      className="overflow-x-auto p-0"
       data-testid="flow-detail-enactments"
     >
       <div className="flex items-center justify-between border-b border-cf-border px-5 py-3">

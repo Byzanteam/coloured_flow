@@ -175,7 +175,7 @@ function ListContent({
         />
       </ListControls>
 
-      <LayerCard.Primary className="overflow-hidden p-0">
+      <LayerCard.Primary className="overflow-x-auto p-0">
         {rows.length === 0 ? (
           <ListEmpty />
         ) : filteredRows.length === 0 ? (

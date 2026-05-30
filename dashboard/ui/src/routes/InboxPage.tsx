@@ -214,7 +214,7 @@ function InboxContent({ inbox }: { inbox: InboxProxy }) {
         />
       </ListControls>
 
-      <LayerCard.Primary className="overflow-hidden p-0">
+      <LayerCard.Primary className="overflow-x-auto p-0">
         {workitems.length === 0 ? (
           <InboxEmpty />
         ) : filteredRows.length === 0 ? (
