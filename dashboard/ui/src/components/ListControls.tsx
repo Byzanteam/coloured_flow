@@ -36,7 +36,7 @@ export default function ListControls({
 
   return (
     <div
-      className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-cf-border bg-cf-surface/95 px-4 py-3 backdrop-blur"
+      className="sticky top-0 flex flex-wrap items-center gap-3 rounded-xl border border-cf-border bg-cf-surface px-4 py-3"
       data-testid="list-controls"
     >
       <div className="min-w-[14rem] flex-1">

@@ -120,7 +120,7 @@ export default function RootLayout() {
               <SidebarFooterContent />
             </Sidebar.Footer>
           </Sidebar>
-          <main className="relative flex-1 overflow-auto px-10 py-8">
+          <main className="relative isolate flex-1 overflow-auto px-10 py-8">
             <MobileSidebarTrigger />
             <Outlet />
           </main>
