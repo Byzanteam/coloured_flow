@@ -905,13 +905,13 @@ describe("EnactmentDetailPage", () => {
           "arc-p_to_t-pending-approve-0",
           "arc-t_to_p-decided-approve-1"
         ])
-        // 1× speed default → 600ms duration is reported to NetDiagram.
+        // 1× speed default → 1000ms shared SPEED_DURATION_MS reported to NetDiagram.
         expect(
           screen.getByTestId("net-diagram-stub").dataset.firingDuration
-        ).toBe("600")
+        ).toBe("1000")
 
         await act(async () => {
-          vi.advanceTimersByTime(700)
+          vi.advanceTimersByTime(1100)
         })
         expect(screen.getByTestId("net-diagram-stub").dataset.firingEdges).toBe("[]")
       } finally {

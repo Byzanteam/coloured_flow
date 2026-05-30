@@ -30,7 +30,7 @@ import PageHeader from "../components/PageHeader"
 import NetDiagram from "../components/NetDiagram"
 import ColourSetsPanel from "../components/ColourSetsPanel"
 import OutputsDrawer from "../components/OutputsDrawer"
-import TimelineScrubber, { type SpeedKey } from "../components/TimelineScrubber"
+import TimelineScrubber, { SPEED_DURATION_MS, type SpeedKey } from "../components/TimelineScrubber"
 import { useEmbedMode } from "../hooks/useEmbedMode"
 import { prettyJson } from "../lib/prettyJson"
 
@@ -50,14 +50,9 @@ type DetailProxy = StoreProxy<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
 
 type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 
-// Firing edge fill duration per speed. Mirrors TimelineScrubber tick cadence
-// scaled to a comfortable ease-out sweep: 1× → 600ms, 4× → 150ms, 0.25×
-// → 2400ms.
-const SPEED_TO_FIRING_MS: Record<SpeedKey, number> = {
-  "0.25": 2400,
-  "1": 600,
-  "4": 150
-}
+// Firing edge fill duration per speed reuses the shared SPEED_DURATION_MS map
+// so the edge fill animation finishes in lock-step with the autoplay tick AND
+// the scrubber thumb glide (driven by the same constant).
 
 const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
 
@@ -196,7 +191,7 @@ function DetailContent({
   // picked. TimelineScrubber still owns its own speed-ref logic for autoplay
   // ticks; this state mirrors the latest choice via `onSpeedChange`.
   const [speed, setSpeed] = useState<SpeedKey>("1")
-  const firingDurationMs = SPEED_TO_FIRING_MS[speed]
+  const firingDurationMs = SPEED_DURATION_MS[speed]
 
   const summary: EnactmentSummary | undefined = snapshot.summary
   const liveMarkings: readonly MarkingRow[] = snapshot.markings ?? []

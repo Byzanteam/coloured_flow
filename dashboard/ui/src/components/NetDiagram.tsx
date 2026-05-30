@@ -90,11 +90,23 @@ const DEFAULT_EDGE_STYLE = {
   strokeWidth: 1.5
 } as const
 
+const ENABLED_EDGE_STYLE = {
+  stroke: "var(--color-cf-accent-tint)",
+  strokeWidth: 2
+} as const
+
 const DEFAULT_MARKER = {
   type: MarkerType.ArrowClosed,
   width: 14,
   height: 14,
   color: "var(--color-cf-border-strong)"
+}
+
+const ENABLED_MARKER = {
+  type: MarkerType.ArrowClosed,
+  width: 14,
+  height: 14,
+  color: "var(--color-cf-accent-tint)"
 }
 
 export default function NetDiagram({
@@ -176,6 +188,11 @@ export function buildGraph(
 
   const transitionW = computeTransitionWidth(transitions)
 
+  const enabledTransitions = new Set<string>()
+  for (const t of transitions) {
+    if (t.enabled_count > 0) enabledTransitions.add(t.name)
+  }
+
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
   const tight = places.length + transitions.length <= 6
@@ -234,14 +251,31 @@ export function buildGraph(
   })
 
   const edges: Edge[] = arcs.map((arc, index) => {
-    const [from, to] = arcEndpoints(arc)
     const id = `arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`
+    const [from, to] = arcEndpoints(arc)
     const isFiring = firingEdgeIds.has(id)
-    // CSS custom property piped to `.cf-edge-firing` keyframes so animation
-    // cadence matches the timeline playback speed.
-    const style: CSSProperties = isFiring
-      ? { ...DEFAULT_EDGE_STYLE, ["--cf-edge-duration" as string]: `${firingDurationMs}ms` }
-      : DEFAULT_EDGE_STYLE
+    const isEnabledInput =
+      !isFiring &&
+      arc.orientation === "p_to_t" &&
+      enabledTransitions.has(arc.transition)
+
+    let style: CSSProperties
+    let markerEnd = DEFAULT_MARKER
+    let className: string | undefined
+
+    if (isFiring) {
+      // CSS custom property piped to `.cf-edge-firing` keyframes so animation
+      // cadence matches the timeline playback speed.
+      style = { ...DEFAULT_EDGE_STYLE, ["--cf-edge-duration" as string]: `${firingDurationMs}ms` }
+      className = "cf-edge-firing"
+    } else if (isEnabledInput) {
+      style = ENABLED_EDGE_STYLE
+      markerEnd = ENABLED_MARKER
+      className = "cf-edge-enabled"
+    } else {
+      style = DEFAULT_EDGE_STYLE
+    }
+
     const edge: Edge = {
       id,
       source: from,
@@ -249,9 +283,9 @@ export function buildGraph(
       type: "smoothstep",
       animated: false,
       style,
-      markerEnd: DEFAULT_MARKER
+      markerEnd
     }
-    if (isFiring) edge.className = "cf-edge-firing"
+    if (className) edge.className = className
     return edge
   })
 

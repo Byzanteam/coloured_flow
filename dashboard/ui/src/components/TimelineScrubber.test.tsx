@@ -184,6 +184,25 @@ describe("TimelineScrubber autoplay", () => {
     expect(onScrub).toHaveBeenLastCalledWith(3)
   })
 
+  it("flips data-autoplaying on the slider while autoplay is running", () => {
+    renderScrubber()
+    const slider = screen.getByTestId("timeline-slider") as HTMLInputElement
+    expect(slider.dataset.autoplaying).toBe("false")
+
+    const playButton = screen.getByTestId("timeline-play-toggle")
+    act(() => {
+      playButton.click()
+    })
+    expect(slider.dataset.autoplaying).toBe("true")
+    // CSS variable drives the thumb transition window.
+    expect(slider.style.getPropertyValue("--cf-thumb-duration")).toBe("1000ms")
+
+    act(() => {
+      playButton.click()
+    })
+    expect(slider.dataset.autoplaying).toBe("false")
+  })
+
   it("Home / End jump to extremes via the slider", () => {
     const { onScrub } = renderScrubber()
     const slider = screen.getByTestId("timeline-slider")

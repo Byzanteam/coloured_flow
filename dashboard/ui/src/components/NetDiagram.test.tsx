@@ -167,6 +167,45 @@ describe("NetDiagram", () => {
     expect((other?.style as Record<string, unknown>)["--cf-edge-duration"]).toBeUndefined()
   })
 
+  it("tags p_to_t arcs of enabled transitions with cf-edge-enabled + accent style", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 1
+    const { edges } = buildGraph(diagram, "running")
+    const input = edges.find((e) => e.id === "arc-p_to_t-pending-approve-0")
+    const output = edges.find((e) => e.id === "arc-t_to_p-decided-approve-1")
+    expect(input?.className).toBe("cf-edge-enabled")
+    expect((input?.style as Record<string, unknown>).stroke).toBe(
+      "var(--color-cf-accent-tint)"
+    )
+    expect((input?.style as Record<string, unknown>).strokeWidth).toBe(2)
+    // Output arcs of an enabled transition stay default — operators only need
+    // the consume relationship visible.
+    expect(output?.className).toBeUndefined()
+    expect((output?.style as Record<string, unknown>).stroke).toBe(
+      "var(--color-cf-border-strong)"
+    )
+  })
+
+  it("leaves p_to_t arcs default when the transition is not enabled", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 0
+    const { edges } = buildGraph(diagram, "running")
+    const input = edges.find((e) => e.id === "arc-p_to_t-pending-approve-0")
+    expect(input?.className).toBeUndefined()
+    expect((input?.style as Record<string, unknown>).stroke).toBe(
+      "var(--color-cf-border-strong)"
+    )
+  })
+
+  it("firing edge wins over enabled — firing class applied, enabled skipped", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 1
+    const firing = new Set<string>(["arc-p_to_t-pending-approve-0"])
+    const { edges } = buildGraph(diagram, "running", firing, 600)
+    const input = edges.find((e) => e.id === "arc-p_to_t-pending-approve-0")
+    expect(input?.className).toBe("cf-edge-firing")
+  })
+
   it("pulses the transition node when last_fired_at changes", async () => {
     vi.useFakeTimers()
     const initial = baseDiagram()

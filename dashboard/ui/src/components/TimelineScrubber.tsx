@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Button, LayerCard, Text } from "@cloudflare/kumo"
 import {
   CaretLeftIcon,
@@ -27,7 +27,12 @@ interface TimelineScrubberProps {
 const DEBOUNCE_MS = 150
 
 export type SpeedKey = "0.25" | "1" | "4"
-const SPEED_TICK_MS: Record<SpeedKey, number> = {
+/**
+ * Shared speed → duration map. Drives the autoplay tick cadence AND the
+ * NetDiagram edge-fill animation in EnactmentDetailPage, so the scrubber
+ * thumb slide and the edge fill finish in lock-step within the same window.
+ */
+export const SPEED_DURATION_MS: Record<SpeedKey, number> = {
   "0.25": 4000,
   "1": 1000,
   "4": 250
@@ -178,7 +183,7 @@ export default function TimelineScrubber({
       const next = clamp(value + 1, min, max)
       setValue(next)
       fireImmediate(next)
-    }, SPEED_TICK_MS[speedRef.current])
+    }, SPEED_DURATION_MS[speedRef.current])
     playTimerRef.current = id
     return () => {
       clearTimeout(id)
@@ -266,7 +271,12 @@ export default function TimelineScrubber({
           aria-valuenow={value}
           aria-label="Timeline scrubber"
           data-testid="timeline-slider"
+          data-autoplaying={playing && !isPending ? "true" : "false"}
           className="cf-timeline-slider w-full"
+          // Speed-driven CSS variable picked up by the thumb pseudo-element
+          // `transition` rule under [data-autoplaying="true"] so the thumb
+          // glides over the same window the autoplay tick uses.
+          style={{ ["--cf-thumb-duration" as string]: `${SPEED_DURATION_MS[speed]}ms` } as CSSProperties}
         />
         <Button
           variant="secondary"

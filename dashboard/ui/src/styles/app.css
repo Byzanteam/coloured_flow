@@ -185,6 +185,32 @@ body {
   transform: scale(1.15);
 }
 
+/* While autoplay is running, the native value bump from v=N to v=N+1 paints
+ * a CSS `transition` on the thumb so the position glides over the same
+ * window the edge-fill animation uses. `--cf-thumb-duration` is set inline
+ * by TimelineScrubber from the shared SPEED_DURATION_MS map. The duration
+ * matches the autoplay tick interval, so by the time the thumb finishes
+ * sliding the next tick is about to schedule. Attribute selector specificity
+ * (0,1,0,0 over the base 0,1,0,0 + ::pseudo) beats the default `transform`
+ * transition above. */
+.cf-timeline-slider[data-autoplaying="true"]::-webkit-slider-thumb {
+  transition: all var(--cf-thumb-duration, 1000ms) linear;
+}
+.cf-timeline-slider[data-autoplaying="true"]::-moz-range-thumb {
+  transition: all var(--cf-thumb-duration, 1000ms) linear;
+}
+
+/* Static accent on the input arcs of every enabled transition. Tells the
+ * operator "these tokens are the ones a firing would consume." The class is
+ * a marker; the actual stroke/width come from inline `style` on the edge so
+ * they survive react-flow's path style precedence. Source order matters:
+ * `.cf-edge-firing` must follow this block so the firing animation wins
+ * when both classes apply momentarily during a fire. */
+.cf-edge-enabled .react-flow__edge-path {
+  stroke: var(--color-cf-accent-tint);
+  stroke-width: 2;
+}
+
 /* Net diagram edge firing animation. When a transition fires (occurrence
  * version advances) the EnactmentDetail page tags the matching arc edges with
  * `cf-edge-firing`; the keyframes below paint the stroke in the accent color
