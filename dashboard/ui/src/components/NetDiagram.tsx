@@ -99,7 +99,7 @@ export default function NetDiagram({
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
-        nodesDraggable={false}
+        nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={Boolean(onSelectTransition)}
         zoomOnDoubleClick={false}
@@ -137,10 +137,12 @@ function buildGraph(
   const tight = places.length + transitions.length <= 6
   g.setGraph({
     rankdir: "LR",
-    nodesep: tight ? 48 : 80,
-    ranksep: tight ? 72 : 120,
-    marginx: 20,
-    marginy: 20
+    nodesep: tight ? 60 : 100,
+    ranksep: tight ? 100 : 160,
+    edgesep: tight ? 20 : 30,
+    marginx: 30,
+    marginy: 30,
+    ranker: "tight-tree"
   })
 
   for (const place of places) {
@@ -193,7 +195,7 @@ function buildGraph(
       id: `arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`,
       source: from,
       target: to,
-      type: "bezier",
+      type: "smoothstep",
       animated: false,
       style: DEFAULT_EDGE_STYLE,
       markerEnd: DEFAULT_MARKER
