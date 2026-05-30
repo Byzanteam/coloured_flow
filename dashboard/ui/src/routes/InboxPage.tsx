@@ -358,7 +358,10 @@ function OutputsDrawerBody({
             description="This transition has no operator-supplied outputs — just submit to fire."
           />
         ) : (
-          <div className="flex flex-col gap-4" data-testid="outputs-form">
+          <div
+            className="-mx-1 flex max-h-[55vh] flex-col gap-5 overflow-y-auto px-1"
+            data-testid="outputs-form"
+          >
             {schema.map((field) => (
               <OutputField
                 key={field.name}
@@ -382,7 +385,15 @@ function OutputsDrawerBody({
         ) : null}
       </div>
 
-      <div className="mt-6 flex justify-end gap-2">
+      <div className="mt-6 flex items-center justify-end gap-3">
+        {!isValid && !isPending && schema.length > 0 ? (
+          <span
+            className="mr-auto text-xs text-kumo-subtle"
+            data-testid="outputs-submit-hint"
+          >
+            Complete required fields to submit.
+          </span>
+        ) : null}
         <Dialog.Close
           render={(props) => (
             <Button {...props} variant="secondary" disabled={isPending}>
@@ -428,7 +439,7 @@ interface OutputFieldProps {
 }
 
 function OutputField({ field, value, error, onChange }: OutputFieldProps) {
-  const helper = field.hint ?? `Colour set: ${field.colour_set || "(unknown)"}`
+  const helper = fieldHelper(field)
   const testId = `outputs-field-${field.name}`
 
   switch (field.kind) {
@@ -449,30 +460,31 @@ function OutputField({ field, value, error, onChange }: OutputFieldProps) {
 
     case "boolean":
       return (
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={value === true}
-            onCheckedChange={(checked) => onChange(checked === true)}
-            data-testid={testId}
-          />
-          <span className="text-sm text-cf-ink">{field.name}</span>
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={value === true}
+              onCheckedChange={(checked) => onChange(checked === true)}
+              data-testid={testId}
+            />
+            <span className="text-sm font-medium text-kumo-default">{field.name}</span>
+          </label>
           {helper ? (
-            <span className="text-xs text-cf-ink-muted">· {helper}</span>
+            <span className="ml-6 text-xs text-kumo-subtle">{helper}</span>
           ) : null}
-        </label>
+        </div>
       )
 
     case "enum": {
-      // A native <select> sits inside a Kumo-styled wrapper. Kumo's `Select`
+      // A native <select> sits inside Kumo-styled chrome. Kumo's `Select`
       // uses Base UI's headless primitive which renders inside a portal; that
       // works fine in production but resists deterministic interaction in
       // jsdom. The native element keeps testability + accessibility +
-      // styling parity with `Input` while preserving the OKLCH chrome.
+      // visual parity with Kumo Input (same tokens, height, text size).
       return (
-        <label className="flex flex-col gap-1">
-          <Text variant="secondary">{field.name}</Text>
+        <FieldShell name={field.name} helper={helper} error={error}>
           <select
-            className="h-9 rounded-lg border border-cf-border bg-cf-surface px-3 text-sm text-cf-ink focus:outline-none focus:ring-1 focus:ring-cf-accent"
+            className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-control px-3 text-base text-kumo-default outline-none focus:ring-[1.5px] focus:ring-kumo-focus/50 aria-invalid:ring-[1.5px] aria-invalid:ring-kumo-danger/50"
             value={typeof value === "string" ? value : ""}
             onChange={(event) => onChange(event.target.value)}
             aria-invalid={error !== null}
@@ -487,33 +499,23 @@ function OutputField({ field, value, error, onChange }: OutputFieldProps) {
               </option>
             ))}
           </select>
-          <span className="text-xs text-cf-ink-muted">{helper}</span>
-          {error ? (
-            <span className="text-xs text-cf-danger">{error}</span>
-          ) : null}
-        </label>
+        </FieldShell>
       )
     }
 
     case "json":
       return (
-        <label className="flex flex-col gap-1">
-          <Text variant="secondary">{field.name}</Text>
-          <Textarea
-            value={typeof value === "string" ? value : ""}
-            onChange={(event) => onChange(event.target.value)}
-            rows={5}
-            spellCheck={false}
-            aria-invalid={error !== null}
-            data-testid={`${testId}-json`}
-          />
-          <span className="text-xs text-cf-ink-muted">
-            {helper || "This variable's type is complex; provide JSON."}
-          </span>
-          {error ? (
-            <span className="text-xs text-cf-danger">{error}</span>
-          ) : null}
-        </label>
+        <Textarea
+          label={field.name}
+          description={helper}
+          error={error ?? undefined}
+          value={typeof value === "string" ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+          rows={5}
+          spellCheck={false}
+          aria-invalid={error !== null}
+          data-testid={`${testId}-json`}
+        />
       )
 
     case "string":
@@ -531,6 +533,42 @@ function OutputField({ field, value, error, onChange }: OutputFieldProps) {
         />
       )
   }
+}
+
+// Shared chrome for non-Kumo controls (the native enum <select>) so labels,
+// helper text, and inline errors visually match Kumo Input / Textarea.
+function FieldShell({
+  name,
+  helper,
+  error,
+  children
+}: {
+  name: string
+  helper: string | null
+  error: string | null
+  children: React.ReactNode
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-kumo-default">{name}</span>
+      {children}
+      {error ? (
+        <span className="text-xs text-kumo-danger">{error}</span>
+      ) : helper ? (
+        <span className="text-xs text-kumo-subtle">{helper}</span>
+      ) : null}
+    </label>
+  )
+}
+
+// Helper text per kind. Boolean and enum self-document via the control, so
+// the colour-set jargon only surfaces when `field.hint` was provided
+// explicitly. String/integer/json keep the colour-set fallback because the
+// control alone does not communicate the value space.
+function fieldHelper(field: OutputVar): string | null {
+  if (field.hint) return field.hint
+  if (field.kind === "boolean" || field.kind === "enum") return null
+  return field.colour_set ? `Colour set: ${field.colour_set}` : null
 }
 
 // ---------------------------------------------------------------------------
@@ -582,14 +620,16 @@ function validateValues(
         break
 
       case "boolean":
-        errors[field.name] = typeof value === "boolean" ? null : "Pick true or false."
+        // Initial value is always boolean; no operator action can break that
+        // invariant, so this branch only exists to keep the error map dense.
+        errors[field.name] = null
         break
 
       case "enum":
         errors[field.name] =
           typeof value === "string" && value.length > 0 && (field.enum_values ?? []).includes(value)
             ? null
-            : "Pick a value."
+            : `Choose a ${field.name}.`
         break
 
       case "json":
@@ -657,7 +697,10 @@ function validateJson(value: string): string | null {
     JSON.parse(trimmed)
     return null
   } catch (cause) {
-    return cause instanceof Error ? cause.message : "Invalid JSON."
+    // Trim and reframe the raw parser message so operators don't see
+    // developer-flavoured "Unexpected token … at position N" prose alone.
+    const detail = cause instanceof Error ? cause.message.split("\n")[0] : ""
+    return detail ? `Invalid JSON: ${detail}` : "Invalid JSON."
   }
 }
 
