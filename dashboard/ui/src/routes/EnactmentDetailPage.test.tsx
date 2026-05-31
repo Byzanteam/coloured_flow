@@ -130,23 +130,24 @@ const {
 vi.mock("../components/NetDiagram", () => ({
   default: ({
     onSelectTransition,
-    firingEdgeIds,
-    firingDurationMs,
-    enabledEdgeIds
+    firingTransition,
+    firingProgress,
+    enabledTransitions
   }: {
     onSelectTransition?: (name: string) => void
-    firingEdgeIds?: ReadonlySet<string>
-    firingDurationMs?: number
-    enabledEdgeIds?: ReadonlySet<string>
+    firingTransition?: string | null
+    firingProgress?: { input: number; output: number }
+    enabledTransitions?: ReadonlySet<string>
   }) => (
     <div
       data-testid="net-diagram-stub"
-      data-firing-edges={JSON.stringify([...(firingEdgeIds ?? [])].sort())}
-      data-firing-duration={String(firingDurationMs ?? "")}
-      data-enabled-edges={
-        enabledEdgeIds === undefined
+      data-firing-transition={firingTransition ?? ""}
+      data-firing-input={String(firingProgress?.input ?? 0)}
+      data-firing-output={String(firingProgress?.output ?? 0)}
+      data-enabled-transitions={
+        enabledTransitions === undefined
           ? "live"
-          : JSON.stringify([...enabledEdgeIds].sort())
+          : JSON.stringify([...enabledTransitions].sort())
       }
     >
       <button
@@ -880,14 +881,14 @@ describe("EnactmentDetailPage", () => {
       }
     })
 
-    it("live mode passes undefined enabledEdgeIds so NetDiagram uses its internal enabled_count derivation", () => {
+    it("live mode passes undefined enabledTransitions so NetDiagram uses its internal enabled_count derivation", () => {
       renderRoute(<EnactmentDetailPage />)
       expect(
-        screen.getByTestId("net-diagram-stub").dataset.enabledEdges
+        screen.getByTestId("net-diagram-stub").dataset.enabledTransitions
       ).toBe("live")
     })
 
-    it("replay_to_version reply's enabled_transitions wires straight into NetDiagram's enabledEdgeIds", async () => {
+    it("replay_to_version reply's enabled_transitions wires straight into NetDiagram's enabledTransitions", async () => {
       replayToVersionMock.mockResolvedValueOnce({
         code: "ok",
         markings: [],
@@ -906,17 +907,15 @@ describe("EnactmentDetailPage", () => {
           fireEvent.click(screen.getByTestId("timeline-step-back"))
         })
         await waitFor(() => {
-          const value = screen.getByTestId("net-diagram-stub").dataset.enabledEdges
-          // Only the p_to_t arc of `approve` lights up — the seed diagram has
-          // exactly one such edge (`pending → approve` at index 0).
-          expect(value).toBe(JSON.stringify(["arc-p_to_t-pending-approve-0"]))
+          const value = screen.getByTestId("net-diagram-stub").dataset.enabledTransitions
+          expect(value).toBe(JSON.stringify(["approve"]))
         })
       } finally {
         restore()
       }
     })
 
-    it("an empty enabled_transitions clears the replay edge highlight", async () => {
+    it("an empty enabled_transitions clears the replay enabled-transitions override", async () => {
       replayToVersionMock.mockResolvedValueOnce({
         code: "ok",
         markings: [],
@@ -935,8 +934,10 @@ describe("EnactmentDetailPage", () => {
           fireEvent.click(screen.getByTestId("timeline-step-back"))
         })
         await waitFor(() => {
+          // Override must be a concrete (empty) set, NOT "live" — replay mode
+          // must never fall back to the live `enabled_count`.
           expect(
-            screen.getByTestId("net-diagram-stub").dataset.enabledEdges
+            screen.getByTestId("net-diagram-stub").dataset.enabledTransitions
           ).toBe("[]")
         })
       } finally {
@@ -944,8 +945,7 @@ describe("EnactmentDetailPage", () => {
       }
     })
 
-    it("populates firingEdgeIds when version advances + clears after the firing duration", async () => {
-      vi.useFakeTimers()
+    it("starts firingTransition + drives firingProgress over the speed-duration window when live version advances", async () => {
       const mut = sampleSnapshot as unknown as {
         summary: { version: number }
         occurrences: Array<{
@@ -963,13 +963,30 @@ describe("EnactmentDetailPage", () => {
       // mount seeds `lastVersionRef` without firing the animation.
       mut.summary.version = 3
       mut.occurrences = []
+
+      const rafCallbacks: FrameRequestCallback[] = []
+      const nowRef = { current: 1_000 }
+      const performanceSpy = vi.spyOn(performance, "now").mockImplementation(() => nowRef.current)
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb: FrameRequestCallback): number => {
+          rafCallbacks.push(cb)
+          return rafCallbacks.length
+        })
+      const cafSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+      const flushRaf = async () => {
+        const due = rafCallbacks.splice(0)
+        await act(async () => {
+          due.forEach((cb) => cb(nowRef.current))
+        })
+      }
+
       try {
         const { rerender } = renderRoute(<EnactmentDetailPage />)
-        expect(screen.getByTestId("net-diagram-stub").dataset.firingEdges).toBe("[]")
+        const stub = () => screen.getByTestId("net-diagram-stub")
+        expect(stub().dataset.firingTransition).toBe("")
 
-        // Bump version → simulate occurrence at v=4 firing the `approve`
-        // transition (which has one input arc + one output arc in the seeded
-        // diagram).
+        // Bump version → simulate occurrence at v=4 firing `approve`.
         mut.summary.version = 4
         mut.occurrences = [
           {
@@ -993,26 +1010,129 @@ describe("EnactmentDetailPage", () => {
           )
         })
 
-        const firing = JSON.parse(
-          screen.getByTestId("net-diagram-stub").dataset.firingEdges ?? "[]"
-        )
-        expect(firing).toEqual([
-          "arc-p_to_t-pending-approve-0",
-          "arc-t_to_p-decided-approve-1"
-        ])
-        // 1× speed default → 1000ms shared SPEED_DURATION_MS reported to NetDiagram.
-        expect(
-          screen.getByTestId("net-diagram-stub").dataset.firingDuration
-        ).toBe("1000")
+        expect(stub().dataset.firingTransition).toBe("approve")
+        // 1× speed default → halfMs = 500. RAF hasn't ticked yet → progress=0.
+        expect(stub().dataset.firingInput).toBe("0")
+        expect(stub().dataset.firingOutput).toBe("0")
 
-        await act(async () => {
-          vi.advanceTimersByTime(1100)
-        })
-        expect(screen.getByTestId("net-diagram-stub").dataset.firingEdges).toBe("[]")
+        // Phase A midpoint (elapsed = 250 ms → input = 0.5).
+        nowRef.current = 1_250
+        await flushRaf()
+        expect(Number(stub().dataset.firingInput)).toBeCloseTo(0.5, 2)
+        expect(stub().dataset.firingOutput).toBe("0")
+
+        // Phase B midpoint (elapsed = 750 ms → input = 1, output = 0.5).
+        nowRef.current = 1_750
+        await flushRaf()
+        expect(stub().dataset.firingInput).toBe("1")
+        expect(Number(stub().dataset.firingOutput)).toBeCloseTo(0.5, 2)
+
+        // Past full duration → firingPhase cleared.
+        nowRef.current = 2_100
+        await flushRaf()
+        expect(stub().dataset.firingTransition).toBe("")
+        expect(stub().dataset.firingInput).toBe("0")
+        expect(stub().dataset.firingOutput).toBe("0")
       } finally {
         mut.summary.version = origVersion
         mut.occurrences = origOccurrences
-        vi.useRealTimers()
+        performanceSpy.mockRestore()
+        rafSpy.mockRestore()
+        cafSpy.mockRestore()
+      }
+    })
+
+    it("replay step-forward defers derivedMarkings + replayEnabledTransitions to the Phase A → B boundary", async () => {
+      const restore = mutateReplay(
+        { version: 0, derived_at: "2026-05-29T01:00:00Z" },
+        { min: 0, max: 3 }
+      )
+      const mut = sampleSnapshot as unknown as {
+        occurrences: Array<{
+          id: string
+          step_number: number
+          transition: string
+          binding_summary: string
+          occurred_at: string
+          outputs_summary: string
+        }>
+      }
+      const origOccurrences = mut.occurrences
+      // Replay needs the occurrence at v=1 so the page detects a single-step
+      // advance worth animating.
+      mut.occurrences = [
+        {
+          id: "occ-1",
+          step_number: 1,
+          transition: "approve",
+          binding_summary: "",
+          occurred_at: "2026-05-29T01:00:00Z",
+          outputs_summary: ""
+        }
+      ]
+      replayToVersionMock.mockResolvedValueOnce({
+        code: "ok",
+        markings: [],
+        enabled_transitions: ["after_fire"],
+        replay_state: { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        available_max_version: 3,
+        snapshot_floor: 0
+      })
+
+      // Manual RAF pump: fake timers can't drive RAF inside `await act(async)`
+      // here because the dispatch promise resolves on the microtask queue and
+      // `vi.advanceTimersByTime` interleaves badly with the dispatch flush.
+      // Replacing rAF gives us full control over each tick.
+      const rafCallbacks: FrameRequestCallback[] = []
+      const nowRef = { current: 5_000 }
+      const performanceSpy = vi.spyOn(performance, "now").mockImplementation(() => nowRef.current)
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb: FrameRequestCallback): number => {
+          rafCallbacks.push(cb)
+          return rafCallbacks.length
+        })
+      const cafSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+      const flushRaf = async () => {
+        const due = rafCallbacks.splice(0)
+        await act(async () => {
+          due.forEach((cb) => cb(nowRef.current))
+        })
+      }
+
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("timeline-step-forward"))
+        })
+        const stub = () => screen.getByTestId("net-diagram-stub")
+
+        // After reply but BEFORE the first RAF tick: firingPhase is set, and
+        // the enabledTransitions override is still the pre-fire empty set —
+        // the post-fire `["after_fire"]` payload is stashed in a ref waiting
+        // for the Phase A → B boundary, NOT applied yet.
+        expect(stub().dataset.firingTransition).toBe("approve")
+        expect(stub().dataset.enabledTransitions).toBe("[]")
+
+        // First RAF tick at elapsed = 0. Still pre-halfDuration → no swap.
+        await flushRaf()
+        expect(stub().dataset.enabledTransitions).toBe("[]")
+
+        // Cross the halfDuration boundary (halfMs = 500).
+        nowRef.current = 5_520
+        await flushRaf()
+        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["after_fire"]))
+
+        // Past the full duration → firingPhase cleared.
+        nowRef.current = 6_100
+        await flushRaf()
+        expect(stub().dataset.firingTransition).toBe("")
+      } finally {
+        mut.occurrences = origOccurrences
+        restore()
+        performanceSpy.mockRestore()
+        rafSpy.mockRestore()
+        cafSpy.mockRestore()
       }
     })
 

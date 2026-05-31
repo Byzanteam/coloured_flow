@@ -27,7 +27,7 @@ import type { StoreProxy } from "@musubi/react"
 import { useMusubiCommand, useMusubiRootSuspense, useMusubiSnapshot } from "../musubi"
 import { dispatchWithReply } from "../musubi/replyHandler"
 import PageHeader from "../components/PageHeader"
-import NetDiagram from "../components/NetDiagram"
+import NetDiagram, { type FiringProgress } from "../components/NetDiagram"
 import ColourSetsPanel from "../components/ColourSetsPanel"
 import OutputsDrawer from "../components/OutputsDrawer"
 import TimelineScrubber, { SPEED_DURATION_MS, type SpeedKey } from "../components/TimelineScrubber"
@@ -50,11 +50,21 @@ type DetailProxy = StoreProxy<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
 
 type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 
-// Firing edge fill duration per speed reuses the shared SPEED_DURATION_MS map
-// so the edge fill animation finishes in lock-step with the autoplay tick AND
-// the scrubber thumb glide (driven by the same constant).
+// Firing animation duration per speed reuses the shared SPEED_DURATION_MS map
+// so the two-phase fill finishes in lock-step with the autoplay tick AND the
+// scrubber thumb glide (driven by the same constant). Phase A (input arcs
+// + marking-state swap) runs over the first half; Phase B (output arcs) over
+// the second half.
 
-const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
+const EMPTY_TRANSITION_SET: ReadonlySet<string> = new Set()
+const ZERO_FIRING_PROGRESS: FiringProgress = { input: 0, output: 0 }
+
+type FiringPhase = {
+  transition: string
+  startedAt: number
+  halfMs: number
+  fullMs: number
+}
 
 const TAB_ITEMS = [
   { value: "markings", label: "Markings" },
@@ -217,16 +227,61 @@ function DetailContent({
   // the live `enabled_count`. Cleared on exit-replay.
   const [replayEnabledTransitions, setReplayEnabledTransitions] = useState<
     ReadonlySet<string>
-  >(EMPTY_FIRING_SET)
+  >(EMPTY_TRANSITION_SET)
 
   // When the server clears replay_state (e.g., exit_replay), drop any
   // cached derived rows so the Markings tab snaps back to live.
   useEffect(() => {
     if (replayState === null) {
       setDerivedMarkings([])
-      setReplayEnabledTransitions(EMPTY_FIRING_SET)
+      setReplayEnabledTransitions(EMPTY_TRANSITION_SET)
     }
   }, [replayState])
+
+  // Refs accessed by the reply callback (which closes over its creation-time
+  // state) so it always reads the latest snapshot/derivation. Refs avoid
+  // re-creating the callback (and re-dispatching its useMusubiCommand binding)
+  // on every snapshot tick.
+  const occurrencesRef = useRef(occurrences)
+  const diagramRef = useRef<DiagramPayload | null>(diagram)
+  const activeVersionRef = useRef(0)
+  const firingPhaseRef = useRef<FiringPhase | null>(null)
+  const pendingDerivedMarkingsRef = useRef<readonly MarkingRow[] | null>(null)
+  const pendingEnabledTransitionsRef = useRef<ReadonlySet<string> | null>(null)
+
+  useEffect(() => {
+    occurrencesRef.current = occurrences
+  }, [occurrences])
+  useEffect(() => {
+    diagramRef.current = diagram
+  }, [diagram])
+
+  const [firingPhase, setFiringPhase] = useState<FiringPhase | null>(null)
+  const [firingProgress, setFiringProgress] = useState<FiringProgress>(ZERO_FIRING_PROGRESS)
+
+  useEffect(() => {
+    firingPhaseRef.current = firingPhase
+  }, [firingPhase])
+
+  const applyPendings = useCallback(() => {
+    if (pendingDerivedMarkingsRef.current !== null) {
+      setDerivedMarkings(pendingDerivedMarkingsRef.current)
+      pendingDerivedMarkingsRef.current = null
+    }
+    if (pendingEnabledTransitionsRef.current !== null) {
+      setReplayEnabledTransitions(pendingEnabledTransitionsRef.current)
+      pendingEnabledTransitionsRef.current = null
+    }
+  }, [])
+
+  const startFiringPhase = useCallback((transition: string, durationMs: number) => {
+    setFiringPhase({
+      transition,
+      startedAt: performance.now(),
+      halfMs: durationMs / 2,
+      fullMs: durationMs
+    })
+  }, [])
 
   const onScrub = useCallback(
     (version: number) => {
@@ -239,8 +294,33 @@ function DetailContent({
           onReply: (code, reply) => {
             if (code === "ok") {
               const r = reply as ReplayToVersionReply
-              setDerivedMarkings(r.markings ?? [])
-              setReplayEnabledTransitions(new Set(r.enabled_transitions ?? []))
+              const nextMarkings = r.markings ?? []
+              const nextEnabled = new Set(r.enabled_transitions ?? [])
+              const prevVersion = activeVersionRef.current
+              const occurrence = occurrencesRef.current.find(
+                (o) => o.step_number === version
+              )
+              const arcs = diagramRef.current?.arcs ?? []
+              const hasMatchingArc =
+                occurrence !== undefined &&
+                arcs.some((arc) => arc.transition === occurrence.transition)
+              // Single-step forward AND occurrence on a visible transition →
+              // run the two-phase animation, deferring the marking/enabled
+              // swap until Phase A ends (halfMs). Multi-step jumps and the
+              // initial replay entry apply immediately — no occurrence to
+              // visualise.
+              if (
+                occurrence !== undefined &&
+                hasMatchingArc &&
+                version === prevVersion + 1
+              ) {
+                pendingDerivedMarkingsRef.current = nextMarkings
+                pendingEnabledTransitionsRef.current = nextEnabled
+                startFiringPhase(occurrence.transition, firingDurationMs)
+              } else {
+                setDerivedMarkings(nextMarkings)
+                setReplayEnabledTransitions(nextEnabled)
+              }
             } else if (code === "invalid_version") {
               const r = reply as ReplayToVersionReply
               const floor = r.snapshot_floor ?? versionRange.min
@@ -283,7 +363,7 @@ function DetailContent({
       {
         onReply: () => {
           setDerivedMarkings([])
-          setReplayEnabledTransitions(EMPTY_FIRING_SET)
+          setReplayEnabledTransitions(EMPTY_TRANSITION_SET)
         },
         onUnexpected: (cause) => {
           toasts.add({
@@ -299,72 +379,78 @@ function DetailContent({
 
   const markings: readonly MarkingRow[] = replayState ? derivedMarkings : liveMarkings
 
-  // Drive the NetDiagram edge-fill animation when the *active* version (live
-  // or replay) ticks forward. The first mount-pass seeds `lastVersionRef`
-  // without animating — the operator landed at an existing K, not just-fired.
-  // Subsequent bumps locate the occurrence at the new version and highlight
-  // every arc touching its transition. Coalescing: a new bump replaces the
-  // pending set + resets the timeout.
+  // `activeVersion` drives the LIVE-mode firing trigger. Replay-mode firing is
+  // driven directly by the `:replay_to_version` reply (onScrub above) so the
+  // marking/enabled-state swap can be deferred exactly to the Phase A → B
+  // boundary; piggy-backing on the version-bump effect would race with the
+  // assign broadcast.
   const activeVersion = replayState?.version ?? summary?.version ?? 0
-  const [firingEdgeIds, setFiringEdgeIds] = useState<ReadonlySet<string>>(EMPTY_FIRING_SET)
-  const firingTimeoutRef = useRef<number | null>(null)
   const lastVersionRef = useRef<number | null>(null)
 
   useEffect(() => {
+    activeVersionRef.current = activeVersion
     const prev = lastVersionRef.current
     lastVersionRef.current = activeVersion
     if (prev === null) return
     if (activeVersion <= prev) return
+    if (replayState !== null) return
 
     const occurrence = occurrences.find((o) => o.step_number === activeVersion)
     if (!occurrence) return
-
     const arcs = diagram?.arcs ?? []
-    const ids = new Set<string>()
-    arcs.forEach((arc, index) => {
-      if (arc.transition !== occurrence.transition) return
-      ids.add(`arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`)
-    })
-    if (ids.size === 0) return
+    const hasMatchingArc = arcs.some((arc) => arc.transition === occurrence.transition)
+    if (!hasMatchingArc) return
+    startFiringPhase(occurrence.transition, firingDurationMs)
+  }, [activeVersion, occurrences, diagram?.arcs, firingDurationMs, replayState, startFiringPhase])
 
-    setFiringEdgeIds(ids)
-    if (firingTimeoutRef.current !== null) {
-      window.clearTimeout(firingTimeoutRef.current)
-    }
-    firingTimeoutRef.current = window.setTimeout(() => {
-      setFiringEdgeIds(EMPTY_FIRING_SET)
-      firingTimeoutRef.current = null
-    }, firingDurationMs)
-  }, [activeVersion, occurrences, diagram?.arcs, firingDurationMs])
-
+  // RAF loop drives `firingProgress` over `firingPhase.fullMs`. At the
+  // halfway boundary `applyPendings()` flips the replay-derived marking +
+  // enabled-transition state so token badges (Phase A drain → Phase B
+  // produce) line up with the arc fills.
   useEffect(() => {
-    return () => {
-      if (firingTimeoutRef.current !== null) {
-        window.clearTimeout(firingTimeoutRef.current)
-        firingTimeoutRef.current = null
-      }
+    if (firingPhase === null) {
+      setFiringProgress(ZERO_FIRING_PROGRESS)
+      return
     }
-  }, [])
+    let raf = 0
+    let appliedHalf = false
+    const tick = () => {
+      const elapsed = performance.now() - firingPhase.startedAt
+      if (elapsed >= firingPhase.halfMs && !appliedHalf) {
+        applyPendings()
+        appliedHalf = true
+      }
+      if (elapsed >= firingPhase.fullMs) {
+        setFiringProgress({ input: 1, output: 1 })
+        setFiringPhase(null)
+        return
+      }
+      if (elapsed < firingPhase.halfMs) {
+        setFiringProgress({ input: elapsed / firingPhase.halfMs, output: 0 })
+      } else {
+        setFiringProgress({
+          input: 1,
+          output: (elapsed - firingPhase.halfMs) / firingPhase.halfMs
+        })
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      // If the phase is torn down before Phase A finished (e.g. operator
+      // scrubs again mid-animation, or component unmounts), still apply the
+      // stashed marking so the diagram never lingers on stale state.
+      if (!appliedHalf) applyPendings()
+    }
+  }, [firingPhase, applyPendings])
 
-  // Enabled-edge accent. Live mode hands `undefined` so NetDiagram falls back
-  // to its own `transition.enabled_count > 0` derivation. Replay mode derives
-  // the set strictly from `replayEnabledTransitions` — the backend's
-  // engine-computed enabled set against the marking at version v. No
-  // accumulation across scrub positions; the highlight matches the derived
-  // marking exactly, never the live counts.
-  const replayEnabledEdgeIds = useMemo<ReadonlySet<string>>(() => {
-    if (replayState === null || !diagram) return EMPTY_FIRING_SET
-    if (replayEnabledTransitions.size === 0) return EMPTY_FIRING_SET
-    const enabled = new Set<string>()
-    diagram.arcs.forEach((arc, index) => {
-      if (arc.orientation !== "p_to_t") return
-      if (!replayEnabledTransitions.has(arc.transition)) return
-      enabled.add(`arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`)
-    })
-    return enabled
-  }, [replayState, diagram, replayEnabledTransitions])
-
-  const enabledEdgeIds = replayState === null ? undefined : replayEnabledEdgeIds
+  // Replay-mode override for both the input-arc accent and the transition-
+  // node glow. Sourced strictly from the backend's engine-computed enabled
+  // set at the derived marking — never unioned, never falling back to the
+  // live `enabled_count` (which lags behind the replayed marking).
+  const enabledTransitionsOverride =
+    replayState === null ? undefined : replayEnabledTransitions
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
   // Pending inspect target driven by NetDiagram node click. Cleared by
@@ -462,9 +548,9 @@ function DetailContent({
               diagram={diagram}
               enactmentState={state}
               onSelectTransition={onSelectTransition}
-              firingEdgeIds={firingEdgeIds}
-              firingDurationMs={firingDurationMs}
-              enabledEdgeIds={enabledEdgeIds}
+              firingTransition={firingPhase?.transition ?? null}
+              firingProgress={firingProgress}
+              enabledTransitions={enabledTransitionsOverride}
             />
           </div>
         </LayerCard.Primary>

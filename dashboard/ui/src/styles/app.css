@@ -203,38 +203,13 @@ body {
 /* Static accent on the input arcs of every enabled transition. Tells the
  * operator "these tokens are the ones a firing would consume." The class is
  * a marker; the actual stroke/width come from inline `style` on the edge so
- * they survive react-flow's path style precedence. Source order matters:
- * `.cf-edge-firing` must follow this block so the firing animation wins
- * when both classes apply momentarily during a fire. */
+ * they survive react-flow's path style precedence. The two-phase firing
+ * animation (Phase A drain + Phase B produce) is driven entirely by inline
+ * `pathLength="1"` + dasharray/offset from JS — see `OrthogonalEdge` in
+ * `components/NetDiagram.tsx`. */
 .cf-edge-enabled .react-flow__edge-path {
   stroke: var(--color-cf-accent-tint);
   stroke-width: 2;
-}
-
-/* Net diagram edge firing animation. When a transition fires (occurrence
- * version advances) the EnactmentDetail page tags the matching arc edges with
- * `cf-edge-firing`; the keyframes below paint the stroke in the accent color
- * from source to target by sweeping `stroke-dashoffset` from `--cf-edge-len`
- * down to 0. Length is a generous constant — most arc paths are far shorter,
- * so the sweep finishes before reaching the constant.
- *
- * `forwards` keeps the path fully drawn until the JS-driven timeout removes
- * the class, at which point react-flow's default stroke style takes over.
- */
-@keyframes cf-edge-fill {
-  from {
-    stroke-dashoffset: var(--cf-edge-len, 1000);
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-.cf-edge-firing .react-flow__edge-path {
-  stroke: var(--color-cf-accent);
-  stroke-dasharray: var(--cf-edge-len, 1000);
-  stroke-dashoffset: var(--cf-edge-len, 1000);
-  animation: cf-edge-fill var(--cf-edge-duration, 600ms) ease-out forwards;
 }
 
 /* Magic UI decorative text effects. CSS-only replacements for the previous

@@ -33,22 +33,26 @@ type DiagramArc = ColouredFlowDashboardWeb.Views.NetDiagramArc
 
 type EnactmentState = "running" | "exception" | "terminated"
 
+export type FiringProgress = { input: number; output: number }
+
 interface NetDiagramProps {
   diagram: NetDiagramPayload | null | undefined
   enactmentState?: EnactmentState
   onSelectTransition?: (name: string) => void
-  firingEdgeIds?: ReadonlySet<string>
-  firingDurationMs?: number
-  // Optional override for the enabled-arc accent. When supplied, only edges
-  // whose id is in the set get the cf-edge-enabled style. When omitted,
-  // buildGraph derives the set from `transition.enabled_count > 0` (legacy
-  // path used by unit tests and live mode without replay sticky-state).
-  enabledEdgeIds?: ReadonlySet<string>
+  // Name of the transition currently mid-fire. Its `p_to_t` arcs animate at
+  // `firingProgress.input` and `t_to_p` arcs animate at `firingProgress.output`
+  // — fill is driven by inline `stroke-dasharray`/`stroke-dashoffset` plus the
+  // `pathLength="1"` trick so the dash math is path-length agnostic.
+  firingTransition?: string | null
+  firingProgress?: FiringProgress
+  // Override for the enabled set. When supplied, BOTH the input-arc accent
+  // and the transition-node glow derive from this set instead of the live
+  // `transition.enabled_count` field. Required in replay mode where the live
+  // count reflects a different version than the displayed marking.
+  enabledTransitions?: ReadonlySet<string>
 }
 
-const DEFAULT_FIRING_DURATION_MS = 600
-
-const EMPTY_FIRING_SET: ReadonlySet<string> = new Set()
+const ZERO_PROGRESS: FiringProgress = { input: 0, output: 0 }
 
 const PLACE_NODE = "cf-place"
 const TRANSITION_NODE = "cf-transition"
@@ -84,6 +88,7 @@ type PlaceNodeData = DiagramPlace & Record<string, unknown>
 type TransitionNodeData = DiagramTransition & {
   enactmentState: EnactmentState
   width: number
+  isEnabled: boolean
 } & Record<string, unknown>
 
 type PlaceNode = Node<PlaceNodeData, typeof PLACE_NODE>
@@ -91,6 +96,8 @@ type TransitionNode = Node<TransitionNodeData, typeof TRANSITION_NODE>
 
 type OrthoEdgeData = {
   points: ReadonlyArray<ElkPoint>
+  // 0..1 fraction; undefined means no firing animation on this edge.
+  firingProgress?: number
 } & Record<string, unknown>
 
 const DEFAULT_EDGE_STYLE = {
@@ -126,9 +133,9 @@ export default function NetDiagram({
   diagram,
   enactmentState = "running",
   onSelectTransition,
-  firingEdgeIds = EMPTY_FIRING_SET,
-  firingDurationMs = DEFAULT_FIRING_DURATION_MS,
-  enabledEdgeIds
+  firingTransition = null,
+  firingProgress = ZERO_PROGRESS,
+  enabledTransitions
 }: NetDiagramProps) {
   const layout = useElkLayout(diagram)
 
@@ -137,12 +144,19 @@ export default function NetDiagram({
       buildGraph(
         diagram,
         enactmentState,
-        firingEdgeIds,
-        firingDurationMs,
+        firingTransition,
+        firingProgress,
         layout,
-        enabledEdgeIds
+        enabledTransitions
       ),
-    [diagram, layout, enactmentState, firingEdgeIds, firingDurationMs, enabledEdgeIds]
+    [
+      diagram,
+      layout,
+      enactmentState,
+      firingTransition,
+      firingProgress,
+      enabledTransitions
+    ]
   )
 
   const handleNodeClick = useCallback(
@@ -345,10 +359,10 @@ function layoutSignature(
 export function buildGraph(
   diagram: NetDiagramPayload | null | undefined,
   enactmentState: EnactmentState,
-  firingEdgeIds: ReadonlySet<string> = EMPTY_FIRING_SET,
-  firingDurationMs: number = DEFAULT_FIRING_DURATION_MS,
+  firingTransition: string | null = null,
+  firingProgress: FiringProgress = ZERO_PROGRESS,
   layout: Layout = EMPTY_LAYOUT,
-  enabledEdgeIdsOverride?: ReadonlySet<string>
+  enabledTransitionsOverride?: ReadonlySet<string>
 ): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
   const places = diagram?.places ?? []
   const transitions = diagram?.transitions ?? []
@@ -360,10 +374,13 @@ export function buildGraph(
 
   const transitionW = computeTransitionWidth(transitions)
 
-  const enabledTransitions = new Set<string>()
-  for (const t of transitions) {
-    if (t.enabled_count > 0) enabledTransitions.add(t.name)
-  }
+  const liveEnabledCounts = new Map<string, number>()
+  for (const t of transitions) liveEnabledCounts.set(t.name, t.enabled_count)
+
+  const isTransitionEnabled = (name: string): boolean =>
+    enabledTransitionsOverride
+      ? enabledTransitionsOverride.has(name)
+      : (liveEnabledCounts.get(name) ?? 0) > 0
 
   const placeNodes: PlaceNode[] = places.map((place, index) => {
     const id = placeId(place.name)
@@ -383,11 +400,17 @@ export function buildGraph(
   const transitionNodes: TransitionNode[] = transitions.map((transition, index) => {
     const id = transitionId(transition.name)
     const pos = layout.positions.get(id) ?? fallbackPos(index, 1)
+    const isEnabled = isTransitionEnabled(transition.name)
     return {
       id,
       type: TRANSITION_NODE,
       position: pos,
-      data: { ...transition, enactmentState, width: transitionW } as TransitionNodeData,
+      data: {
+        ...transition,
+        enactmentState,
+        width: transitionW,
+        isEnabled
+      } as TransitionNodeData,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       draggable: true,
@@ -398,20 +421,24 @@ export function buildGraph(
   const edges: Edge[] = arcs.map((arc, index) => {
     const id = arcEdgeId(arc, index)
     const [from, to] = arcEndpoints(arc)
-    const isFiring = firingEdgeIds.has(id)
+
+    const isOnFiringTransition = firingTransition !== null && arc.transition === firingTransition
+    const edgeFiringProgress = isOnFiringTransition
+      ? arc.orientation === "p_to_t"
+        ? clamp01(firingProgress.input)
+        : clamp01(firingProgress.output)
+      : undefined
+
+    const isFiring = edgeFiringProgress !== undefined
     const isEnabledInput =
-      !isFiring &&
-      (enabledEdgeIdsOverride
-        ? enabledEdgeIdsOverride.has(id)
-        : arc.orientation === "p_to_t" && enabledTransitions.has(arc.transition))
+      !isFiring && arc.orientation === "p_to_t" && isTransitionEnabled(arc.transition)
 
     let style: CSSProperties
     let markerEnd = DEFAULT_MARKER
     let className: string | undefined
 
     if (isFiring) {
-      style = { ...DEFAULT_EDGE_STYLE, ["--cf-edge-duration" as string]: `${firingDurationMs}ms` }
-      className = "cf-edge-firing"
+      style = DEFAULT_EDGE_STYLE
     } else if (isEnabledInput) {
       style = ENABLED_EDGE_STYLE
       markerEnd = ENABLED_MARKER
@@ -421,6 +448,13 @@ export function buildGraph(
     }
 
     const points = layout.edgePoints.get(index)
+    // `data` always carries `firingProgress` (even when undefined) so test
+    // callers and the smoothstep fallback path can both read it without
+    // narrowing on `data`.
+    const data: OrthoEdgeData = {
+      points: points ?? [],
+      firingProgress: edgeFiringProgress
+    }
     const edge: Edge = {
       id,
       source: from,
@@ -429,13 +463,19 @@ export function buildGraph(
       animated: false,
       style,
       markerEnd,
-      data: points ? ({ points } as OrthoEdgeData) : undefined
+      data
     }
     if (className) edge.className = className
     return edge
   })
 
   return { nodes: [...placeNodes, ...transitionNodes], edges, isEmpty: false }
+}
+
+function clamp01(value: number): number {
+  if (value <= 0) return 0
+  if (value >= 1) return 1
+  return value
 }
 
 function fallbackPos(index: number, lane: number): { x: number; y: number } {
@@ -462,9 +502,37 @@ const transitionId = (name: string) => `t:${name}`
 // ---------------------------------------------------------------------------
 
 function OrthogonalEdgeImpl({ data, markerEnd, style }: EdgeProps) {
-  const points = (data as OrthoEdgeData | undefined)?.points
+  const oedata = data as OrthoEdgeData | undefined
+  const points = oedata?.points
   if (!points || points.length < 2) return null
-  return <BaseEdge path={roundedPolylinePath(points, EDGE_CORNER_RADIUS)} markerEnd={markerEnd} style={style} />
+  const path = roundedPolylinePath(points, EDGE_CORNER_RADIUS)
+  const progress = oedata?.firingProgress
+
+  if (progress === undefined) {
+    return <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+  }
+
+  // Two-phase fire paint: pathLength="1" normalises the stroke math so a single
+  // `strokeDasharray=1` + `strokeDashoffset=1-progress` fills the path from
+  // start to end regardless of pixel length.
+  const firingStyle: CSSProperties = {
+    ...style,
+    stroke: "var(--color-cf-accent)",
+    strokeWidth: 2,
+    strokeDasharray: 1,
+    strokeDashoffset: 1 - progress
+  }
+  return (
+    <path
+      d={path}
+      className="react-flow__edge-path"
+      fill="none"
+      markerEnd={markerEnd}
+      pathLength={1}
+      style={firingStyle}
+      data-testid="cf-edge-firing-path"
+    />
+  )
 }
 
 // Build an SVG path from a polyline, replacing each interior 90° corner with
@@ -583,9 +651,9 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
 
   const glowKind: "exception" | "enabled" | "none" = useMemo(() => {
     if (data.enactmentState === "exception") return "exception"
-    if (data.enabled_count > 0) return "enabled"
+    if (data.isEnabled) return "enabled"
     return "none"
-  }, [data.enactmentState, data.enabled_count])
+  }, [data.enactmentState, data.isEnabled])
 
   const glow =
     glowKind === "exception"
@@ -619,7 +687,7 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
       }}
       data-testid={`transition-node-${data.name}`}
       data-pulsing={pulsing ? "true" : "false"}
-      data-enabled={data.enabled_count > 0 ? "true" : "false"}
+      data-enabled={data.isEnabled ? "true" : "false"}
       data-glow={glowKind}
     >
       <Handle

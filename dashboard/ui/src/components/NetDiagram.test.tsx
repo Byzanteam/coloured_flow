@@ -143,28 +143,51 @@ describe("NetDiagram", () => {
     expect(onSelectTransition).not.toHaveBeenCalled()
   })
 
-  it("tags edges in firingEdgeIds with `cf-edge-firing` and the duration var", () => {
+  it("tags input arcs of firingTransition with firingProgress.input and output arcs with .output", () => {
     const diagram = baseDiagram()
     const inputId = "arc-p_to_t-pending-approve-0"
     const outputId = "arc-t_to_p-decided-approve-1"
-    const firing = new Set<string>([inputId, outputId])
-    const { edges } = buildGraph(diagram, "running", firing, 1200)
+    const { edges } = buildGraph(diagram, "running", "approve", { input: 0.3, output: 0.7 })
 
     const input = edges.find((e) => e.id === inputId)
     const output = edges.find((e) => e.id === outputId)
-    expect(input?.className).toBe("cf-edge-firing")
-    expect(output?.className).toBe("cf-edge-firing")
-    expect((input?.style as Record<string, unknown>)["--cf-edge-duration"]).toBe("1200ms")
-    expect((output?.style as Record<string, unknown>)["--cf-edge-duration"]).toBe("1200ms")
+    expect((input?.data as Record<string, unknown>).firingProgress).toBe(0.3)
+    expect((output?.data as Record<string, unknown>).firingProgress).toBe(0.7)
+    // No className for firing in the new design — the inline `pathLength="1"`
+    // + dasharray combo replaces the CSS keyframe.
+    expect(input?.className).toBeUndefined()
+    expect(output?.className).toBeUndefined()
   })
 
-  it("leaves non-firing edges with no `cf-edge-firing` class", () => {
+  it("omits firingProgress on edges not touching the firingTransition", () => {
     const diagram = baseDiagram()
-    const firing = new Set<string>(["arc-p_to_t-pending-approve-0"])
-    const { edges } = buildGraph(diagram, "running", firing, 600)
-    const other = edges.find((e) => e.id === "arc-t_to_p-decided-approve-1")
-    expect(other?.className).toBeUndefined()
-    expect((other?.style as Record<string, unknown>)["--cf-edge-duration"]).toBeUndefined()
+    diagram.transitions = [
+      ...diagram.transitions,
+      {
+        name: "reject",
+        enabled_count: 0,
+        rejected_by_guard_count: 0,
+        rejected_by_arc_eval_count: 0,
+        rejected_by_marking_count: 0,
+        last_fired_at: null
+      }
+    ]
+    diagram.arcs = [
+      ...diagram.arcs,
+      { place: "pending", transition: "reject", orientation: "p_to_t" }
+    ]
+    const { edges } = buildGraph(diagram, "running", "approve", { input: 0.5, output: 0 })
+    const rejectEdge = edges.find((e) => e.id === "arc-p_to_t-pending-reject-2")
+    expect((rejectEdge?.data as Record<string, unknown> | undefined)?.firingProgress).toBeUndefined()
+  })
+
+  it("clamps firingProgress to [0,1]", () => {
+    const diagram = baseDiagram()
+    const { edges } = buildGraph(diagram, "running", "approve", { input: -0.5, output: 1.5 })
+    const input = edges.find((e) => e.id === "arc-p_to_t-pending-approve-0")
+    const output = edges.find((e) => e.id === "arc-t_to_p-decided-approve-1")
+    expect((input?.data as Record<string, unknown>).firingProgress).toBe(0)
+    expect((output?.data as Record<string, unknown>).firingProgress).toBe(1)
   })
 
   it("tags p_to_t arcs of enabled transitions with cf-edge-enabled + accent style", () => {
@@ -197,13 +220,44 @@ describe("NetDiagram", () => {
     )
   })
 
-  it("firing edge wins over enabled — firing class applied, enabled skipped", () => {
+  it("enabledTransitions override wins over live enabled_count for arc accent + transition glow", () => {
     const diagram = baseDiagram()
-    diagram.transitions[0].enabled_count = 1
-    const firing = new Set<string>(["arc-p_to_t-pending-approve-0"])
-    const { edges } = buildGraph(diagram, "running", firing, 600)
+    // Live counts disagree with replay-derived set: live says enabled, override says not.
+    diagram.transitions[0].enabled_count = 5
+    const override: ReadonlySet<string> = new Set()
+    const { edges, nodes } = buildGraph(
+      diagram,
+      "running",
+      null,
+      { input: 0, output: 0 },
+      undefined,
+      override
+    )
     const input = edges.find((e) => e.id === "arc-p_to_t-pending-approve-0")
-    expect(input?.className).toBe("cf-edge-firing")
+    expect(input?.className).toBeUndefined()
+    expect((input?.style as Record<string, unknown>).stroke).toBe(
+      "var(--color-cf-border-strong)"
+    )
+    const approveNode = nodes.find((n) => n.id === "t:approve")
+    expect((approveNode?.data as Record<string, unknown>).isEnabled).toBe(false)
+  })
+
+  it("enabledTransitions override drives transition glow when the live count says zero", () => {
+    const diagram = baseDiagram()
+    diagram.transitions[0].enabled_count = 0
+    const override: ReadonlySet<string> = new Set(["approve"])
+    const { edges, nodes } = buildGraph(
+      diagram,
+      "running",
+      null,
+      { input: 0, output: 0 },
+      undefined,
+      override
+    )
+    const input = edges.find((e) => e.id === "arc-p_to_t-pending-approve-0")
+    expect(input?.className).toBe("cf-edge-enabled")
+    const approveNode = nodes.find((n) => n.id === "t:approve")
+    expect((approveNode?.data as Record<string, unknown>).isEnabled).toBe(true)
   })
 
   it("pulses the transition node when last_fired_at changes", async () => {

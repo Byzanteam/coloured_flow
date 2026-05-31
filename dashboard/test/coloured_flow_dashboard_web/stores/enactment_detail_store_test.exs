@@ -1102,6 +1102,50 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
     end
   end
 
+  describe ":replay_to_version against TrafficLightFlow (initial-marking regression)" do
+    # Regression cover for the bug where `turn_red_ew` / `turn_red_ns`
+    # appeared as enabled on the diagram for every replay version. The
+    # backend's engine output for v=0 must list ONLY transitions whose input
+    # arcs are satisfied by the initial marking — anything else was the
+    # diagram conflating live `enabled_count` with replay-derived state.
+    require ColouredFlow.Runner.Storage.InMemory, as: TLInMemory
+    alias ColouredFlowDashboard.Seeds.TrafficLightFlow
+
+    test "v=0 returns only `turn_green_ew` (the only initially firable transition)",
+         %{topic_prefix: topic_prefix} do
+      flow = TLInMemory.insert_flow!(TrafficLightFlow.cpnet())
+      flow_id = TLInMemory.flow(flow, :id)
+      {:ok, enactment} = TrafficLightFlow.insert_enactment(flow_id)
+      enactment_id = TLInMemory.enactment(enactment, :id)
+      {:ok, _pid} = TrafficLightFlow.start_enactment(enactment_id, lifecycle_hooks: nil)
+
+      flow_cache =
+        unique_cache_atom(
+          "enactment_detail_store_test_tl_cache_#{System.unique_integer([:positive])}"
+        )
+
+      :ets.new(flow_cache, [:set, :public, :named_table])
+      :ets.insert(flow_cache, {enactment_id, "tl-flow", TrafficLightFlow.cpnet()})
+
+      page = mount_store(enactment_id, topic_prefix, flow_cache)
+
+      assert {:ok, %{code: :ok} = reply} =
+               Musubi.Testing.dispatch_command(page, :replay_to_version, %{version: 0})
+
+      enabled = Enum.sort(reply.enabled_transitions)
+      # Initial marking = red_ew + red_ns + safe_ew. `turn_green_ew` needs
+      # `red_ew + safe_ew` → enabled. `turn_green_ns` needs `red_ns + safe_ns`
+      # but safe_ns has no initial token → NOT enabled. Every `turn_red_*` /
+      # `turn_yellow_*` needs `yellow_*` / `green_*` which are empty at v=0
+      # → NOT enabled.
+      assert enabled == ["turn_green_ew"]
+      refute "turn_red_ew" in enabled
+      refute "turn_red_ns" in enabled
+      refute "turn_yellow_ew" in enabled
+      refute "turn_yellow_ns" in enabled
+    end
+  end
+
   describe "live marking refresh on firing events" do
     require ColouredFlow.Runner.Storage.InMemory, as: InMemory
     alias ColouredFlow.Runner.Enactment.WorkitemTransition
