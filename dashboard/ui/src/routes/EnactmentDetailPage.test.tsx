@@ -1049,7 +1049,7 @@ describe("EnactmentDetailPage", () => {
       }
     })
 
-    it("replay step-forward progresses enabled set pre → intermediate (client-computed) → post across the three-interval firing window", async () => {
+    it("replay step-forward holds the PRE-fire enabled set across the entire firing window, then snaps to post-fire at fullMs", async () => {
       const restore = mutateReplay(
         { version: 0, derived_at: "2026-05-29T01:00:00Z" },
         { min: 0, max: 3 }
@@ -1121,23 +1121,24 @@ describe("EnactmentDetailPage", () => {
         expect(stub().dataset.firingTransition).toBe("approve")
         expect(stub().dataset.enabledTransitions).toBe("[]")
 
-        // First RAF tick at elapsed = 0. Still pre-inputEndMs → pre-fire.
+        // First RAF tick at elapsed = 0. Pre-fire.
         await flushRaf()
         expect(stub().dataset.enabledTransitions).toBe("[]")
 
-        // Cross inputEndMs (=800). In intermediate window now. The client
-        // re-derives the enabled set from the intermediate diagram tokens
-        // (the test snapshot keeps pending=1, decided=0 so `approve` remains
-        // enabled at the intermediate marking).
+        // Cross inputEndMs (=800) into the intermediate (dwell) window. The
+        // engine-correct intermediate enabled set can't be computed
+        // client-side (arc multiplicity / guards / binding expressions are
+        // not on the wire), so we keep the pre-fire enabled set instead of
+        // lying with a tokens-only approximation.
         nowRef.current = 5_900
         await flushRaf()
-        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["approve"]))
+        expect(stub().dataset.enabledTransitions).toBe("[]")
 
         // Still in Phase B (elapsed = 1600 → between outputStartMs=1200 and
-        // fullMs=2000). Intermediate enabled persists until fullMs apply.
+        // fullMs=2000). Override still pre-fire.
         nowRef.current = 6_600
         await flushRaf()
-        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["approve"]))
+        expect(stub().dataset.enabledTransitions).toBe("[]")
 
         // Past fullMs → applyFinalPendings flips replayEnabledTransitions to
         // the post-fire set carried by the reply.
@@ -1148,6 +1149,176 @@ describe("EnactmentDetailPage", () => {
       } finally {
         mut.occurrences = origOccurrences
         restore()
+        performanceSpy.mockRestore()
+        rafSpy.mockRestore()
+        cafSpy.mockRestore()
+      }
+    })
+
+    it("skips the live firing animation when activeVersion jumps by more than 1 (multi-occurrence batch)", async () => {
+      const mut = sampleSnapshot as unknown as {
+        summary: { version: number }
+        occurrences: Array<{
+          id: string
+          step_number: number
+          transition: string
+          binding_summary: string
+          occurred_at: string
+          outputs_summary: string
+        }>
+      }
+      const origVersion = mut.summary.version
+      const origOccurrences = mut.occurrences
+      // Park at v=3 with no occurrence so mount seeds lastVersionRef without
+      // animating.
+      mut.summary.version = 3
+      mut.occurrences = []
+
+      try {
+        const { rerender } = renderRoute(<EnactmentDetailPage />)
+        const stub = () => screen.getByTestId("net-diagram-stub")
+        expect(stub().dataset.firingTransition).toBe("")
+
+        // Jump from v=3 to v=5 (TWO occurrences). The runner batched both;
+        // animating only the LAST would misrepresent the timeline, so the
+        // page must snap to post-fire without running the firing animation.
+        mut.summary.version = 5
+        mut.occurrences = [
+          {
+            id: "occ-4",
+            step_number: 4,
+            transition: "approve",
+            binding_summary: "",
+            occurred_at: "2026-05-29T01:00:00Z",
+            outputs_summary: ""
+          },
+          {
+            id: "occ-5",
+            step_number: 5,
+            transition: "approve",
+            binding_summary: "",
+            occurred_at: "2026-05-29T01:00:01Z",
+            outputs_summary: ""
+          }
+        ]
+        await act(async () => {
+          rerender(
+            <Toasty>
+              <MemoryRouter initialEntries={["/enactments/en-aaaa"]}>
+                <Routes>
+                  <Route path="/enactments/:id" element={<EnactmentDetailPage />} />
+                </Routes>
+              </MemoryRouter>
+            </Toasty>
+          )
+        })
+
+        expect(stub().dataset.firingTransition).toBe("")
+        expect(stub().dataset.firingInput).toBe("0")
+        expect(stub().dataset.firingOutput).toBe("0")
+      } finally {
+        mut.summary.version = origVersion
+        mut.occurrences = origOccurrences
+      }
+    })
+
+    it("live firing animation holds the PRE-fire enabled set across all phases via the override", async () => {
+      const mut = sampleSnapshot as unknown as {
+        summary: { version: number }
+        occurrences: Array<{
+          id: string
+          step_number: number
+          transition: string
+          binding_summary: string
+          occurred_at: string
+          outputs_summary: string
+        }>
+      }
+      const origVersion = mut.summary.version
+      const origOccurrences = mut.occurrences
+      // Sample diagram has `approve` with enabled_count=1, so the pre-fire
+      // enabled set derived in live mode is ["approve"]. NetDiagram normally
+      // derives that itself from displayedDiagram.transitions[].enabled_count,
+      // so the stub reports "live". With the firing override active during
+      // the animation it should switch to a concrete set instead.
+      mut.summary.version = 3
+      mut.occurrences = []
+
+      const rafCallbacks: FrameRequestCallback[] = []
+      const nowRef = { current: 1_000 }
+      const performanceSpy = vi.spyOn(performance, "now").mockImplementation(() => nowRef.current)
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb: FrameRequestCallback): number => {
+          rafCallbacks.push(cb)
+          return rafCallbacks.length
+        })
+      const cafSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+      const flushRaf = async () => {
+        const due = rafCallbacks.splice(0)
+        await act(async () => {
+          due.forEach((cb) => cb(nowRef.current))
+        })
+      }
+
+      try {
+        const { rerender } = renderRoute(<EnactmentDetailPage />)
+        const stub = () => screen.getByTestId("net-diagram-stub")
+        // No firing yet → NetDiagram derives enabled set itself.
+        expect(stub().dataset.enabledTransitions).toBe("live")
+
+        mut.summary.version = 4
+        mut.occurrences = [
+          {
+            id: "occ-4",
+            step_number: 4,
+            transition: "approve",
+            binding_summary: "",
+            occurred_at: "2026-05-29T01:00:00Z",
+            outputs_summary: ""
+          }
+        ]
+        await act(async () => {
+          rerender(
+            <Toasty>
+              <MemoryRouter initialEntries={["/enactments/en-aaaa"]}>
+                <Routes>
+                  <Route path="/enactments/:id" element={<EnactmentDetailPage />} />
+                </Routes>
+              </MemoryRouter>
+            </Toasty>
+          )
+        })
+
+        expect(stub().dataset.firingTransition).toBe("approve")
+        // Override active across pre + intermediate + Phase B (until fullMs).
+        const preFireSet = JSON.stringify(["approve"])
+        expect(stub().dataset.enabledTransitions).toBe(preFireSet)
+
+        // Phase A midpoint.
+        nowRef.current = 1_400
+        await flushRaf()
+        expect(stub().dataset.enabledTransitions).toBe(preFireSet)
+
+        // Intermediate (dwell).
+        nowRef.current = 2_000
+        await flushRaf()
+        expect(stub().dataset.enabledTransitions).toBe(preFireSet)
+
+        // Phase B midpoint.
+        nowRef.current = 2_600
+        await flushRaf()
+        expect(stub().dataset.enabledTransitions).toBe(preFireSet)
+
+        // Past fullMs → firing clears, override goes away, NetDiagram derives
+        // from the (post-fire) displayed diagram again.
+        nowRef.current = 3_100
+        await flushRaf()
+        expect(stub().dataset.firingTransition).toBe("")
+        expect(stub().dataset.enabledTransitions).toBe("live")
+      } finally {
+        mut.summary.version = origVersion
+        mut.occurrences = origOccurrences
         performanceSpy.mockRestore()
         rafSpy.mockRestore()
         cafSpy.mockRestore()

@@ -63,9 +63,12 @@ type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 //
 // Marking + enabled-transition state commits at TWO boundaries:
 //   * inputEndMs (drain visible): displayed diagram flips to intermediate
-//     (input places drained, output places still pre-fire). Intermediate
-//     enabled set computed client-side (T enabled iff every input place of T
-//     still has ≥1 token).
+//     (input places drained, output places still pre-fire). The displayed
+//     ENABLED SET stays pinned to pre-fire — computing engine-correct
+//     enablement client-side would require arc-multiplicity, guards, and
+//     binding-expression evaluation, which the wire does not carry. Pre-fire
+//     is a known-good approximation that never lies about specific
+//     transitions during the brief dwell.
 //   * fullMs (arrival visible): displayed diagram flips to post-fire
 //     (server-pushed). Post-fire enabled set from `:replay_to_version` reply
 //     in replay mode, or from the post-fire diagram's `enabled_count` in
@@ -112,24 +115,16 @@ function buildIntermediateDiagram(
   return { ...post, places }
 }
 
-// Client-side intermediate enabled set: T is enabled iff every p_to_t arc's
-// place has ≥1 token in the supplied diagram. Matches plan option (b) — no
-// wire change; the brief intermediate-phase glow approximates engine truth.
-function computeEnabledFromDiagramTokens(diagram: DiagramPayload): ReadonlySet<string> {
-  const tokens = new Map<string, number>()
-  for (const p of diagram.places) tokens.set(p.name, p.tokens_count)
-  const inputs = new Map<string, string[]>()
-  for (const arc of diagram.arcs) {
-    if (arc.orientation !== "p_to_t") continue
-    const list = inputs.get(arc.transition) ?? []
-    list.push(arc.place)
-    inputs.set(arc.transition, list)
-  }
+// Pre-fire enabled set in LIVE mode is derived directly from the pre-fire
+// diagram's per-transition `enabled_count`. Used as the override during the
+// firing animation so the highlight doesn't flip to the post-fire set the
+// instant the server pushes the new diagram. Replay mode does NOT need this
+// helper — `replayEnabledTransitions` already holds the pre-fire value
+// through Phases A+B and snaps to post-fire at applyFinalPendings().
+function preFireEnabledFromDiagram(diagram: DiagramPayload): ReadonlySet<string> {
   const enabled = new Set<string>()
   for (const t of diagram.transitions) {
-    const inputList = inputs.get(t.name)
-    if (!inputList || inputList.length === 0) continue
-    if (inputList.every((p) => (tokens.get(p) ?? 0) >= 1)) enabled.add(t.name)
+    if (t.enabled_count > 0) enabled.add(t.name)
   }
   return enabled
 }
@@ -492,7 +487,8 @@ function DetailContent({
 
   // Three-phase intermediate state. Computed once per (firingPhase,
   // firingPreDiagram, diagram) tuple. `firingPhase === null` short-circuits so
-  // off-firing renders pay nothing.
+  // off-firing renders pay nothing. Enabled-transition set during firing is
+  // NOT computed from this diagram — see `enabledTransitionsOverride` below.
   const intermediateState = useMemo(() => {
     if (firingPhase === null || firingPreDiagram === null || diagram === null) {
       return null
@@ -504,10 +500,19 @@ function DetailContent({
     )
     return {
       diagram: interDiag,
-      markings: diagramToMarkingRows(interDiag),
-      enabled: computeEnabledFromDiagramTokens(interDiag)
+      markings: diagramToMarkingRows(interDiag)
     }
   }, [firingPhase, firingPreDiagram, diagram])
+
+  // Live-mode pre-fire enabled set. Captured from the pre-fire diagram so the
+  // override stays stable through the entire firing animation (Phase A +
+  // intermediate dwell + Phase B), instead of letting NetDiagram derive from
+  // `displayedDiagram.transitions[].enabled_count` — which flips to post-fire
+  // values the instant the server pushes the post-fire diagram.
+  const liveFiringEnabledOverride = useMemo(() => {
+    if (firingPhase === null || firingPreDiagram === null) return null
+    return preFireEnabledFromDiagram(firingPreDiagram)
+  }, [firingPhase, firingPreDiagram])
 
   // Three-phase selectors. RAF ticks update firingProgress so these recompute
   // on every frame the phase advances; identity changes only at the boundaries
@@ -559,6 +564,11 @@ function DetailContent({
     if (prev === null) return
     if (activeVersion <= prev) return
     if (replayState !== null) return
+    // Multi-step bumps (runner batched N>1 occurrences into one bridge event)
+    // skip the firing animation. Animating only the LAST occurrence over the
+    // already-combined post-fire diagram would drop the intermediate firings
+    // from the visible timeline. Snap straight to post-fire instead.
+    if (activeVersion !== prev + 1) return
 
     const occurrence = occurrences.find((o) => o.step_number === activeVersion)
     if (!occurrence) return
@@ -615,22 +625,22 @@ function DetailContent({
   }, [firingPhase, applyFinalPendings])
 
   // Enabled-transition override resolution:
-  //   * Phase B (intermediate): client-computed set against drained inputs.
-  //     Drives BOTH live and replay glow during the brief intermediate window.
-  //   * Replay (non-firing OR Phase A/post): replay reply's enabled set.
-  //     `replayEnabledTransitions` holds the PRE-fire value through Phases A+B
-  //     and snaps to post-fire when applyFinalPendings runs at fullMs.
-  //   * Live (non-firing OR Phase A/post): undefined → NetDiagram derives from
-  //     the displayedDiagram's transitions[].enabled_count. Pre-fire diagram
-  //     carries pre-fire counts (Phase A), post-fire diagram carries post-fire
-  //     counts (post).
+  //   * Firing (any phase before fullMs): pre-fire enabled set. In replay,
+  //     `replayEnabledTransitions` already holds the pre-fire value through
+  //     Phases A+B and snaps to post-fire when applyFinalPendings runs at
+  //     fullMs. In live, `liveFiringEnabledOverride` mirrors the pre-fire
+  //     diagram's `enabled_count`, so the highlight doesn't follow the
+  //     server-pushed post-fire diagram mid-animation. We deliberately do NOT
+  //     re-derive enablement client-side from the intermediate (drained)
+  //     marking — engine-correct enablement needs arc multiplicity, guards,
+  //     and binding-expression evaluation; the wire carries none of that.
+  //   * Replay, non-firing: replay reply's enabled set.
+  //   * Live, non-firing: undefined → NetDiagram derives from the displayed
+  //     diagram's transitions[].enabled_count.
   const enabledTransitionsOverride: ReadonlySet<string> | undefined = (() => {
-    if (
-      firingPhase !== null &&
-      firingDisplayPhase === "intermediate" &&
-      intermediateState
-    ) {
-      return intermediateState.enabled
+    if (firingPhase !== null && firingDisplayPhase !== "post") {
+      if (replayState !== null) return replayEnabledTransitions
+      if (liveFiringEnabledOverride !== null) return liveFiringEnabledOverride
     }
     return replayState === null ? undefined : replayEnabledTransitions
   })()
