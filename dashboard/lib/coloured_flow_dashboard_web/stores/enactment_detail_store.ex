@@ -108,11 +108,11 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       GenServer (same hot path the runner uses internally after completions).
       Reply codes: `:ok | :not_running | :runner_error`.
     * `:retry_enactment` — combines two public main-repo surfaces to recover an
-      `:exception`-state enactment: `Storage.retry_enactment/2` flips the DB
-      row back to `:running` and writes a `:retried` log entry; then
-      `Runner.Enactment.Supervisor.start_enactment/1` brings the GenServer
-      back online (the supervisor returns `{:ok, pid}` for both fresh starts
-      and `:already_started`). Reply codes:
+      `:exception`-state enactment: `Runner.Enactment.Supervisor.start_enactment/1`
+      first brings the GenServer back online (the supervisor returns `{:ok, pid}`
+      for both fresh starts and `:already_started`); only after a successful
+      boot does `Storage.retry_enactment/2` flip the DB row back to `:running`
+      and write a `:retried` log entry. Reply codes:
       `:ok | :not_exception | :already_terminated | :runner_error`. The
       command rejects when the dashboard's current `summary.state` is not
       `:exception` so an operator can't toggle a healthy enactment off the
@@ -302,6 +302,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     pubsub = Map.get(params, "pubsub_name", @default_pubsub)
     topic_prefix = Map.get(params, "topic_prefix", @default_topic_prefix)
     flow_cache = Map.get(params, "flow_cache", @default_flow_cache)
+    runner_start_fun = Map.get(params, "runner_start_fun", &Runner.start_enactment/1)
     topic = Map.get(params, "topic", "#{topic_prefix}enactment:#{enactment_id}")
 
     :ok = Phoenix.PubSub.subscribe(pubsub, topic)
@@ -351,6 +352,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
       |> assign(:pubsub_name, pubsub)
       |> assign(:topic, topic)
       |> assign(:flow_cache, flow_cache)
+      |> assign(:runner_start_fun, runner_start_fun)
       |> assign(:summary, summary)
       |> assign(:transitions, transitions)
       |> assign(:diagram, diagram)
@@ -454,7 +456,8 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   end
 
   def handle_command(:retry_enactment, _payload, socket) do
-    {:reply, retry_enactment_reply(socket.assigns.enactment_id), socket}
+    {:reply, retry_enactment_reply(socket.assigns.enactment_id, socket.assigns.runner_start_fun),
+     socket}
   end
 
   def handle_command(:inspect_transition, payload, socket) when is_map(payload) do
@@ -1741,21 +1744,23 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   # lag behind a concurrent force-terminate; trusting it would let an
   # already-`:terminated` row be resurrected back to `:running` by
   # `Storage.retry_enactment/2`. Only an actual `:exception` row is retried.
-  defp retry_enactment_reply(enactment_id) when is_binary(enactment_id) do
+  defp retry_enactment_reply(enactment_id, runner_start_fun) when is_binary(enactment_id) do
     case authoritative_enactment_state(enactment_id) do
-      {:ok, :exception} -> do_retry_enactment(enactment_id)
+      {:ok, :exception} -> do_retry_enactment(enactment_id, runner_start_fun)
       {:ok, :running} -> %{code: :not_exception}
       {:ok, :terminated} -> %{code: :already_terminated}
       {:error, reason} -> %{code: :runner_error, message: inspect(reason)}
     end
   end
 
-  defp do_retry_enactment(enactment_id) do
-    :ok = Storage.retry_enactment(enactment_id, message: "operator-triggered")
+  defp do_retry_enactment(enactment_id, runner_start_fun) do
+    case runner_start_fun.(enactment_id) do
+      {:ok, _pid} ->
+        :ok = Storage.retry_enactment(enactment_id, message: "operator-triggered")
+        %{code: :ok}
 
-    case Runner.start_enactment(enactment_id) do
-      {:ok, _pid} -> %{code: :ok}
-      {:error, reason} -> %{code: :runner_error, message: inspect(reason)}
+      {:error, reason} ->
+        %{code: :runner_error, message: inspect(reason)}
     end
   rescue
     error -> %{code: :runner_error, message: Exception.message(error)}

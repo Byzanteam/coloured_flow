@@ -87,6 +87,7 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
       |> assign(:oldest_seq, nil)
       |> assign(:newest_seq, nil)
       |> assign(:last_seq, %{})
+      |> assign(:entry_enactments, %{})
       # Ordered `[{id, seq}]` list — newest (highest seq) at head, matching
       # the stream's `at: 0` insertion semantics. Position-based insert keeps
       # the feed sorted by bridge seq even when the bridge's per-event Task
@@ -155,10 +156,12 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
     index = socket.assigns.entries_index
     position = insert_position(index, seq)
     next_index = List.insert_at(index, position, {id, seq})
+    next_entry_enactments = Map.put(socket.assigns.entry_enactments, id, event.enactment_id)
 
     socket
     |> stream_insert(:entries, entry, at: position)
     |> assign(:entries_index, next_index)
+    |> assign(:entry_enactments, next_entry_enactments)
     |> assign(:total_events, socket.assigns.total_events + 1)
     |> assign(:entries_in_window, length(next_index))
     |> assign(:newest_seq, head_seq(next_index))
@@ -183,14 +186,31 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
       socket
     else
       {{drop_id, _drop_seq}, next_index} = List.pop_at(index, -1)
+      drop_eid = Map.get(socket.assigns.entry_enactments, drop_id)
+      next_entry_enactments = Map.delete(socket.assigns.entry_enactments, drop_id)
+      next_last_seq = prune_last_seq(socket.assigns.last_seq, next_entry_enactments, drop_eid)
 
       socket
       |> stream_delete_by_item_key(:entries, drop_id)
       |> assign(:entries_index, next_index)
+      |> assign(:entry_enactments, next_entry_enactments)
+      |> assign(:last_seq, next_last_seq)
       |> assign(:entries_in_window, length(next_index))
       |> assign(:newest_seq, head_seq(next_index))
       |> assign(:oldest_seq, tail_seq(next_index))
       |> trim_window()
+    end
+  end
+
+  defp prune_last_seq(last_seq, _entry_enactments, nil), do: last_seq
+
+  defp prune_last_seq(last_seq, entry_enactments, enactment_id) do
+    if Enum.any?(entry_enactments, fn {_id, current_enactment_id} ->
+         current_enactment_id == enactment_id
+       end) do
+      last_seq
+    else
+      Map.delete(last_seq, enactment_id)
     end
   end
 

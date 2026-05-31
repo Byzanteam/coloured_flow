@@ -178,6 +178,18 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
       assert {:ok, %{code: :unknown_flow, enactment_id: nil}} =
                Musubi.Testing.dispatch_command(page, :start_enactment, %{flow_id: bogus})
     end
+
+    test "rolls back the inserted row when Runner.start_enactment/1 fails", %{topic: topic} do
+      flow_record = InMemory.insert_flow!(ApprovalFlow.cpnet())
+      flow_id = InMemory.flow(flow_record, :id)
+      before_ids = current_enactment_ids()
+      page = mount_store(topic, fn _enactment_id -> {:error, :runner_down} end)
+
+      assert {:ok, %{code: :runner_error, enactment_id: nil}} =
+               Musubi.Testing.dispatch_command(page, :start_enactment, %{flow_id: flow_id})
+
+      assert current_enactment_ids() == before_ids
+    end
   end
 
   describe ":refresh_catalog command" do
@@ -290,8 +302,11 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
   defp discriminator(context),
     do: Integer.to_string(:erlang.phash2({context.module, context.test}))
 
-  defp mount_store(topic) do
-    Musubi.Testing.mount(FlowCatalogStore, %{"topic" => topic})
+  defp mount_store(topic, runner_start_fun \\ &ColouredFlow.Runner.start_enactment/1) do
+    Musubi.Testing.mount(FlowCatalogStore, %{
+      "topic" => topic,
+      "runner_start_fun" => runner_start_fun
+    })
   end
 
   defp broadcast!(topic, %Event{} = event) do
@@ -308,6 +323,16 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStoreTest do
     InMemory |> Module.safe_concat("Enactment") |> :ets.tab2list() |> length()
   rescue
     _error -> 0
+  end
+
+  defp current_enactment_ids do
+    InMemory
+    |> Module.safe_concat("Enactment")
+    |> :ets.tab2list()
+    |> Enum.map(&InMemory.enactment(&1, :id))
+    |> MapSet.new()
+  rescue
+    _error -> MapSet.new()
   end
 
   # Reads the FlowSummary item out of the mount-time patch envelope's

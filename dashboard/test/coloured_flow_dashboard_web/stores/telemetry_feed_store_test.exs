@@ -132,6 +132,17 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStoreTest do
       assert assigns.newest_seq == 5
     end
 
+    test "bounds last_seq under distinct-enactment churn", %{topic: topic, page: page} do
+      for seq <- 1..1_200 do
+        broadcast!(topic, build_event(:produce_workitems_stop, Ecto.UUID.generate(), seq))
+      end
+
+      assigns = Musubi.Testing.assigns(page)
+
+      assert assigns.entries_in_window == 5
+      assert map_size(assigns.last_seq) <= 5
+    end
+
     test "two enactments interleave without stale-drop crosstalk",
          %{topic: topic, page: page} do
       eid_a = Ecto.UUID.generate()

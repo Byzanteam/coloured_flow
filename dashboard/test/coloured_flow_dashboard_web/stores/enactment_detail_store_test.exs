@@ -8,6 +8,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Runner.Enactment, as: RunnerEnactment
   alias ColouredFlow.Runner.Enactment.Workitem, as: RunnerWorkitem
+  alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlowDashboard.Seed
   alias ColouredFlowDashboard.Seeds.ApprovalFlow
   alias ColouredFlowDashboard.TelemetryBridge
@@ -266,6 +267,24 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
 
       assert {:ok, %{code: :runner_error}} =
                Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+    end
+
+    test "keeps the storage row in :exception when runner restart fails",
+         %{topic_prefix: topic_prefix, flow_cache: flow_cache} do
+      enactment = insert_enactment_with_state!(:exception)
+
+      page =
+        mount_store(enactment.id, topic_prefix, flow_cache,
+          runner_start_fun: fn enactment_id ->
+            assert enactment_id == enactment.id
+            {:error, :runner_down}
+          end
+        )
+
+      assert {:ok, %{code: :runner_error}} =
+               Musubi.Testing.dispatch_command(page, :retry_enactment, %{})
+
+      assert %Schemas.Enactment{state: :exception} = Repo.get!(Schemas.Enactment, enactment.id)
     end
 
     # Race pin (P20 HIGH): another operator force-terminated the row, but
@@ -1422,12 +1441,20 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
   # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
   defp unique_cache_atom(name) when is_binary(name), do: String.to_atom(name)
 
-  defp mount_store(enactment_id, topic_prefix, flow_cache) do
-    Musubi.Testing.mount(EnactmentDetailStore, %{
+  defp mount_store(enactment_id, topic_prefix, flow_cache, opts \\ []) do
+    params = %{
       "id" => enactment_id,
       "topic_prefix" => topic_prefix,
       "flow_cache" => flow_cache
-    })
+    }
+
+    params =
+      case Keyword.fetch(opts, :runner_start_fun) do
+        {:ok, runner_start_fun} -> Map.put(params, "runner_start_fun", runner_start_fun)
+        :error -> params
+      end
+
+    Musubi.Testing.mount(EnactmentDetailStore, params)
   end
 
   # Inserts a real `enactments` row in the requested state so the

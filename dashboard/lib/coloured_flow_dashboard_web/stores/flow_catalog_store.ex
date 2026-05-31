@@ -157,6 +157,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   def mount(params, socket) when is_map(params) do
     pubsub = Map.get(params, "pubsub_name", @default_pubsub)
     topic = Map.get(params, "topic", @default_topic)
+    runner_start_fun = Map.get(params, "runner_start_fun", &Runner.start_enactment/1)
 
     :ok = Phoenix.PubSub.subscribe(pubsub, topic)
 
@@ -166,6 +167,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
       socket
       |> assign(:pubsub_name, pubsub)
       |> assign(:topic, topic)
+      |> assign(:runner_start_fun, runner_start_fun)
       |> assign(:counts, counts)
       |> assign(:flow_ids, ids)
       |> assign(:last_seq, %{})
@@ -182,7 +184,7 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   @impl Musubi.Store
   def handle_command(:start_enactment, payload, socket) when is_map(payload) do
     flow_id = Map.get(payload, "flow_id") || Map.get(payload, :flow_id)
-    {:reply, start_enactment_reply(flow_id), socket}
+    {:reply, start_enactment_reply(flow_id, socket.assigns.runner_start_fun), socket}
   end
 
   def handle_command(:refresh_catalog, _payload, socket) do
@@ -555,12 +557,13 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
   # :start_enactment command
   # ---------------------------------------------------------------------------
 
-  defp start_enactment_reply(nil), do: %{code: :unknown_flow, enactment_id: nil}
+  defp start_enactment_reply(nil, _runner_start_fun),
+    do: %{code: :unknown_flow, enactment_id: nil}
 
-  defp start_enactment_reply(flow_id) when is_binary(flow_id) do
+  defp start_enactment_reply(flow_id, runner_start_fun) when is_binary(flow_id) do
     with {:ok, %{name: name} = flow} <- fetch_flow(flow_id),
          {:ok, seed} <- fetch_seed(name),
-         {:ok, enactment_id} <- insert_and_start(flow, seed) do
+         {:ok, enactment_id} <- insert_and_start(flow, seed, runner_start_fun) do
       %{code: :ok, enactment_id: enactment_id}
     else
       {:error, :unknown_flow} ->
@@ -577,7 +580,8 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
     end
   end
 
-  defp start_enactment_reply(_other), do: %{code: :unknown_flow, enactment_id: nil}
+  defp start_enactment_reply(_other, _runner_start_fun),
+    do: %{code: :unknown_flow, enactment_id: nil}
 
   defp fetch_flow(flow_id) do
     case Storage.__storage__() do
@@ -618,10 +622,16 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
     end
   end
 
-  defp insert_and_start(flow, seed) do
-    with {:ok, enactment_id} <- insert_enactment(flow, seed.initial_markings),
-         {:ok, _pid} <- start_runner(enactment_id) do
-      {:ok, enactment_id}
+  defp insert_and_start(flow, seed, runner_start_fun) do
+    with {:ok, enactment_id} <- insert_enactment(flow, seed.initial_markings) do
+      case start_runner(enactment_id, runner_start_fun) do
+        {:ok, _pid} ->
+          {:ok, enactment_id}
+
+        {:error, _reason} = error ->
+          _rollback = rollback_enactment_insert(flow, enactment_id)
+          error
+      end
     end
   end
 
@@ -643,8 +653,8 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
     kind, reason -> {:error, {:storage, Exception.format(kind, reason)}}
   end
 
-  defp start_runner(enactment_id) do
-    case Runner.start_enactment(enactment_id) do
+  defp start_runner(enactment_id, runner_start_fun) do
+    case runner_start_fun.(enactment_id) do
       {:ok, pid} when is_pid(pid) -> {:ok, pid}
       {:ok, pid, _info} when is_pid(pid) -> {:ok, pid}
       :ignore -> {:error, {:runner, ":ignore"}}
@@ -654,6 +664,28 @@ defmodule ColouredFlowDashboardWeb.Stores.FlowCatalogStore do
     error -> {:error, {:runner, Exception.message(error)}}
   catch
     kind, reason -> {:error, {:runner, Exception.format(kind, reason)}}
+  end
+
+  defp rollback_enactment_insert(%{in_memory_record: _record}, enactment_id) do
+    case GenServer.whereis(InMemory) do
+      pid when is_pid(pid) ->
+        _result = GenServer.call(InMemory, {:delete, {:enactment, enactment_id}})
+        :ok
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp rollback_enactment_insert(%{id: _flow_id}, enactment_id) do
+    case Repo.get(Schemas.Enactment, enactment_id) do
+      %Schemas.Enactment{} = row ->
+        _result = Repo.delete(row)
+        :ok
+
+      nil ->
+        :ok
+    end
   end
 
   # ---------------------------------------------------------------------------
