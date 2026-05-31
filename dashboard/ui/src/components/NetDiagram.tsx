@@ -593,26 +593,28 @@ function OrthogonalEdgeImpl({ data, markerEnd, style }: EdgeProps) {
     return <BaseEdge path={path} markerEnd={markerEnd} style={style} />
   }
 
-  // Two-phase fire paint: pathLength="1" normalises the stroke math so a single
-  // `strokeDasharray=1` + `strokeDashoffset=1-progress` fills the path from
-  // start to end regardless of pixel length.
-  const firingStyle: CSSProperties = {
+  // Base path keeps the edge's pre-firing color visible throughout the
+  // animation; overlay path paints `cf-accent` on top, growing from 0..1 via
+  // `pathLength="1"` + `strokeDasharray=1` + `strokeDashoffset=1-progress`.
+  const overlayStyle: CSSProperties = {
     ...style,
     stroke: "var(--color-cf-accent)",
-    strokeWidth: 2,
     strokeDasharray: 1,
-    strokeDashoffset: 1 - progress
+    strokeDashoffset: 1 - progress,
+    pointerEvents: "none"
   }
   return (
-    <path
-      d={path}
-      className="react-flow__edge-path"
-      fill="none"
-      markerEnd={markerEnd}
-      pathLength={1}
-      style={firingStyle}
-      data-testid="cf-edge-firing-path"
-    />
+    <g data-testid="cf-edge-firing-path">
+      <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+      <path
+        d={path}
+        className="react-flow__edge-path"
+        fill="none"
+        pathLength={1}
+        style={overlayStyle}
+        data-testid="cf-edge-firing-overlay"
+      />
+    </g>
   )
 }
 
