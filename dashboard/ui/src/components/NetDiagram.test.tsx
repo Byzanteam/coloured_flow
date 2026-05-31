@@ -153,9 +153,9 @@ describe("NetDiagram", () => {
     const output = edges.find((e) => e.id === outputId)
     expect((input?.data as Record<string, unknown>).firingProgress).toBe(0.3)
     expect((output?.data as Record<string, unknown>).firingProgress).toBe(0.7)
-    // No className for firing in the new design — the inline `pathLength="1"`
-    // + dasharray combo replaces the CSS keyframe.
-    expect(input?.className).toBeUndefined()
+    // Firing does not strip the enabled-input className; base stays
+    // accent-tint while the overlay paints cf-accent on top.
+    expect(input?.className).toBe("cf-edge-enabled")
     expect(output?.className).toBeUndefined()
   })
 

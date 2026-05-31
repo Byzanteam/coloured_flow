@@ -475,17 +475,14 @@ function buildEdges(
         : clamp01(firingProgress.output)
       : undefined
 
-    const isFiring = edgeFiringProgress !== undefined
     const isEnabledInput =
-      !isFiring && arc.orientation === "p_to_t" && isTransitionEnabled(arc.transition)
+      arc.orientation === "p_to_t" && isTransitionEnabled(arc.transition)
 
     let style: CSSProperties
     let markerEnd = DEFAULT_MARKER
     let className: string | undefined
 
-    if (isFiring) {
-      style = DEFAULT_EDGE_STYLE
-    } else if (isEnabledInput) {
+    if (isEnabledInput) {
       style = ENABLED_EDGE_STYLE
       markerEnd = ENABLED_MARKER
       className = "cf-edge-enabled"
@@ -588,19 +585,20 @@ function OrthogonalEdgeImpl({ data, markerEnd, style }: EdgeProps) {
   if (!points || points.length < 2) return null
   const path = roundedPolylinePath(points, EDGE_CORNER_RADIUS)
   const progress = oedata?.firingProgress
+  const isFiring = progress !== undefined
 
-  if (progress === undefined) {
-    return <BaseEdge path={path} markerEnd={markerEnd} style={style} />
-  }
-
-  // Base path keeps the edge's pre-firing color visible throughout the
-  // animation; overlay path paints `cf-accent` on top, growing from 0..1 via
-  // `pathLength="1"` + `strokeDasharray=1` + `strokeDashoffset=1-progress`.
+  // Overlay path renders unconditionally so the opacity transition can blend
+  // the cf-accent fill in and out smoothly instead of snapping on the firing
+  // boundary. dashoffset drives the fill direction; opacity drives the colour
+  // emergence. When not firing, opacity=0 hides it entirely (no hit testing,
+  // no visual cost beyond the offscreen path).
   const overlayStyle: CSSProperties = {
     ...style,
     stroke: "var(--color-cf-accent)",
     strokeDasharray: 1,
-    strokeDashoffset: 1 - progress,
+    strokeDashoffset: isFiring ? 1 - progress : 1,
+    opacity: isFiring ? 1 : 0,
+    transition: "opacity 200ms ease-out",
     pointerEvents: "none"
   }
   return (
@@ -608,10 +606,11 @@ function OrthogonalEdgeImpl({ data, markerEnd, style }: EdgeProps) {
       <BaseEdge path={path} markerEnd={markerEnd} style={style} />
       <path
         d={path}
-        className="react-flow__edge-path"
+        className="react-flow__edge-path cf-edge-overlay"
         fill="none"
         pathLength={1}
         style={overlayStyle}
+        data-firing={isFiring ? "true" : "false"}
         data-testid="cf-edge-firing-overlay"
       />
     </g>
