@@ -47,9 +47,16 @@ export default function FlowCatalogPage() {
 }
 
 function CatalogRoot() {
+  // Distinct caller id from FlowDetailPage's "detail" id. Musubi 0.7 rejects
+  // `(module, id)` duplicates on one connection with `:already_mounted`, and
+  // a /flows → /flows/:id swap can race the @musubi/react pendingRootMounts
+  // dedup (old useEffect cleanup vs. new render-phase ensureRootMount). Two
+  // FlowCatalogStore roots per connection is the cheap, race-free option.
+  // DO NOT collapse this id back to "default" — that collides with
+  // FlowDetailPage and crashes navigation.
   const catalog = useMusubiRootSuspense({
     module: FLOW_CATALOG_STORE,
-    id: "default"
+    id: "catalog"
   })
 
   return <CatalogContent catalog={catalog} />
