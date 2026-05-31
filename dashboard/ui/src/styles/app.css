@@ -1,0 +1,270 @@
+@source "../../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+@import "@cloudflare/kumo/styles/tailwind";
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+/*
+ * ColouredFlow dashboard tokens. Layered on top of Kumo's `--color-kumo-*`
+ * theme so the Banner / Table / Tabs / Dialog primitives stay on-brand while
+ * the shell (canvas, sidebar, page chrome) uses dashboard-specific surfaces.
+ *
+ * Strategy: restrained. Tinted cool-neutrals (hue 260) + one warm accent
+ * (clay, hue 38) used as ~10% of surface. State signal lives in 8px dots,
+ * never row backgrounds or side stripes.
+ *
+ * Tailwind v4 auto-generates `bg-cf-*`, `text-cf-*`, `border-cf-*` utilities
+ * from `--color-cf-*`. Reference these instead of hex literals.
+ */
+@theme {
+  --color-cf-canvas: oklch(0.975 0.004 260);
+  --color-cf-surface: oklch(0.995 0.002 260);
+  --color-cf-surface-tint: oklch(0.955 0.006 260);
+  --color-cf-border: oklch(0.92 0.006 260);
+  --color-cf-border-strong: oklch(0.86 0.008 260);
+
+  --color-cf-ink: oklch(0.205 0.012 260);
+  --color-cf-ink-muted: oklch(0.52 0.008 260);
+  --color-cf-ink-faint: oklch(0.68 0.006 260);
+
+  --color-cf-accent: oklch(0.56 0.13 38);
+  --color-cf-accent-muted: oklch(0.72 0.1 38);
+  --color-cf-accent-tint: oklch(0.955 0.024 38);
+  --color-cf-accent-ink: oklch(0.42 0.13 38);
+
+  --color-cf-dot-enabled: oklch(0.66 0.12 150);
+  --color-cf-dot-started: oklch(0.74 0.14 80);
+  --color-cf-dot-terminated: oklch(0.7 0.006 260);
+  --color-cf-dot-exception: oklch(0.62 0.18 22);
+
+  /* Exception emphasis surfaces. The pill uses a saturated hue-22 tint as
+   * background with deep ink, so the operator sees red the moment the
+   * page loads — distinct from the neutral pill used in `:running`. */
+  --color-cf-exception-bg: oklch(0.955 0.04 22);
+  --color-cf-exception-ink: oklch(0.38 0.16 22);
+
+  --color-cf-pill-bg: oklch(0.185 0.012 260);
+  --color-cf-pill-ink: oklch(0.985 0.002 260);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-cf-canvas);
+  color: var(--color-cf-ink);
+}
+
+/*
+ * Dark mode. The OKLCH palette is mirrored across the lightness axis: ink
+ * tones rise into the ~0.9 band, canvases drop into the ~0.18-0.22 band.
+ * Accent + state-dot chroma is held near light-mode lightness so the dots
+ * still register as the same signals. Two activation paths:
+ *
+ *   - `:root[data-theme="dark"]` — manual user pick (persisted by ThemeToggle).
+ *   - `@media (prefers-color-scheme: dark)` for visitors who haven't set a
+ *     manual preference (no `data-theme` attribute present).
+ *
+ * `[data-theme="light"]` short-circuits both so a user forcing light wins
+ * over OS dark mode.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-cf-canvas: oklch(0.185 0.012 260);
+    --color-cf-surface: oklch(0.225 0.012 260);
+    --color-cf-surface-tint: oklch(0.265 0.012 260);
+    --color-cf-border: oklch(0.32 0.012 260);
+    --color-cf-border-strong: oklch(0.42 0.012 260);
+
+    --color-cf-ink: oklch(0.965 0.004 260);
+    --color-cf-ink-muted: oklch(0.78 0.006 260);
+    --color-cf-ink-faint: oklch(0.58 0.006 260);
+
+    --color-cf-accent: oklch(0.74 0.13 38);
+    --color-cf-accent-muted: oklch(0.58 0.1 38);
+    --color-cf-accent-tint: oklch(0.32 0.05 38);
+    --color-cf-accent-ink: oklch(0.86 0.12 38);
+
+    --color-cf-dot-enabled: oklch(0.78 0.16 150);
+    --color-cf-dot-started: oklch(0.84 0.16 80);
+    --color-cf-dot-terminated: oklch(0.6 0.006 260);
+    --color-cf-dot-exception: oklch(0.72 0.18 22);
+
+    --color-cf-exception-bg: oklch(0.3 0.07 22);
+    --color-cf-exception-ink: oklch(0.9 0.12 22);
+
+    --color-cf-pill-bg: oklch(0.965 0.004 260);
+    --color-cf-pill-ink: oklch(0.205 0.012 260);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-cf-canvas: oklch(0.185 0.012 260);
+  --color-cf-surface: oklch(0.225 0.012 260);
+  --color-cf-surface-tint: oklch(0.265 0.012 260);
+  --color-cf-border: oklch(0.32 0.012 260);
+  --color-cf-border-strong: oklch(0.42 0.012 260);
+
+  --color-cf-ink: oklch(0.965 0.004 260);
+  --color-cf-ink-muted: oklch(0.78 0.006 260);
+  --color-cf-ink-faint: oklch(0.58 0.006 260);
+
+  --color-cf-accent: oklch(0.74 0.13 38);
+  --color-cf-accent-muted: oklch(0.58 0.1 38);
+  --color-cf-accent-tint: oklch(0.32 0.05 38);
+  --color-cf-accent-ink: oklch(0.86 0.12 38);
+
+  --color-cf-dot-enabled: oklch(0.78 0.16 150);
+  --color-cf-dot-started: oklch(0.84 0.16 80);
+  --color-cf-dot-terminated: oklch(0.6 0.006 260);
+  --color-cf-dot-exception: oklch(0.72 0.18 22);
+
+  --color-cf-exception-bg: oklch(0.3 0.07 22);
+  --color-cf-exception-ink: oklch(0.9 0.12 22);
+
+  --color-cf-pill-bg: oklch(0.965 0.004 260);
+  --color-cf-pill-ink: oklch(0.205 0.012 260);
+}
+
+/* Timeline scrubber range input. Native `<input type=range>` chrome is reset
+ * so the slider reads as a Kumo primitive (hairline track + accent-ink thumb)
+ * in every browser, not the OS default volume knob. */
+.cf-timeline-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+.cf-timeline-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.cf-timeline-slider:focus-visible {
+  outline: 2px solid var(--color-cf-accent-ink);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
+.cf-timeline-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-cf-border-strong);
+}
+.cf-timeline-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-cf-border-strong);
+  border: 0;
+}
+.cf-timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-cf-accent-ink);
+  border: 2px solid var(--color-cf-surface);
+  margin-top: -5px;
+  box-shadow: 0 1px 2px oklch(0.2 0.012 260 / 0.18);
+  transition: transform 120ms ease-out;
+}
+.cf-timeline-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-cf-accent-ink);
+  border: 2px solid var(--color-cf-surface);
+  box-shadow: 0 1px 2px oklch(0.2 0.012 260 / 0.18);
+  transition: transform 120ms ease-out;
+}
+.cf-timeline-slider:not(:disabled):hover::-webkit-slider-thumb,
+.cf-timeline-slider:not(:disabled):active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.cf-timeline-slider:not(:disabled):hover::-moz-range-thumb,
+.cf-timeline-slider:not(:disabled):active::-moz-range-thumb {
+  transform: scale(1.15);
+}
+
+/* While autoplay is running, the native value bump from v=N to v=N+1 paints
+ * a CSS `transition` on the thumb so the position glides over the same
+ * window the edge-fill animation uses. `--cf-thumb-duration` is set inline
+ * by TimelineScrubber from the shared SPEED_DURATION_MS map. The duration
+ * matches the autoplay tick interval, so by the time the thumb finishes
+ * sliding the next tick is about to schedule. Attribute selector specificity
+ * (0,1,0,0 over the base 0,1,0,0 + ::pseudo) beats the default `transform`
+ * transition above. */
+.cf-timeline-slider[data-autoplaying="true"]::-webkit-slider-thumb {
+  transition: all var(--cf-thumb-duration, 1000ms) linear;
+}
+.cf-timeline-slider[data-autoplaying="true"]::-moz-range-thumb {
+  transition: all var(--cf-thumb-duration, 1000ms) linear;
+}
+
+/* Static accent on the input arcs of every enabled transition. Tells the
+ * operator "these tokens are the ones a firing would consume." The class is
+ * a marker; the actual stroke/width come from inline `style` on the edge so
+ * they survive react-flow's path style precedence. The two-phase firing
+ * animation (Phase A drain + Phase B produce) is driven entirely by inline
+ * `pathLength="1"` + dasharray/offset from JS — see `OrthogonalEdge` in
+ * `components/NetDiagram.tsx`. */
+.cf-edge-enabled .react-flow__edge-path {
+  stroke: var(--color-cf-accent-muted);
+  stroke-width: 2;
+}
+
+/* Magic UI decorative text effects. CSS-only replacements for the previous
+ * `motion`-driven components: a continuously sweeping gradient (aurora) and
+ * a translucent shimmer band sliding across bg-clipped text. Both keep the
+ * children visible to screen readers via an `.sr-only` sibling rendered by
+ * the component while the visible layer uses `bg-clip-text`. */
+@keyframes cf-aurora-sweep {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+.cf-aurora-text {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: cf-aurora-sweep var(--cf-aurora-duration, 8s) linear infinite;
+}
+
+@keyframes cf-shimmer-sweep {
+  from {
+    background-position: 150% 0%;
+  }
+  to {
+    background-position: -50% 0%;
+  }
+}
+
+.cf-shimmer-text {
+  display: inline-block;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-repeat: no-repeat;
+  animation: cf-shimmer-sweep var(--cf-shimmer-duration, 4s) linear infinite;
+}
+
+/* Global focus ring fallback. Kumo primitives ship their own focus styles,
+ * but native controls (range / select / anchors) need an explicit ring so
+ * keyboard operators can always tell where focus sits in either palette.
+ * `border-radius` is intentionally omitted — `outline` already follows the
+ * element's own radius in every modern engine, and forcing 4px here would
+ * morph rounded-full pills into squared corners on focus. */
+*:focus-visible {
+  outline: 2px solid var(--color-cf-accent-ink);
+  outline-offset: 2px;
+}
+

@@ -1,0 +1,56 @@
+import { defineConfig } from "vite"
+import react from "@vitejs/plugin-react"
+import tailwindcss from "@tailwindcss/vite"
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  build: {
+    outDir: "../priv/static",
+    emptyOutDir: true,
+    assetsDir: "assets",
+    rollupOptions: {
+      output: {
+        // Split heavy third-party deps off the app chunk so the SPA bundle
+        // stays cache-friendly when only product code changes. Routes are
+        // imported eagerly today (no React.lazy split), so every entry
+        // downloads every chunk on first paint — these splits are about
+        // cache stability across product redeploys, not lazy loading. If a
+        // route is later moved behind React.lazy, the matching chunk
+        // becomes a real on-demand fetch for free.
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (
+              id.includes("/react/") ||
+              id.includes("/react-dom/") ||
+              id.includes("/react-router-dom/") ||
+              id.includes("/react-router/")
+            )
+              return "vendor-react"
+            if (id.includes("/@xyflow/")) return "vendor-diagram"
+            if (id.includes("/elkjs/")) return "vendor-elk"
+            if (id.includes("/@cloudflare/kumo") || id.includes("/@phosphor-icons/"))
+              return "vendor-chrome"
+          }
+          return undefined
+        }
+      }
+    }
+  },
+  server: {
+    port: 4103,
+    strictPort: false,
+    proxy: {
+      "/socket": {
+        target: "http://localhost:4000",
+        ws: true,
+        changeOrigin: true
+      }
+    }
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: ["./vitest.setup.ts"]
+  }
+})
