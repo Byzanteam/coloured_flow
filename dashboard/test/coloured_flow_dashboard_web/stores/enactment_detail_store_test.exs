@@ -926,6 +926,11 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
 
       refute Enum.any?(reply.markings, fn row -> to_string(row.place) == "output" end)
 
+      # `pass` is enabled at v=0 against the initial marking — the runner's
+      # `EnabledBindingElements.list/3` is the source of truth, so the reply
+      # carries the engine-derived set, not the live `enabled_count`.
+      assert reply.enabled_transitions == ["pass"]
+
       # Summary.replay_state mirrors the reply so the SPA can flip into
       # replay chrome.
       summary = Musubi.Testing.assigns(page).summary
@@ -943,6 +948,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStoreTest do
              end)
 
       refute Enum.any?(reply.markings, fn row -> to_string(row.place) == "input" end)
+
+      # At v=1 the only token has moved to `:output`, so `pass` has no input
+      # binding and the engine reports no enabled transition. Asserts the
+      # replay reply tracks the derived marking — not the live counts which
+      # might still see `pass` enabled across a different enactment.
+      assert reply.enabled_transitions == []
 
       # The diagram derived view picks up the same place counts so the
       # token badges agree with the Markings tab in replay mode.

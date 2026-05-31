@@ -129,6 +129,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   use Musubi.Store, root: true
 
   alias ColouredFlow.Definition.ColouredPetriNet
+  alias ColouredFlow.EnabledBindingElements.Computation, as: EnabledBindingElements
   alias ColouredFlow.Enactment.BindingElement
   alias ColouredFlow.Enactment.Marking
   alias ColouredFlow.Enactment.Occurrence
@@ -138,6 +139,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
   alias ColouredFlow.Runner.Enactment.CatchingUp
   alias ColouredFlow.Runner.Enactment.Snapshot
   alias ColouredFlow.Runner.Enactment.Workitem, as: RunnerWorkitem
+  alias ColouredFlow.Runner.RuntimeCpnet
   alias ColouredFlow.Runner.Storage
   alias ColouredFlow.Runner.Storage.Schemas
   alias ColouredFlow.Runner.Worklist.WorkitemStream
@@ -256,6 +258,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     reply do
       field :code, :ok | :invalid_version | :runner_error
       field :markings, list(ColouredFlowDashboardWeb.Views.MarkingRow.t())
+      field :enabled_transitions, list(String.t())
       field :replay_state, ColouredFlowDashboardWeb.Views.ReplayState.t() | nil
       field :available_max_version, integer() | nil
       field :snapshot_floor, integer() | nil
@@ -465,7 +468,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     case coerce_version(version_raw) do
       {:ok, version} ->
         case derive_replay(socket, version) do
-          {:ok, marking_rows, replay_state, marking_index} ->
+          {:ok, marking_rows, enabled_transitions, replay_state, marking_index} ->
             socket =
               socket
               |> assign(:replay_marking_index, marking_index)
@@ -475,6 +478,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
             reply = %{
               code: :ok,
               markings: marking_rows,
+              enabled_transitions: enabled_transitions,
               replay_state: replay_state,
               available_max_version: socket.assigns.summary.version_range.max,
               snapshot_floor: current_snapshot_floor(socket.assigns.enactment_id)
@@ -485,7 +489,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
           {:error, reason, info} ->
             reply =
               Map.merge(
-                %{code: :invalid_version, markings: [], replay_state: nil},
+                %{
+                  code: :invalid_version,
+                  markings: [],
+                  enabled_transitions: [],
+                  replay_state: nil
+                },
                 replay_error_fields(reason, info, socket)
               )
 
@@ -496,6 +505,7 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         reply = %{
           code: :invalid_version,
           markings: [],
+          enabled_transitions: [],
           replay_state: nil,
           available_max_version: socket.assigns.summary.version_range.max,
           snapshot_floor: current_snapshot_floor(socket.assigns.enactment_id)
@@ -717,11 +727,12 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
         {:error, :above_max, %{available_max_version: available_max}}
 
       true ->
-        do_derive_replay(enactment_id, target_version)
+        cpnet = cached_cpnet(enactment_id, socket.assigns.flow_cache)
+        do_derive_replay(enactment_id, target_version, cpnet)
     end
   end
 
-  defp do_derive_replay(enactment_id, target_version) do
+  defp do_derive_replay(enactment_id, target_version, cpnet) do
     # Pick the nearest base ≤ target_version. The persisted snapshot is the
     # fast path for target ≥ snapshot_version; for any earlier target we
     # MUST start from `Storage.get_initial_markings/1` and replay 1..target
@@ -747,15 +758,35 @@ defmodule ColouredFlowDashboardWeb.Stores.EnactmentDetailStore do
     {_steps, derived} = CatchingUp.apply(initial_markings, occurrences)
     marking_rows = Enum.map(derived, &marking_row/1)
     marking_index = build_marking_index(marking_rows)
+    enabled_transitions = compute_enabled_transitions(cpnet, derived)
 
     replay_state = %ReplayState{
       version: target_version,
       derived_at: DateTime.to_iso8601(DateTime.utc_now())
     }
 
-    {:ok, marking_rows, replay_state, marking_index}
+    {:ok, marking_rows, enabled_transitions, replay_state, marking_index}
   rescue
     error -> {:error, :runner_error, %{message: Exception.message(error)}}
+  end
+
+  # Enabled-transition set at the derived marking. Delegates to
+  # `ColouredFlow.EnabledBindingElements.Computation.list/3` (public surface
+  # named in the main repo's CLAUDE.md) so the dashboard does not duplicate
+  # engine semantics. Returns transition names whose enabled-binding-elements
+  # set is non-empty against `markings`.
+  defp compute_enabled_transitions(nil, _markings), do: []
+
+  defp compute_enabled_transitions(%ColouredPetriNet{} = cpnet, markings)
+       when is_list(markings) do
+    runtime_cpnet = RuntimeCpnet.from_definition(cpnet)
+    markings_map = Map.new(markings, fn %Marking{place: p} = m -> {p, m} end)
+
+    for transition <- cpnet.transitions,
+        EnabledBindingElements.list(transition, runtime_cpnet, markings_map) != [],
+        do: to_string(transition.name)
+  rescue
+    _error -> []
   end
 
   defp replay_error_fields(:above_max, %{available_max_version: max}, socket) do

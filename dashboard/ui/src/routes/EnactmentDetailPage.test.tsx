@@ -131,16 +131,23 @@ vi.mock("../components/NetDiagram", () => ({
   default: ({
     onSelectTransition,
     firingEdgeIds,
-    firingDurationMs
+    firingDurationMs,
+    enabledEdgeIds
   }: {
     onSelectTransition?: (name: string) => void
     firingEdgeIds?: ReadonlySet<string>
     firingDurationMs?: number
+    enabledEdgeIds?: ReadonlySet<string>
   }) => (
     <div
       data-testid="net-diagram-stub"
       data-firing-edges={JSON.stringify([...(firingEdgeIds ?? [])].sort())}
       data-firing-duration={String(firingDurationMs ?? "")}
+      data-enabled-edges={
+        enabledEdgeIds === undefined
+          ? "live"
+          : JSON.stringify([...enabledEdgeIds].sort())
+      }
     >
       <button
         type="button"
@@ -857,17 +864,81 @@ describe("EnactmentDetailPage", () => {
       }
     })
 
-    it("renders the REPLAY chip + Markings replay banner when summary.replay_state is set", () => {
+    it("renders the Markings replay banner when summary.replay_state is set, without a separate page-header REPLAY pill", () => {
       const restore = mutateReplay(
         { version: 1, derived_at: "2026-05-29T01:00:00Z" },
         { min: 0, max: 3 }
       )
       try {
         renderRoute(<EnactmentDetailPage />)
-        const chip = screen.getByTestId("state-badge-replay")
-        expect(chip.textContent).toMatch(/REPLAY/)
-        expect(chip.textContent).toMatch(/v1/)
+        // The page-header REPLAY pill was dropped — TimelineScrubber's own
+        // status line + the jump-to-live button now signal replay mode.
+        expect(screen.queryByTestId("state-badge-replay")).toBeNull()
         expect(screen.getByTestId("markings-replay-banner")).toBeDefined()
+      } finally {
+        restore()
+      }
+    })
+
+    it("live mode passes undefined enabledEdgeIds so NetDiagram uses its internal enabled_count derivation", () => {
+      renderRoute(<EnactmentDetailPage />)
+      expect(
+        screen.getByTestId("net-diagram-stub").dataset.enabledEdges
+      ).toBe("live")
+    })
+
+    it("replay_to_version reply's enabled_transitions wires straight into NetDiagram's enabledEdgeIds", async () => {
+      replayToVersionMock.mockResolvedValueOnce({
+        code: "ok",
+        markings: [],
+        enabled_transitions: ["approve"],
+        replay_state: { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        available_max_version: 3,
+        snapshot_floor: 0
+      })
+      const restore = mutateReplay(
+        { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        { min: 0, max: 3 }
+      )
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("timeline-step-back"))
+        })
+        await waitFor(() => {
+          const value = screen.getByTestId("net-diagram-stub").dataset.enabledEdges
+          // Only the p_to_t arc of `approve` lights up — the seed diagram has
+          // exactly one such edge (`pending → approve` at index 0).
+          expect(value).toBe(JSON.stringify(["arc-p_to_t-pending-approve-0"]))
+        })
+      } finally {
+        restore()
+      }
+    })
+
+    it("an empty enabled_transitions clears the replay edge highlight", async () => {
+      replayToVersionMock.mockResolvedValueOnce({
+        code: "ok",
+        markings: [],
+        enabled_transitions: [],
+        replay_state: { version: 0, derived_at: "2026-05-29T01:00:00Z" },
+        available_max_version: 3,
+        snapshot_floor: 0
+      })
+      const restore = mutateReplay(
+        { version: 1, derived_at: "2026-05-29T01:00:00Z" },
+        { min: 0, max: 3 }
+      )
+      try {
+        renderRoute(<EnactmentDetailPage />)
+        await act(async () => {
+          fireEvent.click(screen.getByTestId("timeline-step-back"))
+        })
+        await waitFor(() => {
+          expect(
+            screen.getByTestId("net-diagram-stub").dataset.enabledEdges
+          ).toBe("[]")
+        })
       } finally {
         restore()
       }

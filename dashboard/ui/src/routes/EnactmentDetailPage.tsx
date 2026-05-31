@@ -211,11 +211,21 @@ function DetailContent({
   // Derived markings live client-side so the live `:markings` stream keeps
   // its mount-time-accurate behavior. Cleared on exit-replay.
   const [derivedMarkings, setDerivedMarkings] = useState<readonly MarkingRow[]>([])
+  // Enabled-transition set returned by `:replay_to_version` for the derived
+  // marking at version v. Sourced from the engine's own
+  // `EnabledBindingElements.list/3` — never accumulated, never unioned with
+  // the live `enabled_count`. Cleared on exit-replay.
+  const [replayEnabledTransitions, setReplayEnabledTransitions] = useState<
+    ReadonlySet<string>
+  >(EMPTY_FIRING_SET)
 
   // When the server clears replay_state (e.g., exit_replay), drop any
   // cached derived rows so the Markings tab snaps back to live.
   useEffect(() => {
-    if (replayState === null) setDerivedMarkings([])
+    if (replayState === null) {
+      setDerivedMarkings([])
+      setReplayEnabledTransitions(EMPTY_FIRING_SET)
+    }
   }, [replayState])
 
   const onScrub = useCallback(
@@ -230,6 +240,7 @@ function DetailContent({
             if (code === "ok") {
               const r = reply as ReplayToVersionReply
               setDerivedMarkings(r.markings ?? [])
+              setReplayEnabledTransitions(new Set(r.enabled_transitions ?? []))
             } else if (code === "invalid_version") {
               const r = reply as ReplayToVersionReply
               const floor = r.snapshot_floor ?? versionRange.min
@@ -272,6 +283,7 @@ function DetailContent({
       {
         onReply: () => {
           setDerivedMarkings([])
+          setReplayEnabledTransitions(EMPTY_FIRING_SET)
         },
         onUnexpected: (cause) => {
           toasts.add({
@@ -334,52 +346,25 @@ function DetailContent({
     }
   }, [])
 
-  // Enabled-edge accent: live mode reads directly from `transition.enabled_count`;
-  // replay mode keeps a cumulative union of every edge that has been enabled at
-  // any scrub position so the highlight stays sticky even when the operator
-  // walks back to a version where the transition no longer has bindings.
-  const currentlyEnabledEdgeIds = useMemo<ReadonlySet<string>>(() => {
-    if (!diagram) return EMPTY_FIRING_SET
+  // Enabled-edge accent. Live mode hands `undefined` so NetDiagram falls back
+  // to its own `transition.enabled_count > 0` derivation. Replay mode derives
+  // the set strictly from `replayEnabledTransitions` — the backend's
+  // engine-computed enabled set against the marking at version v. No
+  // accumulation across scrub positions; the highlight matches the derived
+  // marking exactly, never the live counts.
+  const replayEnabledEdgeIds = useMemo<ReadonlySet<string>>(() => {
+    if (replayState === null || !diagram) return EMPTY_FIRING_SET
+    if (replayEnabledTransitions.size === 0) return EMPTY_FIRING_SET
     const enabled = new Set<string>()
-    const enabledTransitions = new Set<string>()
-    for (const t of diagram.transitions) {
-      if (t.enabled_count > 0) enabledTransitions.add(t.name)
-    }
     diagram.arcs.forEach((arc, index) => {
       if (arc.orientation !== "p_to_t") return
-      if (!enabledTransitions.has(arc.transition)) return
+      if (!replayEnabledTransitions.has(arc.transition)) return
       enabled.add(`arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`)
     })
     return enabled
-  }, [diagram])
+  }, [replayState, diagram, replayEnabledTransitions])
 
-  const [stickyEnabledEdgeIds, setStickyEnabledEdgeIds] =
-    useState<ReadonlySet<string>>(EMPTY_FIRING_SET)
-
-  useEffect(() => {
-    if (replayState === null) {
-      setStickyEnabledEdgeIds(EMPTY_FIRING_SET)
-      return
-    }
-    setStickyEnabledEdgeIds((prev) => {
-      let next: Set<string> | null = null
-      for (const id of currentlyEnabledEdgeIds) {
-        if (!prev.has(id)) {
-          if (!next) next = new Set(prev)
-          next.add(id)
-        }
-      }
-      return next ?? prev
-    })
-  }, [replayState, currentlyEnabledEdgeIds])
-
-  const enabledEdgeIds = useMemo<ReadonlySet<string>>(() => {
-    if (replayState === null) return currentlyEnabledEdgeIds
-    if (stickyEnabledEdgeIds.size === 0) return currentlyEnabledEdgeIds
-    const merged = new Set(stickyEnabledEdgeIds)
-    for (const id of currentlyEnabledEdgeIds) merged.add(id)
-    return merged
-  }, [replayState, currentlyEnabledEdgeIds, stickyEnabledEdgeIds])
+  const enabledEdgeIds = replayState === null ? undefined : replayEnabledEdgeIds
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
   // Pending inspect target driven by NetDiagram node click. Cleared by
@@ -430,7 +415,7 @@ function DetailContent({
         byline={
           <div className="flex flex-wrap items-center gap-2">
             <code className="text-xs text-cf-ink-muted">{enactmentId}</code>
-            <StateBadge state={state} replayState={replayState} />
+            <StateBadge state={state} />
           </div>
         }
         subtitle={
@@ -603,26 +588,10 @@ function MetricsPills({ items }: { items: readonly MetricPill[] }) {
 // ---------------------------------------------------------------------------
 
 function StateBadge({
-  state,
-  replayState
+  state
 }: {
   state: "running" | "exception" | "terminated"
-  replayState: ColouredFlowDashboardWeb.Views.ReplayState | null
 }) {
-  // While in replay mode, the status pill replaces the live indicator so
-  // operators never confuse a derived view with current state.
-  if (replayState) {
-    return (
-      <span
-        className="inline-flex items-center gap-1.5 rounded-full border border-cf-accent-ink/50 bg-cf-accent-tint px-2 py-0.5 text-xs font-medium text-cf-accent-ink"
-        data-testid="state-badge-replay"
-      >
-        <span className="h-1.5 w-1.5 rounded-full bg-cf-accent-ink" />
-        REPLAY · v{replayState.version}
-      </span>
-    )
-  }
-
   if (state === "exception") {
     return (
       <span
@@ -663,6 +632,7 @@ type ReplayToVersionCode = "ok" | "invalid_version" | "runner_error"
 interface ReplayToVersionReply extends Record<string, unknown> {
   code?: ReplayToVersionCode
   markings?: readonly MarkingRow[]
+  enabled_transitions?: readonly string[]
   replay_state?: ColouredFlowDashboardWeb.Views.ReplayState | null
   available_max_version?: number | null
   snapshot_floor?: number | null

@@ -140,6 +140,7 @@ declare namespace Musubi {
           reply: {
             code: "ok" | "invalid_version" | "runner_error"
             markings: ColouredFlowDashboardWeb.Views.MarkingRow[]
+            enabled_transitions: string[]
             replay_state: ColouredFlowDashboardWeb.Views.ReplayState | null
             available_max_version: number | null
             snapshot_floor: number | null
