@@ -40,7 +40,7 @@ export default function TelemetryPage() {
 function TelemetryRoot() {
   const feed = useMusubiRootSuspense({
     module: TELEMETRY_FEED_STORE,
-    id: "global"
+    id: "default"
   })
   const snapshot = useMusubiSnapshot(feed)
   return <TelemetryContent snapshot={snapshot} />

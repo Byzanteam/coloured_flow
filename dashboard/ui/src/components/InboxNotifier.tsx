@@ -17,17 +17,12 @@ type InboxProxy = NonNullable<Extract<InboxRootMount, { status: "ready" }>["stor
  * the moment a new workitem appears on the live inbox stream. The toast
  * links back to `/`. The dot clears when the inbox page is visited.
  *
- * Backed by a refcounted `useMusubiRoot({ id: "inbox" })` mount that the
- * inbox page also subscribes to — Musubi's shared-mount table guarantees a
- * single server-side root regardless of how many React subscribers exist.
- *
- * The id MUST stay distinct from every other root store's id (FlowCatalog,
- * EnactmentList, TelemetryFeed). Musubi 0.6.1 keys `mountConnectionRoot`
- * purely by id, so two modules sharing "default" hand a stale proxy to the
- * second mounter. See spec/cf-dashboard-route-mount-bug.md.
+ * Backed by a refcounted `useMusubiRoot` mount that the inbox page also
+ * subscribes to — Musubi's shared-mount table guarantees a single server-side
+ * root regardless of how many React subscribers exist.
  */
 export default function InboxNotifier() {
-  const root = useMusubiRoot({ module: INBOX_STORE, id: "inbox" })
+  const root = useMusubiRoot({ module: INBOX_STORE, id: "default" })
   if (root.status !== "ready") return null
   return <InboxNotifierBody inbox={root.store} />
 }

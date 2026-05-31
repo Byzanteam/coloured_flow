@@ -55,7 +55,7 @@ function DetailRoot({ flowId }: { flowId: string }) {
   // bounded as history accumulates.
   const catalog = useMusubiRootSuspense({
     module: FLOW_CATALOG_STORE,
-    id: "flow-catalog"
+    id: "default"
   })
   return <DetailContent catalog={catalog} flowId={flowId} />
 }

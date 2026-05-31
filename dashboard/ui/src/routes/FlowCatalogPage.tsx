@@ -49,7 +49,7 @@ export default function FlowCatalogPage() {
 function CatalogRoot() {
   const catalog = useMusubiRootSuspense({
     module: FLOW_CATALOG_STORE,
-    id: "flow-catalog"
+    id: "default"
   })
 
   return <CatalogContent catalog={catalog} />

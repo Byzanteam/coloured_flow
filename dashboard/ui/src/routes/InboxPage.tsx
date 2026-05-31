@@ -35,7 +35,7 @@ export default function InboxPage() {
 }
 
 function InboxRoot() {
-  const inbox = useMusubiRootSuspense({ module: INBOX_STORE, id: "inbox" })
+  const inbox = useMusubiRootSuspense({ module: INBOX_STORE, id: "default" })
   return <InboxContent inbox={inbox} />
 }
 
