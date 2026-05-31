@@ -203,6 +203,69 @@ describe("TimelineScrubber autoplay", () => {
     expect(slider.dataset.autoplaying).toBe("false")
   })
 
+  it("Jump-to-v0 fires onScrub(min) and disables at min", () => {
+    const { onScrub } = renderScrubber({
+      replayState: { version: 3, replayed_from: 3 } as never
+    })
+    const btn = screen.getByTestId("timeline-jump-v0") as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+    act(() => {
+      btn.click()
+    })
+    expect(onScrub).toHaveBeenCalledTimes(1)
+    expect(onScrub).toHaveBeenLastCalledWith(1)
+  })
+
+  it("Jump-to-v0 disabled when value is already at min", () => {
+    renderScrubber({ replayState: { version: 1, replayed_from: 1 } as never })
+    expect((screen.getByTestId("timeline-jump-v0") as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("Jump-to-live in live mode at non-max fires onScrub(max)", () => {
+    const onScrub = vi.fn()
+    const onExit = vi.fn()
+    render(
+      <TimelineScrubber
+        range={{ min: 1, max: 5 }}
+        liveVersion={5}
+        replayState={null}
+        onScrub={onScrub}
+        onExit={onExit}
+        isPending={false}
+      />
+    )
+    // value initializes to liveVersion (5) which equals max → disabled.
+    const btn = screen.getByTestId("timeline-jump-live") as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(onScrub).not.toHaveBeenCalled()
+    expect(onExit).not.toHaveBeenCalled()
+  })
+
+  it("Jump-to-live in replay mode calls onExit (exit_replay path)", () => {
+    const { onScrub, onExit } = renderScrubber()
+    const btn = screen.getByTestId("timeline-jump-live") as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+    act(() => {
+      btn.click()
+    })
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(onScrub).not.toHaveBeenCalled()
+  })
+
+  it("Step buttons remain present and functional alongside jump buttons", () => {
+    const { onScrub } = renderScrubber()
+    expect(screen.getByTestId("timeline-step-back")).toBeDefined()
+    expect(screen.getByTestId("timeline-step-forward")).toBeDefined()
+    act(() => {
+      screen.getByTestId("timeline-step-forward").click()
+    })
+    expect(onScrub).toHaveBeenLastCalledWith(2)
+    act(() => {
+      screen.getByTestId("timeline-step-back").click()
+    })
+    expect(onScrub).toHaveBeenLastCalledWith(1)
+  })
+
   it("Home / End jump to extremes via the slider", () => {
     const { onScrub } = renderScrubber()
     const slider = screen.getByTestId("timeline-slider")

@@ -4,7 +4,9 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   PauseIcon,
-  PlayIcon
+  PlayIcon,
+  SkipBackIcon,
+  SkipForwardIcon
 } from "@phosphor-icons/react"
 
 type VersionRange = ColouredFlowDashboardWeb.Views.VersionRange
@@ -234,19 +236,24 @@ export default function TimelineScrubber({
               End of timeline
             </span>
           ) : null}
-          {replayActive ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onExit}
-              data-testid="timeline-exit-replay"
-            >
-              Return to live
-            </Button>
-          ) : null}
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            if (value === min) return
+            setValue(min)
+            fireImmediate(min)
+            if (playing) setPlaying(false)
+          }}
+          disabled={disabled || value <= min || isPending}
+          aria-label="Jump to v0"
+          data-testid="timeline-jump-v0"
+        >
+          <SkipBackIcon size={14} weight="bold" aria-hidden />
+        </Button>
         <Button
           variant="secondary"
           size="sm"
@@ -287,6 +294,25 @@ export default function TimelineScrubber({
           data-testid="timeline-step-forward"
         >
           <CaretRightIcon size={14} weight="bold" aria-hidden />
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            if (replayActive) {
+              onExit()
+              return
+            }
+            if (value === max) return
+            setValue(max)
+            fireImmediate(max)
+            if (playing) setPlaying(false)
+          }}
+          disabled={disabled || (!replayActive && value >= max) || isPending}
+          aria-label="Jump to live"
+          data-testid="timeline-jump-live"
+        >
+          <SkipForwardIcon size={14} weight="bold" aria-hidden />
         </Button>
         <Button
           variant={playing ? "secondary" : "primary"}

@@ -945,7 +945,7 @@ describe("EnactmentDetailPage", () => {
       }
     })
 
-    it("Return to live button dispatches :exit_replay", async () => {
+    it("Jump-to-live button dispatches :exit_replay while in replay", async () => {
       const restore = mutateReplay(
         { version: 1, derived_at: "2026-05-29T01:00:00Z" },
         { min: 0, max: 3 }
@@ -954,7 +954,7 @@ describe("EnactmentDetailPage", () => {
       try {
         renderRoute(<EnactmentDetailPage />)
         await act(async () => {
-          fireEvent.click(screen.getByTestId("timeline-exit-replay"))
+          fireEvent.click(screen.getByTestId("timeline-jump-live"))
         })
         expect(exitReplayMock).toHaveBeenCalledOnce()
       } finally {
