@@ -50,20 +50,102 @@ type DetailProxy = StoreProxy<typeof ENACTMENT_DETAIL_STORE, Musubi.Stores>
 
 type TabId = "markings" | "workitems" | "occurrences" | "telemetry" | "debug"
 
-// Firing animation duration per speed reuses the shared SPEED_DURATION_MS map
-// so the two-phase fill finishes in lock-step with the autoplay tick AND the
-// scrubber thumb glide (driven by the same constant). Phase A (input arcs
-// + marking-state swap) runs over the first half; Phase B (output arcs) over
-// the second half.
+// Firing animation timeline reuses SPEED_DURATION_MS so the autoplay tick AND
+// scrubber thumb glide finish in lock-step. The window splits into THREE
+// intervals so the transition itself has visible dwell time (avoids the
+// "input-arrives / output-leaves instantly" flash):
+//
+//   [0, inputEndMs)            Phase A — input arc fills 0→1.
+//   [inputEndMs, outputStartMs) Dwell  — input fill done, transition node
+//                                        highlights. Intermediate diagram
+//                                        (drained inputs) is visible.
+//   [outputStartMs, fullMs)     Phase B — output arc fills 0→1.
+//
+// Marking + enabled-transition state commits at TWO boundaries:
+//   * inputEndMs (drain visible): displayed diagram flips to intermediate
+//     (input places drained, output places still pre-fire). Intermediate
+//     enabled set computed client-side (T enabled iff every input place of T
+//     still has ≥1 token).
+//   * fullMs (arrival visible): displayed diagram flips to post-fire
+//     (server-pushed). Post-fire enabled set from `:replay_to_version` reply
+//     in replay mode, or from the post-fire diagram's `enabled_count` in
+//     live mode.
 
+const INPUT_FRACTION = 0.4
+const DWELL_FRACTION = 0.2
 const EMPTY_TRANSITION_SET: ReadonlySet<string> = new Set()
 const ZERO_FIRING_PROGRESS: FiringProgress = { input: 0, output: 0 }
 
 type FiringPhase = {
   transition: string
   startedAt: number
-  halfMs: number
+  inputEndMs: number
+  outputStartMs: number
   fullMs: number
+}
+
+// Phase B intermediate diagram: take the pre-fire diagram and, for each input
+// arc of the firing transition, swap that place's row with its post-fire count
+// (drained). Output-arc places keep their pre-fire row (token not yet arrived).
+// Everything else uses post-fire (no behavioural change for unrelated places).
+function buildIntermediateDiagram(
+  pre: DiagramPayload,
+  post: DiagramPayload,
+  firingTransition: string
+): DiagramPayload {
+  const outputArcPlaces = new Set<string>()
+  for (const arc of pre.arcs) {
+    if (arc.transition !== firingTransition) continue
+    if (arc.orientation === "t_to_p") outputArcPlaces.add(arc.place)
+  }
+  const postMap = new Map(post.places.map((p) => [p.name, p]))
+  const places = pre.places.map((prePlace) => {
+    if (outputArcPlaces.has(prePlace.name)) return prePlace
+    return postMap.get(prePlace.name) ?? prePlace
+  })
+  const preNames = new Set(pre.places.map((p) => p.name))
+  for (const p of post.places) {
+    if (preNames.has(p.name)) continue
+    if (outputArcPlaces.has(p.name)) continue
+    places.push(p)
+  }
+  return { ...post, places }
+}
+
+// Client-side intermediate enabled set: T is enabled iff every p_to_t arc's
+// place has ≥1 token in the supplied diagram. Matches plan option (b) — no
+// wire change; the brief intermediate-phase glow approximates engine truth.
+function computeEnabledFromDiagramTokens(diagram: DiagramPayload): ReadonlySet<string> {
+  const tokens = new Map<string, number>()
+  for (const p of diagram.places) tokens.set(p.name, p.tokens_count)
+  const inputs = new Map<string, string[]>()
+  for (const arc of diagram.arcs) {
+    if (arc.orientation !== "p_to_t") continue
+    const list = inputs.get(arc.transition) ?? []
+    list.push(arc.place)
+    inputs.set(arc.transition, list)
+  }
+  const enabled = new Set<string>()
+  for (const t of diagram.transitions) {
+    const inputList = inputs.get(t.name)
+    if (!inputList || inputList.length === 0) continue
+    if (inputList.every((p) => (tokens.get(p) ?? 0) >= 1)) enabled.add(t.name)
+  }
+  return enabled
+}
+
+// Markings tab rows derived from a diagram. Mirrors the backend's
+// `diagram_places ← marking_index` build path so the rows stay shape-compatible
+// with the live `:markings` stream.
+function diagramToMarkingRows(diagram: DiagramPayload): MarkingRow[] {
+  return diagram.places
+    .filter((p) => p.tokens_count > 0)
+    .map((p) => ({
+      place: p.name,
+      colour_set: p.colour_set,
+      tokens_count: p.tokens_count,
+      tokens_summary: p.tokens_summary
+    }))
 }
 
 const TAB_ITEMS = [
@@ -246,39 +328,68 @@ function DetailContent({
   const diagramRef = useRef<DiagramPayload | null>(diagram)
   const activeVersionRef = useRef(0)
   const firingPhaseRef = useRef<FiringPhase | null>(null)
-  const pendingDerivedMarkingsRef = useRef<readonly MarkingRow[] | null>(null)
-  const pendingEnabledTransitionsRef = useRef<ReadonlySet<string> | null>(null)
+  // Post-fire markings + enabled set committed at Phase B end (fullMs). Drains
+  // are NOT a separate pending — they are rendered live from the intermediate
+  // diagram via a useMemo, so derivedMarkings/replayEnabledTransitions state
+  // stays at the pre-fire value through Phases A+B and snaps to post-fire on
+  // applyFinalPendings.
+  const pendingFinalMarkingsRef = useRef<readonly MarkingRow[] | null>(null)
+  const pendingFinalEnabledRef = useRef<ReadonlySet<string> | null>(null)
+
+  // Mirror of the diagram one render behind the current one. Pinned while a
+  // firing phase is active so Phase A renders the pre-fire token counts. The
+  // server pushes the post-fire diagram via assign broadcast at firing trigger
+  // time, so without this pin the diagram tokens would snap to post-fire
+  // instantly and we'd animate the arc over the wrong state.
+  const previousDiagramRef = useRef<DiagramPayload | null>(null)
+  const diagramSeenRef = useRef<DiagramPayload | null>(diagram)
 
   useEffect(() => {
     occurrencesRef.current = occurrences
   }, [occurrences])
   useEffect(() => {
+    if (firingPhaseRef.current === null) {
+      previousDiagramRef.current = diagramSeenRef.current
+    }
+    diagramSeenRef.current = diagram
     diagramRef.current = diagram
   }, [diagram])
 
   const [firingPhase, setFiringPhase] = useState<FiringPhase | null>(null)
   const [firingProgress, setFiringProgress] = useState<FiringProgress>(ZERO_FIRING_PROGRESS)
+  // Snapshot of the pre-fire diagram captured when firingPhase becomes
+  // non-null. Used to derive the intermediate diagram + intermediate enabled
+  // set. Cleared when the phase ends.
+  const [firingPreDiagram, setFiringPreDiagram] = useState<DiagramPayload | null>(null)
 
   useEffect(() => {
     firingPhaseRef.current = firingPhase
+    if (firingPhase === null) {
+      setFiringPreDiagram(null)
+    } else {
+      setFiringPreDiagram(previousDiagramRef.current)
+    }
   }, [firingPhase])
 
-  const applyPendings = useCallback(() => {
-    if (pendingDerivedMarkingsRef.current !== null) {
-      setDerivedMarkings(pendingDerivedMarkingsRef.current)
-      pendingDerivedMarkingsRef.current = null
+  const applyFinalPendings = useCallback(() => {
+    if (pendingFinalMarkingsRef.current !== null) {
+      setDerivedMarkings(pendingFinalMarkingsRef.current)
+      pendingFinalMarkingsRef.current = null
     }
-    if (pendingEnabledTransitionsRef.current !== null) {
-      setReplayEnabledTransitions(pendingEnabledTransitionsRef.current)
-      pendingEnabledTransitionsRef.current = null
+    if (pendingFinalEnabledRef.current !== null) {
+      setReplayEnabledTransitions(pendingFinalEnabledRef.current)
+      pendingFinalEnabledRef.current = null
     }
   }, [])
 
   const startFiringPhase = useCallback((transition: string, durationMs: number) => {
+    const inputEndMs = durationMs * INPUT_FRACTION
+    const outputStartMs = inputEndMs + durationMs * DWELL_FRACTION
     setFiringPhase({
       transition,
       startedAt: performance.now(),
-      halfMs: durationMs / 2,
+      inputEndMs,
+      outputStartMs,
       fullMs: durationMs
     })
   }, [])
@@ -305,17 +416,19 @@ function DetailContent({
                 occurrence !== undefined &&
                 arcs.some((arc) => arc.transition === occurrence.transition)
               // Single-step forward AND occurrence on a visible transition →
-              // run the two-phase animation, deferring the marking/enabled
-              // swap until Phase A ends (halfMs). Multi-step jumps and the
-              // initial replay entry apply immediately — no occurrence to
-              // visualise.
+              // run the two-phase animation. Defer the final marking/enabled
+              // commit until Phase B end (fullMs); the intermediate (drained)
+              // state is computed live from firingPreDiagram + the latest
+              // diagram, so derivedMarkings/replayEnabledTransitions stay at
+              // the pre-fire value through Phase A. Multi-step jumps + initial
+              // replay entry apply immediately — no occurrence to visualise.
               if (
                 occurrence !== undefined &&
                 hasMatchingArc &&
                 version === prevVersion + 1
               ) {
-                pendingDerivedMarkingsRef.current = nextMarkings
-                pendingEnabledTransitionsRef.current = nextEnabled
+                pendingFinalMarkingsRef.current = nextMarkings
+                pendingFinalEnabledRef.current = nextEnabled
                 startFiringPhase(occurrence.transition, firingDurationMs)
               } else {
                 setDerivedMarkings(nextMarkings)
@@ -377,7 +490,59 @@ function DetailContent({
     )
   }, [exitReplayCmd.dispatch, toasts])
 
-  const markings: readonly MarkingRow[] = replayState ? derivedMarkings : liveMarkings
+  // Three-phase intermediate state. Computed once per (firingPhase,
+  // firingPreDiagram, diagram) tuple. `firingPhase === null` short-circuits so
+  // off-firing renders pay nothing.
+  const intermediateState = useMemo(() => {
+    if (firingPhase === null || firingPreDiagram === null || diagram === null) {
+      return null
+    }
+    const interDiag = buildIntermediateDiagram(
+      firingPreDiagram,
+      diagram,
+      firingPhase.transition
+    )
+    return {
+      diagram: interDiag,
+      markings: diagramToMarkingRows(interDiag),
+      enabled: computeEnabledFromDiagramTokens(interDiag)
+    }
+  }, [firingPhase, firingPreDiagram, diagram])
+
+  // Three-phase selectors. RAF ticks update firingProgress so these recompute
+  // on every frame the phase advances; identity changes only at the boundaries
+  // (pre→intermediate at inputEndMs, intermediate→post at fullMs). The dwell
+  // window [inputEndMs, outputStartMs) is inside "intermediate" (input == 1,
+  // output == 0); `firingDwell` narrows that to the dwell-only sub-interval so
+  // the transition node can highlight without affecting marking visuals.
+  const firingDisplayPhase: "pre" | "intermediate" | "post" =
+    firingPhase === null
+      ? "post"
+      : firingProgress.input < 1
+        ? "pre"
+        : firingProgress.output < 1
+          ? "intermediate"
+          : "post"
+
+  const firingDwell =
+    firingPhase !== null && firingProgress.input === 1 && firingProgress.output === 0
+
+  const displayedDiagram: DiagramPayload | null = (() => {
+    if (firingPhase === null) return diagram
+    if (firingDisplayPhase === "pre") return firingPreDiagram ?? diagram
+    if (firingDisplayPhase === "intermediate") {
+      return intermediateState?.diagram ?? diagram
+    }
+    return diagram
+  })()
+
+  const markings: readonly MarkingRow[] = (() => {
+    if (replayState === null) return liveMarkings
+    if (firingPhase !== null && firingDisplayPhase === "intermediate" && intermediateState) {
+      return intermediateState.markings
+    }
+    return derivedMarkings
+  })()
 
   // `activeVersion` drives the LIVE-mode firing trigger. Replay-mode firing is
   // driven directly by the `:replay_to_version` reply (onScrub above) so the
@@ -403,34 +568,39 @@ function DetailContent({
     startFiringPhase(occurrence.transition, firingDurationMs)
   }, [activeVersion, occurrences, diagram?.arcs, firingDurationMs, replayState, startFiringPhase])
 
-  // RAF loop drives `firingProgress` over `firingPhase.fullMs`. At the
-  // halfway boundary `applyPendings()` flips the replay-derived marking +
-  // enabled-transition state so token badges (Phase A drain → Phase B
-  // produce) line up with the arc fills.
+  // RAF loop drives `firingProgress` over the three-interval window. The
+  // final marking + enabled-transition commit lands at fullMs so output-token
+  // arrivals stay in lock-step with the output-arc fill. The intermediate
+  // (drained-inputs) view is rendered live via useMemo against firingPreDiagram
+  // + the current diagram — no state mutation required at the inputEndMs
+  // boundary. The dwell interval [inputEndMs, outputStartMs) keeps progress
+  // at { input: 1, output: 0 } so the transition node stays highlighted.
   useEffect(() => {
     if (firingPhase === null) {
       setFiringProgress(ZERO_FIRING_PROGRESS)
       return
     }
     let raf = 0
-    let appliedHalf = false
+    let appliedFinal = false
     const tick = () => {
       const elapsed = performance.now() - firingPhase.startedAt
-      if (elapsed >= firingPhase.halfMs && !appliedHalf) {
-        applyPendings()
-        appliedHalf = true
-      }
       if (elapsed >= firingPhase.fullMs) {
         setFiringProgress({ input: 1, output: 1 })
+        applyFinalPendings()
+        appliedFinal = true
         setFiringPhase(null)
         return
       }
-      if (elapsed < firingPhase.halfMs) {
-        setFiringProgress({ input: elapsed / firingPhase.halfMs, output: 0 })
+      if (elapsed < firingPhase.inputEndMs) {
+        setFiringProgress({ input: elapsed / firingPhase.inputEndMs, output: 0 })
+      } else if (elapsed < firingPhase.outputStartMs) {
+        setFiringProgress({ input: 1, output: 0 })
       } else {
         setFiringProgress({
           input: 1,
-          output: (elapsed - firingPhase.halfMs) / firingPhase.halfMs
+          output:
+            (elapsed - firingPhase.outputStartMs) /
+            (firingPhase.fullMs - firingPhase.outputStartMs)
         })
       }
       raf = requestAnimationFrame(tick)
@@ -438,19 +608,32 @@ function DetailContent({
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
-      // If the phase is torn down before Phase A finished (e.g. operator
-      // scrubs again mid-animation, or component unmounts), still apply the
-      // stashed marking so the diagram never lingers on stale state.
-      if (!appliedHalf) applyPendings()
+      // Operator scrubbed again mid-animation, or the component unmounted.
+      // Apply the final-pending so the diagram never lingers on stale state.
+      if (!appliedFinal) applyFinalPendings()
     }
-  }, [firingPhase, applyPendings])
+  }, [firingPhase, applyFinalPendings])
 
-  // Replay-mode override for both the input-arc accent and the transition-
-  // node glow. Sourced strictly from the backend's engine-computed enabled
-  // set at the derived marking — never unioned, never falling back to the
-  // live `enabled_count` (which lags behind the replayed marking).
-  const enabledTransitionsOverride =
-    replayState === null ? undefined : replayEnabledTransitions
+  // Enabled-transition override resolution:
+  //   * Phase B (intermediate): client-computed set against drained inputs.
+  //     Drives BOTH live and replay glow during the brief intermediate window.
+  //   * Replay (non-firing OR Phase A/post): replay reply's enabled set.
+  //     `replayEnabledTransitions` holds the PRE-fire value through Phases A+B
+  //     and snaps to post-fire when applyFinalPendings runs at fullMs.
+  //   * Live (non-firing OR Phase A/post): undefined → NetDiagram derives from
+  //     the displayedDiagram's transitions[].enabled_count. Pre-fire diagram
+  //     carries pre-fire counts (Phase A), post-fire diagram carries post-fire
+  //     counts (post).
+  const enabledTransitionsOverride: ReadonlySet<string> | undefined = (() => {
+    if (
+      firingPhase !== null &&
+      firingDisplayPhase === "intermediate" &&
+      intermediateState
+    ) {
+      return intermediateState.enabled
+    }
+    return replayState === null ? undefined : replayEnabledTransitions
+  })()
 
   const [activeTab, setActiveTab] = useState<TabId>("markings")
   // Pending inspect target driven by NetDiagram node click. Cleared by
@@ -545,11 +728,12 @@ function DetailContent({
         >
           <div className="h-[440px] min-h-[440px] w-full lg:h-full lg:min-h-[640px]">
             <NetDiagram
-              diagram={diagram}
+              diagram={displayedDiagram}
               enactmentState={state}
               onSelectTransition={onSelectTransition}
               firingTransition={firingPhase?.transition ?? null}
               firingProgress={firingProgress}
+              firingDwell={firingDwell}
               enabledTransitions={enabledTransitionsOverride}
             />
           </div>

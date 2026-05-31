@@ -45,6 +45,11 @@ interface NetDiagramProps {
   // `pathLength="1"` trick so the dash math is path-length agnostic.
   firingTransition?: string | null
   firingProgress?: FiringProgress
+  // True during the dwell interval between input-fill end and output-fill
+  // start. Triggers a stronger highlight on the firing transition node so the
+  // operator sees the transition actually take time to fire (avoids the
+  // input-arrives / output-leaves instant flash).
+  firingDwell?: boolean
   // Override for the enabled set. When supplied, BOTH the input-arc accent
   // and the transition-node glow derive from this set instead of the live
   // `transition.enabled_count` field. Required in replay mode where the live
@@ -93,6 +98,7 @@ type TransitionNodeData = DiagramTransition & {
   enactmentState: EnactmentState
   width: number
   isEnabled: boolean
+  isFiringDwell: boolean
 } & Record<string, unknown>
 
 type PlaceNode = Node<PlaceNodeData, typeof PLACE_NODE>
@@ -143,6 +149,7 @@ export default function NetDiagram({
   onSelectTransition,
   firingTransition = null,
   firingProgress = ZERO_PROGRESS,
+  firingDwell = false,
   enabledTransitions
 }: NetDiagramProps) {
   const layout = useElkLayout(diagram)
@@ -162,9 +169,11 @@ export default function NetDiagram({
     [places, layout]
   )
 
-  // Transition nodes additionally depend on enactmentState + the override
-  // set. `enabledTransitions` is updated only on `:replay_to_version` reply,
-  // not per RAF tick, so this memo also bails during animation frames.
+  // Transition nodes depend on enactmentState + the enabled override + the
+  // firing-dwell signal for the currently-firing transition. Dwell flips on
+  // and off inside an animation frame window, so this memo intentionally
+  // recomputes per RAF tick during that interval — node identity churns only
+  // for the firing transition; React Flow re-renders just that one node.
   const transitionNodes = useMemo(
     () =>
       buildTransitionNodes(
@@ -172,9 +181,19 @@ export default function NetDiagram({
         layout,
         transitionWidth,
         enactmentState,
-        enabledTransitions
+        enabledTransitions,
+        firingTransition,
+        firingDwell
       ),
-    [transitions, layout, transitionWidth, enactmentState, enabledTransitions]
+    [
+      transitions,
+      layout,
+      transitionWidth,
+      enactmentState,
+      enabledTransitions,
+      firingTransition,
+      firingDwell
+    ]
   )
 
   const nodes = useMemo(
@@ -422,7 +441,9 @@ function buildTransitionNodes(
   layout: Layout,
   width: number,
   enactmentState: EnactmentState,
-  enabledTransitionsOverride: ReadonlySet<string> | undefined
+  enabledTransitionsOverride: ReadonlySet<string> | undefined,
+  firingTransition: string | null,
+  firingDwell: boolean
 ): TransitionNode[] {
   return transitions.map((transition, index) => {
     const id = transitionId(transition.name)
@@ -430,6 +451,7 @@ function buildTransitionNodes(
     const isEnabled = enabledTransitionsOverride
       ? enabledTransitionsOverride.has(transition.name)
       : transition.enabled_count > 0
+    const isFiringDwell = firingDwell && firingTransition === transition.name
     return {
       id,
       type: TRANSITION_NODE,
@@ -438,7 +460,8 @@ function buildTransitionNodes(
         ...transition,
         enactmentState,
         width,
-        isEnabled
+        isEnabled,
+        isFiringDwell
       } as TransitionNodeData,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
@@ -519,7 +542,8 @@ export function buildGraph(
   firingTransition: string | null = null,
   firingProgress: FiringProgress = ZERO_PROGRESS,
   layout: Layout = EMPTY_LAYOUT,
-  enabledTransitionsOverride?: ReadonlySet<string>
+  enabledTransitionsOverride?: ReadonlySet<string>,
+  firingDwell: boolean = false
 ): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
   const places = diagram?.places ?? EMPTY_PLACES
   const transitions = diagram?.transitions ?? EMPTY_TRANSITIONS
@@ -536,7 +560,9 @@ export function buildGraph(
     layout,
     transitionW,
     enactmentState,
-    enabledTransitionsOverride
+    enabledTransitionsOverride,
+    firingTransition,
+    firingDwell
   )
   const edges = buildEdges(
     arcs,
@@ -729,7 +755,13 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
 const PlaceNodeView = memo(PlaceNodeViewImpl)
 
 function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
+  // `data.last_fired_at` change → 220ms server-driven pulse. `data.isFiringDwell`
+  // → sustained highlight bridging the input-drain and output-produce phases
+  // so the operator sees the transition take real time to fire. The two are
+  // independent: dwell is RAF-driven and lasts the dwell-fraction window;
+  // pulsing reacts to backend telemetry events.
   const pulsing = usePulseOnChange(data.last_fired_at)
+  const dwelling = data.isFiringDwell
 
   const glowKind: "exception" | "enabled" | "none" = useMemo(() => {
     if (data.enactmentState === "exception") return "exception"
@@ -752,6 +784,11 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
   const pulseShadow = pulsing
     ? `0 0 0 6px color-mix(in oklab, ${pulseColor} 32%, transparent)`
     : null
+  const dwellShadow = dwelling
+    ? `0 0 0 8px color-mix(in oklab, var(--color-cf-accent) 38%, transparent)`
+    : null
+  const elevatedShadow = dwellShadow ?? pulseShadow ?? baseShadow
+  const elevated = pulsing || dwelling
 
   return (
     <Surface
@@ -760,15 +797,18 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
       style={{
         width: data.width,
         height: TRANSITION_H,
-        borderColor: "var(--color-cf-border-strong)",
+        borderColor: dwelling
+          ? "var(--color-cf-accent)"
+          : "var(--color-cf-border-strong)",
         borderWidth: 1.5,
-        boxShadow: pulseShadow ?? baseShadow,
-        transform: pulsing ? "scale(1.05)" : "scale(1)",
-        filter: pulsing ? "brightness(1.15)" : "none",
-        transition: "box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 200ms cubic-bezier(0.16, 1, 0.3, 1)"
+        boxShadow: elevatedShadow,
+        transform: elevated ? "scale(1.05)" : "scale(1)",
+        filter: elevated ? "brightness(1.15)" : "none",
+        transition: "box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms cubic-bezier(0.16, 1, 0.3, 1)"
       }}
       data-testid={`transition-node-${data.name}`}
       data-pulsing={pulsing ? "true" : "false"}
+      data-dwelling={dwelling ? "true" : "false"}
       data-enabled={data.isEnabled ? "true" : "false"}
       data-glow={glowKind}
     >

@@ -40,13 +40,13 @@ describe("TimelineScrubber autoplay", () => {
     expect(onScrub).not.toHaveBeenCalled()
 
     act(() => {
-      vi.advanceTimersByTime(1000)
+      vi.advanceTimersByTime(2000)
     })
     expect(onScrub).toHaveBeenCalledTimes(1)
     expect(onScrub).toHaveBeenLastCalledWith(2)
 
     act(() => {
-      vi.advanceTimersByTime(1000)
+      vi.advanceTimersByTime(2000)
     })
     expect(onScrub).toHaveBeenCalledTimes(2)
     expect(onScrub).toHaveBeenLastCalledWith(3)
@@ -70,32 +70,32 @@ describe("TimelineScrubber autoplay", () => {
       playButton.click()
     })
 
-    // Mid-flight speed change at t=500 with a 1×-scheduled tick at t=1000:
-    // the in-flight tick MUST still fire on its original 1000ms schedule.
+    // Mid-flight speed change at t=1000 with a 1×-scheduled tick at t=2000:
+    // the in-flight tick MUST still fire on its original 2000ms schedule.
     act(() => {
-      vi.advanceTimersByTime(500)
+      vi.advanceTimersByTime(1000)
     })
     act(() => {
       speedSelect.value = "4"
       speedSelect.dispatchEvent(new Event("change", { bubbles: true }))
     })
 
-    // Less than 1000ms total → still no call (in-flight tick has not fired).
+    // Less than 2000ms total → still no call (in-flight tick has not fired).
     act(() => {
-      vi.advanceTimersByTime(400)
+      vi.advanceTimersByTime(800)
     })
     expect(onScrub).toHaveBeenCalledTimes(0)
 
-    // Cross the 1000ms boundary → the in-flight 1× tick fires.
+    // Cross the 2000ms boundary → the in-flight 1× tick fires.
     act(() => {
-      vi.advanceTimersByTime(100)
+      vi.advanceTimersByTime(200)
     })
     expect(onScrub).toHaveBeenCalledTimes(1)
     expect(onScrub).toHaveBeenLastCalledWith(2)
 
-    // Next tick uses the new 250ms cadence.
+    // Next tick uses the new 500ms cadence.
     act(() => {
-      vi.advanceTimersByTime(250)
+      vi.advanceTimersByTime(500)
     })
     expect(onScrub).toHaveBeenCalledTimes(2)
     expect(onScrub).toHaveBeenLastCalledWith(3)
@@ -112,7 +112,7 @@ describe("TimelineScrubber autoplay", () => {
     })
 
     act(() => {
-      vi.advanceTimersByTime(1000)
+      vi.advanceTimersByTime(2000)
     })
     expect(onScrub).toHaveBeenCalledTimes(1)
     expect(onScrub).toHaveBeenLastCalledWith(5)
@@ -127,7 +127,7 @@ describe("TimelineScrubber autoplay", () => {
   })
 
   it("Holds the next tick while the previous replay dispatch is in-flight (4× speed)", () => {
-    // 4× cadence is 250ms — easily shorter than a real server round-trip.
+    // 4× cadence is 500ms — easily shorter than a real server round-trip.
     // The autoplay loop must NOT issue overlapping :replay_to_version
     // dispatches, or replies can land out of order and the derived markings
     // drift away from the slider position. Gate: when `isPending` is true,
@@ -156,9 +156,9 @@ describe("TimelineScrubber autoplay", () => {
       playButton.click()
     })
 
-    // First 4× tick fires at 250ms → v=2 dispatched.
+    // First 4× tick fires at 500ms → v=2 dispatched.
     act(() => {
-      vi.advanceTimersByTime(250)
+      vi.advanceTimersByTime(500)
     })
     expect(onScrub).toHaveBeenCalledTimes(1)
     expect(onScrub).toHaveBeenLastCalledWith(2)
@@ -178,7 +178,7 @@ describe("TimelineScrubber autoplay", () => {
     // Reply settles. The effect re-runs and schedules the next 4× tick.
     rerender(<TimelineScrubber {...baseProps} isPending={false} />)
     act(() => {
-      vi.advanceTimersByTime(250)
+      vi.advanceTimersByTime(500)
     })
     expect(onScrub).toHaveBeenCalledTimes(2)
     expect(onScrub).toHaveBeenLastCalledWith(3)
@@ -195,7 +195,7 @@ describe("TimelineScrubber autoplay", () => {
     })
     expect(slider.dataset.autoplaying).toBe("true")
     // CSS variable drives the thumb transition window.
-    expect(slider.style.getPropertyValue("--cf-thumb-duration")).toBe("1000ms")
+    expect(slider.style.getPropertyValue("--cf-thumb-duration")).toBe("2000ms")
 
     act(() => {
       playButton.click()

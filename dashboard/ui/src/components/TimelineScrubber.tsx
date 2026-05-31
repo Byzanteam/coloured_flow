@@ -35,9 +35,9 @@ export type SpeedKey = "0.25" | "1" | "4"
  * thumb slide and the edge fill finish in lock-step within the same window.
  */
 export const SPEED_DURATION_MS: Record<SpeedKey, number> = {
-  "0.25": 4000,
-  "1": 1000,
-  "4": 250
+  "0.25": 8000,
+  "1": 2000,
+  "4": 500
 }
 const SPEED_OPTIONS: ReadonlyArray<{ value: SpeedKey; label: string }> = [
   { value: "0.25", label: "0.25×" },

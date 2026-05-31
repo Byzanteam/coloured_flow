@@ -1011,24 +1011,31 @@ describe("EnactmentDetailPage", () => {
         })
 
         expect(stub().dataset.firingTransition).toBe("approve")
-        // 1× speed default → halfMs = 500. RAF hasn't ticked yet → progress=0.
+        // 1× speed default → 2000 ms window split 40/20/40 (inputEndMs=800,
+        // outputStartMs=1200, fullMs=2000). RAF hasn't ticked → progress=0.
         expect(stub().dataset.firingInput).toBe("0")
         expect(stub().dataset.firingOutput).toBe("0")
 
-        // Phase A midpoint (elapsed = 250 ms → input = 0.5).
-        nowRef.current = 1_250
+        // Phase A midpoint (elapsed = 400 ms → input = 400/800 = 0.5).
+        nowRef.current = 1_400
         await flushRaf()
         expect(Number(stub().dataset.firingInput)).toBeCloseTo(0.5, 2)
         expect(stub().dataset.firingOutput).toBe("0")
 
-        // Phase B midpoint (elapsed = 750 ms → input = 1, output = 0.5).
-        nowRef.current = 1_750
+        // Dwell interval (elapsed = 1000 ms → input = 1, output = 0).
+        nowRef.current = 2_000
+        await flushRaf()
+        expect(stub().dataset.firingInput).toBe("1")
+        expect(stub().dataset.firingOutput).toBe("0")
+
+        // Phase B midpoint (elapsed = 1600 ms → input = 1, output = (1600-1200)/800 = 0.5).
+        nowRef.current = 2_600
         await flushRaf()
         expect(stub().dataset.firingInput).toBe("1")
         expect(Number(stub().dataset.firingOutput)).toBeCloseTo(0.5, 2)
 
         // Past full duration → firingPhase cleared.
-        nowRef.current = 2_100
+        nowRef.current = 3_100
         await flushRaf()
         expect(stub().dataset.firingTransition).toBe("")
         expect(stub().dataset.firingInput).toBe("0")
@@ -1042,7 +1049,7 @@ describe("EnactmentDetailPage", () => {
       }
     })
 
-    it("replay step-forward defers derivedMarkings + replayEnabledTransitions to the Phase A → B boundary", async () => {
+    it("replay step-forward progresses enabled set pre → intermediate (client-computed) → post across the three-interval firing window", async () => {
       const restore = mutateReplay(
         { version: 0, derived_at: "2026-05-29T01:00:00Z" },
         { min: 0, max: 3 }
@@ -1110,23 +1117,34 @@ describe("EnactmentDetailPage", () => {
         // After reply but BEFORE the first RAF tick: firingPhase is set, and
         // the enabledTransitions override is still the pre-fire empty set —
         // the post-fire `["after_fire"]` payload is stashed in a ref waiting
-        // for the Phase A → B boundary, NOT applied yet.
+        // for the Phase B end (fullMs), NOT applied yet.
         expect(stub().dataset.firingTransition).toBe("approve")
         expect(stub().dataset.enabledTransitions).toBe("[]")
 
-        // First RAF tick at elapsed = 0. Still pre-halfDuration → no swap.
+        // First RAF tick at elapsed = 0. Still pre-inputEndMs → pre-fire.
         await flushRaf()
         expect(stub().dataset.enabledTransitions).toBe("[]")
 
-        // Cross the halfDuration boundary (halfMs = 500).
-        nowRef.current = 5_520
+        // Cross inputEndMs (=800). In intermediate window now. The client
+        // re-derives the enabled set from the intermediate diagram tokens
+        // (the test snapshot keeps pending=1, decided=0 so `approve` remains
+        // enabled at the intermediate marking).
+        nowRef.current = 5_900
         await flushRaf()
-        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["after_fire"]))
+        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["approve"]))
 
-        // Past the full duration → firingPhase cleared.
-        nowRef.current = 6_100
+        // Still in Phase B (elapsed = 1600 → between outputStartMs=1200 and
+        // fullMs=2000). Intermediate enabled persists until fullMs apply.
+        nowRef.current = 6_600
+        await flushRaf()
+        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["approve"]))
+
+        // Past fullMs → applyFinalPendings flips replayEnabledTransitions to
+        // the post-fire set carried by the reply.
+        nowRef.current = 7_100
         await flushRaf()
         expect(stub().dataset.firingTransition).toBe("")
+        expect(stub().dataset.enabledTransitions).toBe(JSON.stringify(["after_fire"]))
       } finally {
         mut.occurrences = origOccurrences
         restore()
