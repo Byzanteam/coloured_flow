@@ -54,6 +54,10 @@ interface NetDiagramProps {
 
 const ZERO_PROGRESS: FiringProgress = { input: 0, output: 0 }
 
+const EMPTY_PLACES: ReadonlyArray<DiagramPlace> = []
+const EMPTY_TRANSITIONS: ReadonlyArray<DiagramTransition> = []
+const EMPTY_ARCS: ReadonlyArray<DiagramArc> = []
+
 const PLACE_NODE = "cf-place"
 const TRANSITION_NODE = "cf-transition"
 const ORTHO_EDGE = "ortho"
@@ -124,6 +128,10 @@ const ENABLED_MARKER = {
   color: "var(--color-cf-accent-tint)"
 }
 
+const DEFAULT_EDGE_OPTIONS = { style: DEFAULT_EDGE_STYLE, markerEnd: DEFAULT_MARKER } as const
+const FIT_VIEW_OPTIONS = { padding: 0.12, minZoom: 0.1, maxZoom: 1.5 } as const
+const PRO_OPTIONS = { hideAttribution: true } as const
+
 // Single ELK instance reused across renders — constructing one allocates the
 // fake-worker bundle (~200 kB), so we share it. ELK.layout is async; concurrent
 // callers each get their own promise back, so reuse is safe.
@@ -139,25 +147,58 @@ export default function NetDiagram({
 }: NetDiagramProps) {
   const layout = useElkLayout(diagram)
 
-  const { nodes, edges, isEmpty } = useMemo(
+  const places = diagram?.places ?? EMPTY_PLACES
+  const transitions = diagram?.transitions ?? EMPTY_TRANSITIONS
+  const arcs = diagram?.arcs ?? EMPTY_ARCS
+
+  const transitionWidth = useMemo(() => computeTransitionWidth(transitions), [transitions])
+
+  // Place nodes: data is a function of place rows + layout positions only.
+  // Token counts arrive through `place.tokens_count`; they update naturally
+  // when the server pushes a new `diagram.places`, but stay reference-stable
+  // across RAF firing ticks (firingProgress changes don't enter here).
+  const placeNodes = useMemo(
+    () => buildPlaceNodes(places, layout),
+    [places, layout]
+  )
+
+  // Transition nodes additionally depend on enactmentState + the override
+  // set. `enabledTransitions` is updated only on `:replay_to_version` reply,
+  // not per RAF tick, so this memo also bails during animation frames.
+  const transitionNodes = useMemo(
     () =>
-      buildGraph(
-        diagram,
-        enactmentState,
-        firingTransition,
-        firingProgress,
+      buildTransitionNodes(
+        transitions,
         layout,
+        transitionWidth,
+        enactmentState,
         enabledTransitions
       ),
-    [
-      diagram,
-      layout,
-      enactmentState,
-      firingTransition,
-      firingProgress,
-      enabledTransitions
-    ]
+    [transitions, layout, transitionWidth, enactmentState, enabledTransitions]
   )
+
+  const nodes = useMemo(
+    () => [...placeNodes, ...transitionNodes],
+    [placeNodes, transitionNodes]
+  )
+
+  // Edges DO depend on firingProgress (arc-fill animation). Non-firing
+  // arc data is recomputed per tick but produces an equivalent shape — the
+  // OrthogonalEdge memo absorbs the cost without remounting the SVG path.
+  const edges = useMemo(
+    () =>
+      buildEdges(
+        arcs,
+        layout,
+        transitions,
+        enabledTransitions,
+        firingTransition,
+        firingProgress
+      ),
+    [arcs, layout, transitions, enabledTransitions, firingTransition, firingProgress]
+  )
+
+  const isEmpty = places.length === 0 && transitions.length === 0
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -194,12 +235,12 @@ export default function NetDiagram({
         nodesConnectable={false}
         elementsSelectable={Boolean(onSelectTransition)}
         zoomOnDoubleClick={false}
-        defaultEdgeOptions={{ style: DEFAULT_EDGE_STYLE, markerEnd: DEFAULT_MARKER }}
-        proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+        proOptions={PRO_OPTIONS}
         fitView
         minZoom={0.1}
         maxZoom={1.5}
-        fitViewOptions={{ padding: 0.12, minZoom: 0.1, maxZoom: 1.5 }}
+        fitViewOptions={FIT_VIEW_OPTIONS}
         onNodeClick={onSelectTransition ? handleNodeClick : undefined}
       >
         <Background gap={18} size={1} color="var(--color-cf-border)" />
@@ -356,33 +397,11 @@ function layoutSignature(
   return `${p}#${t}#${a}`
 }
 
-export function buildGraph(
-  diagram: NetDiagramPayload | null | undefined,
-  enactmentState: EnactmentState,
-  firingTransition: string | null = null,
-  firingProgress: FiringProgress = ZERO_PROGRESS,
-  layout: Layout = EMPTY_LAYOUT,
-  enabledTransitionsOverride?: ReadonlySet<string>
-): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
-  const places = diagram?.places ?? []
-  const transitions = diagram?.transitions ?? []
-  const arcs = diagram?.arcs ?? []
-
-  if (places.length === 0 && transitions.length === 0) {
-    return { nodes: [], edges: [], isEmpty: true }
-  }
-
-  const transitionW = computeTransitionWidth(transitions)
-
-  const liveEnabledCounts = new Map<string, number>()
-  for (const t of transitions) liveEnabledCounts.set(t.name, t.enabled_count)
-
-  const isTransitionEnabled = (name: string): boolean =>
-    enabledTransitionsOverride
-      ? enabledTransitionsOverride.has(name)
-      : (liveEnabledCounts.get(name) ?? 0) > 0
-
-  const placeNodes: PlaceNode[] = places.map((place, index) => {
+function buildPlaceNodes(
+  places: ReadonlyArray<DiagramPlace>,
+  layout: Layout
+): PlaceNode[] {
+  return places.map((place, index) => {
     const id = placeId(place.name)
     const pos = layout.positions.get(id) ?? fallbackPos(index, 0)
     return {
@@ -396,11 +415,21 @@ export function buildGraph(
       selectable: false
     }
   })
+}
 
-  const transitionNodes: TransitionNode[] = transitions.map((transition, index) => {
+function buildTransitionNodes(
+  transitions: ReadonlyArray<DiagramTransition>,
+  layout: Layout,
+  width: number,
+  enactmentState: EnactmentState,
+  enabledTransitionsOverride: ReadonlySet<string> | undefined
+): TransitionNode[] {
+  return transitions.map((transition, index) => {
     const id = transitionId(transition.name)
     const pos = layout.positions.get(id) ?? fallbackPos(index, 1)
-    const isEnabled = isTransitionEnabled(transition.name)
+    const isEnabled = enabledTransitionsOverride
+      ? enabledTransitionsOverride.has(transition.name)
+      : transition.enabled_count > 0
     return {
       id,
       type: TRANSITION_NODE,
@@ -408,7 +437,7 @@ export function buildGraph(
       data: {
         ...transition,
         enactmentState,
-        width: transitionW,
+        width,
         isEnabled
       } as TransitionNodeData,
       sourcePosition: Position.Bottom,
@@ -417,8 +446,25 @@ export function buildGraph(
       selectable: true
     }
   })
+}
 
-  const edges: Edge[] = arcs.map((arc, index) => {
+function buildEdges(
+  arcs: ReadonlyArray<DiagramArc>,
+  layout: Layout,
+  transitions: ReadonlyArray<DiagramTransition>,
+  enabledTransitionsOverride: ReadonlySet<string> | undefined,
+  firingTransition: string | null,
+  firingProgress: FiringProgress
+): Edge[] {
+  const liveEnabledCounts = new Map<string, number>()
+  for (const t of transitions) liveEnabledCounts.set(t.name, t.enabled_count)
+
+  const isTransitionEnabled = (name: string): boolean =>
+    enabledTransitionsOverride
+      ? enabledTransitionsOverride.has(name)
+      : (liveEnabledCounts.get(name) ?? 0) > 0
+
+  return arcs.map((arc, index) => {
     const id = arcEdgeId(arc, index)
     const [from, to] = arcEndpoints(arc)
 
@@ -468,6 +514,41 @@ export function buildGraph(
     if (className) edge.className = className
     return edge
   })
+}
+
+export function buildGraph(
+  diagram: NetDiagramPayload | null | undefined,
+  enactmentState: EnactmentState,
+  firingTransition: string | null = null,
+  firingProgress: FiringProgress = ZERO_PROGRESS,
+  layout: Layout = EMPTY_LAYOUT,
+  enabledTransitionsOverride?: ReadonlySet<string>
+): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
+  const places = diagram?.places ?? EMPTY_PLACES
+  const transitions = diagram?.transitions ?? EMPTY_TRANSITIONS
+  const arcs = diagram?.arcs ?? EMPTY_ARCS
+
+  if (places.length === 0 && transitions.length === 0) {
+    return { nodes: [], edges: [], isEmpty: true }
+  }
+
+  const transitionW = computeTransitionWidth(transitions)
+  const placeNodes = buildPlaceNodes(places, layout)
+  const transitionNodes = buildTransitionNodes(
+    transitions,
+    layout,
+    transitionW,
+    enactmentState,
+    enabledTransitionsOverride
+  )
+  const edges = buildEdges(
+    arcs,
+    layout,
+    transitions,
+    enabledTransitionsOverride,
+    firingTransition,
+    firingProgress
+  )
 
   return { nodes: [...placeNodes, ...transitionNodes], edges, isEmpty: false }
 }
