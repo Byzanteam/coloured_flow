@@ -24,7 +24,7 @@ import {
 } from "@xyflow/react"
 import ELK, { type ElkNode, type ElkExtendedEdge, type ElkPoint } from "elkjs/lib/elk.bundled.js"
 import { ArrowsCounterClockwiseIcon } from "@phosphor-icons/react"
-import { Badge, Surface } from "@cloudflare/kumo"
+import { Surface } from "@cloudflare/kumo"
 
 type NetDiagramPayload = ColouredFlowDashboardWeb.Views.NetDiagram
 type DiagramPlace = ColouredFlowDashboardWeb.Views.NetDiagramPlace
@@ -39,6 +39,11 @@ interface NetDiagramProps {
   onSelectTransition?: (name: string) => void
   firingEdgeIds?: ReadonlySet<string>
   firingDurationMs?: number
+  // Optional override for the enabled-arc accent. When supplied, only edges
+  // whose id is in the set get the cf-edge-enabled style. When omitted,
+  // buildGraph derives the set from `transition.enabled_count > 0` (legacy
+  // path used by unit tests and live mode without replay sticky-state).
+  enabledEdgeIds?: ReadonlySet<string>
 }
 
 const DEFAULT_FIRING_DURATION_MS = 600
@@ -58,18 +63,22 @@ const PLACE_W = 48
 const PLACE_H = PLACE_CIRCLE + PLACE_LABEL_GAP
 const TRANSITION_H = 28
 const TRANSITION_MIN_W = 56
-const TRANSITION_MAX_W = 200
 const TRANSITION_CHAR_PX = 7
 const TRANSITION_PAD_PX = 20
 
+// No upper clamp: transition names in this codebase are short enough that an
+// explicit cap risked truncating a legitimate label. Single shared width is
+// still applied to every transition node so the grid stays consistent.
 function computeTransitionWidth(transitions: ReadonlyArray<DiagramTransition>): number {
   let maxLen = 0
   for (const t of transitions) {
     if (t.name.length > maxLen) maxLen = t.name.length
   }
   const raw = maxLen * TRANSITION_CHAR_PX + TRANSITION_PAD_PX
-  return Math.max(TRANSITION_MIN_W, Math.min(TRANSITION_MAX_W, raw))
+  return Math.max(TRANSITION_MIN_W, raw)
 }
+
+const EDGE_CORNER_RADIUS = 8
 
 type PlaceNodeData = DiagramPlace & Record<string, unknown>
 type TransitionNodeData = DiagramTransition & {
@@ -118,13 +127,22 @@ export default function NetDiagram({
   enactmentState = "running",
   onSelectTransition,
   firingEdgeIds = EMPTY_FIRING_SET,
-  firingDurationMs = DEFAULT_FIRING_DURATION_MS
+  firingDurationMs = DEFAULT_FIRING_DURATION_MS,
+  enabledEdgeIds
 }: NetDiagramProps) {
   const layout = useElkLayout(diagram)
 
   const { nodes, edges, isEmpty } = useMemo(
-    () => buildGraph(diagram, enactmentState, firingEdgeIds, firingDurationMs, layout),
-    [diagram, layout, enactmentState, firingEdgeIds, firingDurationMs]
+    () =>
+      buildGraph(
+        diagram,
+        enactmentState,
+        firingEdgeIds,
+        firingDurationMs,
+        layout,
+        enabledEdgeIds
+      ),
+    [diagram, layout, enactmentState, firingEdgeIds, firingDurationMs, enabledEdgeIds]
   )
 
   const handleNodeClick = useCallback(
@@ -329,7 +347,8 @@ export function buildGraph(
   enactmentState: EnactmentState,
   firingEdgeIds: ReadonlySet<string> = EMPTY_FIRING_SET,
   firingDurationMs: number = DEFAULT_FIRING_DURATION_MS,
-  layout: Layout = EMPTY_LAYOUT
+  layout: Layout = EMPTY_LAYOUT,
+  enabledEdgeIdsOverride?: ReadonlySet<string>
 ): { nodes: Array<PlaceNode | TransitionNode>; edges: Edge[]; isEmpty: boolean } {
   const places = diagram?.places ?? []
   const transitions = diagram?.transitions ?? []
@@ -382,8 +401,9 @@ export function buildGraph(
     const isFiring = firingEdgeIds.has(id)
     const isEnabledInput =
       !isFiring &&
-      arc.orientation === "p_to_t" &&
-      enabledTransitions.has(arc.transition)
+      (enabledEdgeIdsOverride
+        ? enabledEdgeIdsOverride.has(id)
+        : arc.orientation === "p_to_t" && enabledTransitions.has(arc.transition))
 
     let style: CSSProperties
     let markerEnd = DEFAULT_MARKER
@@ -444,10 +464,40 @@ const transitionId = (name: string) => `t:${name}`
 function OrthogonalEdgeImpl({ data, markerEnd, style }: EdgeProps) {
   const points = (data as OrthoEdgeData | undefined)?.points
   if (!points || points.length < 2) return null
-  const d = points
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
-    .join(" ")
-  return <BaseEdge path={d} markerEnd={markerEnd} style={style} />
+  return <BaseEdge path={roundedPolylinePath(points, EDGE_CORNER_RADIUS)} markerEnd={markerEnd} style={style} />
+}
+
+// Build an SVG path from a polyline, replacing each interior 90° corner with
+// a quadratic-bezier arc. The corner radius is capped at half of the shorter
+// adjacent segment so very-short legs do not overshoot the bend.
+function roundedPolylinePath(points: ReadonlyArray<ElkPoint>, radius: number): string {
+  if (points.length < 2) return ""
+  if (points.length === 2 || radius <= 0) {
+    return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ")
+  }
+  let d = `M ${points[0].x} ${points[0].y}`
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1]
+    const curr = points[i]
+    const next = points[i + 1]
+    const len1 = Math.hypot(curr.x - prev.x, curr.y - prev.y)
+    const len2 = Math.hypot(next.x - curr.x, next.y - curr.y)
+    const r = Math.max(0, Math.min(radius, len1 / 2, len2 / 2))
+    if (r === 0) {
+      d += ` L ${curr.x} ${curr.y}`
+      continue
+    }
+    const t1 = (len1 - r) / len1
+    const ax = prev.x + (curr.x - prev.x) * t1
+    const ay = prev.y + (curr.y - prev.y) * t1
+    const t2 = r / len2
+    const bx = curr.x + (next.x - curr.x) * t2
+    const by = curr.y + (next.y - curr.y) * t2
+    d += ` L ${ax} ${ay} Q ${curr.x} ${curr.y} ${bx} ${by}`
+  }
+  const last = points[points.length - 1]
+  d += ` L ${last.x} ${last.y}`
+  return d
 }
 
 const OrthogonalEdge = memo(OrthogonalEdgeImpl)
@@ -475,10 +525,13 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
         <Surface
           as="div"
           title={tooltip}
-          className="flex h-full w-full items-center justify-center rounded-full border bg-cf-surface shadow-sm"
+          className="flex h-full w-full items-center justify-center rounded-full bg-cf-surface shadow-sm"
           style={{
-            borderColor: hasTokens ? "var(--color-cf-accent)" : "var(--color-cf-border)",
-            borderWidth: hasTokens ? 2 : 1.5
+            borderStyle: "solid",
+            borderColor: hasTokens
+              ? "var(--color-cf-accent)"
+              : "var(--color-cf-border-strong)",
+            borderWidth: 1.5
           }}
           data-testid={`place-node-${data.name}`}
         >
@@ -495,31 +548,28 @@ function PlaceNodeViewImpl({ data }: NodeProps<PlaceNode>) {
             isConnectable={false}
           />
         </Surface>
-        {hasTokens ? (
-          <span
-            data-testid={`place-token-badge-${data.name}`}
-            className="absolute -right-1.5 -top-1.5"
-          >
-            <Badge
-              variant="primary"
-              className="inline-flex size-3 items-center justify-center rounded-full bg-cf-accent-tint p-0 text-[8px] font-semibold leading-none tabular-nums text-cf-accent-ink shadow-sm"
-            >
-              {data.tokens_count}
-            </Badge>
-          </span>
-        ) : null}
       </div>
       <div
         data-testid={`place-label-${data.name}`}
         className="mt-1 flex w-[96px] flex-col items-center leading-tight"
       >
-        <span className="max-w-full truncate font-mono text-[11px] font-medium text-cf-ink">
-          {data.name}
-        </span>
-        {data.colour_set ? (
-          <span className="max-w-full truncate font-mono text-[10px] text-cf-ink-muted">
-            {data.colour_set}
+        <div className="flex max-w-full items-baseline justify-center gap-1">
+          <span className="truncate font-mono text-[11px] font-medium text-cf-ink">
+            {data.name}
           </span>
+          {hasTokens ? (
+            <span
+              data-testid={`place-token-badge-${data.name}`}
+              className="font-mono text-[11px] font-bold tabular-nums text-cf-accent"
+            >
+              {data.tokens_count}
+            </span>
+          ) : null}
+        </div>
+        {data.colour_set ? (
+          <code className="mt-0.5 max-w-full truncate rounded border border-cf-border bg-cf-canvas px-1 font-mono text-[10px] text-cf-ink-muted">
+            {data.colour_set}
+          </code>
         ) : null}
       </div>
     </div>
@@ -560,7 +610,7 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
       style={{
         width: data.width,
         height: TRANSITION_H,
-        borderColor: "var(--color-cf-border)",
+        borderColor: "var(--color-cf-border-strong)",
         borderWidth: 1.5,
         boxShadow: pulseShadow ?? baseShadow,
         transform: pulsing ? "scale(1.05)" : "scale(1)",

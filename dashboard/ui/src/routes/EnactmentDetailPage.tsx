@@ -334,6 +334,53 @@ function DetailContent({
     }
   }, [])
 
+  // Enabled-edge accent: live mode reads directly from `transition.enabled_count`;
+  // replay mode keeps a cumulative union of every edge that has been enabled at
+  // any scrub position so the highlight stays sticky even when the operator
+  // walks back to a version where the transition no longer has bindings.
+  const currentlyEnabledEdgeIds = useMemo<ReadonlySet<string>>(() => {
+    if (!diagram) return EMPTY_FIRING_SET
+    const enabled = new Set<string>()
+    const enabledTransitions = new Set<string>()
+    for (const t of diagram.transitions) {
+      if (t.enabled_count > 0) enabledTransitions.add(t.name)
+    }
+    diagram.arcs.forEach((arc, index) => {
+      if (arc.orientation !== "p_to_t") return
+      if (!enabledTransitions.has(arc.transition)) return
+      enabled.add(`arc-${arc.orientation}-${arc.place}-${arc.transition}-${index}`)
+    })
+    return enabled
+  }, [diagram])
+
+  const [stickyEnabledEdgeIds, setStickyEnabledEdgeIds] =
+    useState<ReadonlySet<string>>(EMPTY_FIRING_SET)
+
+  useEffect(() => {
+    if (replayState === null) {
+      setStickyEnabledEdgeIds(EMPTY_FIRING_SET)
+      return
+    }
+    setStickyEnabledEdgeIds((prev) => {
+      let next: Set<string> | null = null
+      for (const id of currentlyEnabledEdgeIds) {
+        if (!prev.has(id)) {
+          if (!next) next = new Set(prev)
+          next.add(id)
+        }
+      }
+      return next ?? prev
+    })
+  }, [replayState, currentlyEnabledEdgeIds])
+
+  const enabledEdgeIds = useMemo<ReadonlySet<string>>(() => {
+    if (replayState === null) return currentlyEnabledEdgeIds
+    if (stickyEnabledEdgeIds.size === 0) return currentlyEnabledEdgeIds
+    const merged = new Set(stickyEnabledEdgeIds)
+    for (const id of currentlyEnabledEdgeIds) merged.add(id)
+    return merged
+  }, [replayState, currentlyEnabledEdgeIds, stickyEnabledEdgeIds])
+
   const [activeTab, setActiveTab] = useState<TabId>("markings")
   // Pending inspect target driven by NetDiagram node click. Cleared by
   // DebugTab once the dispatch fires so re-clicking the same transition
@@ -432,6 +479,7 @@ function DetailContent({
               onSelectTransition={onSelectTransition}
               firingEdgeIds={firingEdgeIds}
               firingDurationMs={firingDurationMs}
+              enabledEdgeIds={enabledEdgeIds}
             />
           </div>
         </LayerCard.Primary>
