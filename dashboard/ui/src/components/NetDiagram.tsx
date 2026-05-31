@@ -116,7 +116,7 @@ const DEFAULT_EDGE_STYLE = {
 } as const
 
 const ENABLED_EDGE_STYLE = {
-  stroke: "var(--color-cf-accent-tint)",
+  stroke: "var(--color-cf-accent-muted)",
   strokeWidth: 2
 } as const
 
@@ -131,7 +131,7 @@ const ENABLED_MARKER = {
   type: MarkerType.ArrowClosed,
   width: 14,
   height: 14,
-  color: "var(--color-cf-accent-tint)"
+  color: "var(--color-cf-accent-muted)"
 }
 
 const DEFAULT_EDGE_OPTIONS = { style: DEFAULT_EDGE_STYLE, markerEnd: DEFAULT_MARKER } as const

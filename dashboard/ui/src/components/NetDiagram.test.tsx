@@ -154,7 +154,7 @@ describe("NetDiagram", () => {
     expect((input?.data as Record<string, unknown>).firingProgress).toBe(0.3)
     expect((output?.data as Record<string, unknown>).firingProgress).toBe(0.7)
     // Firing does not strip the enabled-input className; base stays
-    // accent-tint while the overlay paints cf-accent on top.
+    // cf-accent-muted while the overlay paints cf-accent on top.
     expect(input?.className).toBe("cf-edge-enabled")
     expect(output?.className).toBeUndefined()
   })
@@ -198,7 +198,7 @@ describe("NetDiagram", () => {
     const output = edges.find((e) => e.id === "arc-t_to_p-decided-approve-1")
     expect(input?.className).toBe("cf-edge-enabled")
     expect((input?.style as Record<string, unknown>).stroke).toBe(
-      "var(--color-cf-accent-tint)"
+      "var(--color-cf-accent-muted)"
     )
     expect((input?.style as Record<string, unknown>).strokeWidth).toBe(2)
     // Output arcs of an enabled transition stay default — operators only need
