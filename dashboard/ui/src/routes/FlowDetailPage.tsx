@@ -48,19 +48,14 @@ export default function FlowDetailPage() {
 }
 
 function DetailRoot({ flowId }: { flowId: string }) {
-  // Mounts FlowCatalogStore under a *distinct* caller id ("detail") from
-  // FlowCatalogPage's "catalog" id. Musubi 0.7 rejects `(module, id)`
-  // duplicates on one connection with `:already_mounted`, and the
-  // /flows ↔ /flows/:id swap can race the @musubi/react pendingRootMounts
-  // dedup. Two FlowCatalogStore roots per connection is the cheap,
-  // race-free option — the stream carries lightweight FlowSummary rows so
-  // the duplicate is cheap on the server. The heavy NetDiagram + full
-  // enactments list is fetched on demand via :fetch_flow_detail. DO NOT
-  // collapse this id back to "default" — that collides with FlowCatalogPage
-  // and crashes navigation.
+  // Reuses the FlowCatalogStore singleton root (per Requirements: "/flows,
+  // /flows/:module → FlowCatalogStore"). The stream carries lightweight
+  // FlowSummary rows; the heavy NetDiagram + full enactments list is
+  // fetched on demand via :fetch_flow_detail so the catalog payload stays
+  // bounded as history accumulates.
   const catalog = useMusubiRootSuspense({
     module: FLOW_CATALOG_STORE,
-    id: "detail"
+    id: "default"
   })
   return <DetailContent catalog={catalog} flowId={flowId} />
 }

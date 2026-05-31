@@ -17,17 +17,12 @@ type InboxProxy = NonNullable<Extract<InboxRootMount, { status: "ready" }>["stor
  * the moment a new workitem appears on the live inbox stream. The toast
  * links back to `/`. The dot clears when the inbox page is visited.
  *
- * Mounts InboxStore under a *distinct* caller id ("notifier") so that the
- * RootLayout-level notifier and the route-level InboxPage hold independent
- * server-side roots. Musubi 0.7 rejects `(module, id)` duplicates on one
- * connection with `:already_mounted`, and React 19's render/effect timing
- * cannot reliably keep the @musubi/react `pendingRootMounts` dedup honest
- * across Suspense retries + route swaps. Two roots per connection is the
- * cheap, race-free option. DO NOT collapse this id back to "default" — that
- * collides with InboxPage and crashes navigation.
+ * Backed by a refcounted `useMusubiRoot` mount that the inbox page also
+ * subscribes to — Musubi's shared-mount table guarantees a single server-side
+ * root regardless of how many React subscribers exist.
  */
 export default function InboxNotifier() {
-  const root = useMusubiRoot({ module: INBOX_STORE, id: "notifier" })
+  const root = useMusubiRoot({ module: INBOX_STORE, id: "default" })
   if (root.status !== "ready") return null
   return <InboxNotifierBody inbox={root.store} />
 }
