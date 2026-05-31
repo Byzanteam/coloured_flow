@@ -785,26 +785,29 @@ function TransitionNodeViewImpl({ data }: NodeProps<TransitionNode>) {
     ? `0 0 0 6px color-mix(in oklab, ${pulseColor} 32%, transparent)`
     : null
   const dwellShadow = dwelling
-    ? `0 0 0 8px color-mix(in oklab, var(--color-cf-accent) 38%, transparent)`
+    ? `0 0 0 4px color-mix(in oklab, var(--color-cf-accent) 32%, transparent)`
     : null
   const elevatedShadow = dwellShadow ?? pulseShadow ?? baseShadow
-  const elevated = pulsing || dwelling
+  const elevated = pulsing
 
   return (
     <Surface
       as="div"
-      className="flex items-center justify-center rounded-md border bg-cf-surface px-2.5 py-1 text-center shadow-sm"
+      className="flex items-center justify-center rounded-md border px-2.5 py-1 text-center shadow-sm"
       style={{
         width: data.width,
         height: TRANSITION_H,
+        backgroundColor: dwelling
+          ? "var(--color-cf-accent-tint)"
+          : "var(--color-cf-surface)",
         borderColor: dwelling
           ? "var(--color-cf-accent)"
           : "var(--color-cf-border-strong)",
         borderWidth: 1.5,
         boxShadow: elevatedShadow,
         transform: elevated ? "scale(1.05)" : "scale(1)",
-        filter: elevated ? "brightness(1.15)" : "none",
-        transition: "box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms cubic-bezier(0.16, 1, 0.3, 1)"
+        transition:
+          "background-color 240ms ease-out, border-color 240ms ease-out, box-shadow 240ms ease-out, transform 200ms cubic-bezier(0.16, 1, 0.3, 1)"
       }}
       data-testid={`transition-node-${data.name}`}
       data-pulsing={pulsing ? "true" : "false"}
