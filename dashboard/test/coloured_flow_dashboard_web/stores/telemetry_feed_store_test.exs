@@ -1,19 +1,29 @@
 defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStoreTest do
   use ExUnit.Case, async: false
 
+  alias ColouredFlowDashboard.TelemetryBridge
   alias ColouredFlowDashboard.TelemetryBridge.Event
   alias ColouredFlowDashboardWeb.Stores.TelemetryFeedStore
 
   @pubsub :coloured_flow_dashboard_pubsub
+  @events_buffer :cf_dashboard_telemetry_feed_store_test_events_buffer
 
   setup context do
     topic = "cf-test-#{discriminator(context)}:telemetry"
-    {:ok, topic: topic}
+    events_buffer = @events_buffer
+
+    on_exit(fn ->
+      if :ets.whereis(events_buffer) != :undefined do
+        :ets.delete(events_buffer)
+      end
+    end)
+
+    {:ok, topic: topic, events_buffer: events_buffer}
   end
 
   describe "mount/2" do
-    test "seeds zeroed window + counters", %{topic: topic} do
-      page = mount_store(topic, 10)
+    test "seeds zeroed window + counters", %{topic: topic, events_buffer: events_buffer} do
+      page = mount_store(topic, 10, events_buffer)
       assigns = Musubi.Testing.assigns(page)
 
       assert assigns.total_events == 0
@@ -24,11 +34,54 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStoreTest do
       assert Map.get(assigns, :newest_seq) == nil
       assert assigns.entries_index == []
     end
+
+    test "backfills the stream from the bridge events buffer", %{
+      topic: topic,
+      events_buffer: events_buffer
+    } do
+      eid_a = Ecto.UUID.generate()
+      eid_b = Ecto.UUID.generate()
+
+      seed_events_buffer(events_buffer, [
+        build_event(:enactment_start, eid_a, 2),
+        build_event(:enactment_start, eid_b, 5)
+      ])
+
+      page = mount_store(topic, 10, events_buffer)
+      assigns = Musubi.Testing.assigns(page)
+
+      assert assigns.total_events == 2
+      assert assigns.entries_in_window == 2
+      assert assigns.newest_seq == 5
+      assert assigns.oldest_seq == 2
+      assert Enum.map(assigns.entries_index, &elem(&1, 1)) == [5, 2]
+    end
+
+    test "live PubSub events arrive after backfill without duplicating buffer entries", %{
+      topic: topic,
+      events_buffer: events_buffer
+    } do
+      eid = Ecto.UUID.generate()
+      backfill = build_event(:produce_workitems_stop, eid, 5)
+      seed_events_buffer(events_buffer, [backfill])
+
+      page = mount_store(topic, 5, events_buffer)
+      broadcast!(topic, backfill)
+      broadcast!(topic, build_event(:complete_workitems_stop, eid, 6))
+
+      assigns = Musubi.Testing.assigns(page)
+
+      assert assigns.total_events == 2
+      assert assigns.entries_in_window == 2
+      assert assigns.newest_seq == 6
+      assert assigns.oldest_seq == 5
+      assert Enum.map(assigns.entries_index, &elem(&1, 1)) == [6, 5]
+    end
   end
 
   describe "event ingestion" do
-    setup %{topic: topic} do
-      page = mount_store(topic, 5)
+    setup %{topic: topic, events_buffer: events_buffer} do
+      page = mount_store(topic, 5, events_buffer)
       {:ok, page: page}
     end
 
@@ -142,11 +195,22 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStoreTest do
   defp discriminator(context),
     do: Integer.to_string(:erlang.phash2({context.module, context.test}))
 
-  defp mount_store(topic, window) do
+  defp mount_store(topic, window, events_buffer) do
     Musubi.Testing.mount(TelemetryFeedStore, %{
       "topic" => topic,
-      "window" => window
+      "window" => window,
+      "events_buffer" => events_buffer
     })
+  end
+
+  defp seed_events_buffer(events_buffer, events) do
+    :ets.new(events_buffer, [:set, :public, :named_table])
+
+    Enum.each(events, fn %Event{} = event ->
+      :ets.insert(events_buffer, {event.seq, event})
+    end)
+
+    assert TelemetryBridge.recent_events(events_buffer) == Enum.sort_by(events, & &1.seq)
   end
 
   defp broadcast!(topic, %Event{} = event) do

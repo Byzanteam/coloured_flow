@@ -60,6 +60,15 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   cache on miss, so the first row construction for an unseen enactment
   takes the storage hit; subsequent rows are served from ETS.
 
+  ## Events buffer
+
+  The bridge also owns a second ETS table (`:set`, `:public`, `:named_table`)
+  keyed by telemetry-feed `seq` and valued by the `%Event{topic: :telemetry}`
+  emitted for that sequence. It acts as a small ring buffer so fresh
+  `/telemetry` mounts can backfill recent events before continuing with live
+  PubSub updates. Inserts and trimming run inside the existing task body so the
+  runner never pays that maintenance cost inline.
+
   ## Catalog drift
 
   The list returned by `events/0` is the bridge's authoritative event catalog.
@@ -84,7 +93,9 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   @default_pubsub :coloured_flow_dashboard_pubsub
   @default_task_supervisor ColouredFlowDashboard.TaskSupervisor
   @default_flow_cache :coloured_flow_dashboard_telemetry_bridge_flow_cache
+  @default_events_buffer :coloured_flow_dashboard_telemetry_bridge_events_buffer
   @default_topic_prefix "cf:"
+  @window 500
 
   @enactment_lifecycle_events ~w[start stop terminate exception take_snapshot]a
   @workitem_operations ~w[produce_workitems start_workitems withdraw_workitems complete_workitems]a
@@ -99,6 +110,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
           | {:task_supervisor, atom()}
           | {:topic_prefix, String.t()}
           | {:flow_cache, atom()}
+          | {:events_buffer, atom()}
           | {:broadcast_fn, broadcast_fn()}
 
   @spec start_link([option()]) :: GenServer.on_start()
@@ -136,12 +148,14 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
     task_supervisor = Keyword.get(opts, :task_supervisor, @default_task_supervisor)
     topic_prefix = Keyword.get(opts, :topic_prefix, @default_topic_prefix)
     flow_cache = Keyword.get(opts, :flow_cache, @default_flow_cache)
+    events_buffer = Keyword.get(opts, :events_buffer, @default_events_buffer)
     broadcast_fn = Keyword.get(opts, :broadcast_fn, &Phoenix.PubSub.broadcast/3)
 
     # GenServer owns the ETS table so it dies with us (test cleanup is free).
     # `:public` lets the Task.Supervisor child write to it without going
     # through the GenServer.
     flow_cache = ensure_table(flow_cache)
+    events_buffer = ensure_table(events_buffer)
 
     config = %{
       handler_id: handler_id,
@@ -149,6 +163,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
       task_supervisor: task_supervisor,
       topic_prefix: topic_prefix,
       flow_cache: flow_cache,
+      events_buffer: events_buffer,
       broadcast_fn: broadcast_fn
     }
 
@@ -159,7 +174,7 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
     :ok = :telemetry.attach_many(handler_id, events(), &__MODULE__.handle_event/4, config)
 
-    {:ok, %{handler_id: handler_id, flow_cache: flow_cache}}
+    {:ok, %{handler_id: handler_id, flow_cache: flow_cache, events_buffer: events_buffer}}
   end
 
   defp ensure_table(name) do
@@ -246,8 +261,12 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
 
   defp dispatch(event_name, measurements, metadata, seq, config) do
     case build_broadcasts(event_name, measurements, metadata, seq, config) do
-      [] -> :ok
-      broadcasts -> deliver_broadcasts(config, broadcasts)
+      [] ->
+        :ok
+
+      broadcasts ->
+        buffer_recent_event(config.events_buffer, broadcasts)
+        deliver_broadcasts(config, broadcasts)
     end
   end
 
@@ -256,6 +275,33 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
       config.broadcast_fn.(config.pubsub, topic, {:cf_event, event})
     end)
   end
+
+  defp buffer_recent_event(events_buffer, broadcasts) when is_atom(events_buffer) do
+    case Enum.find_value(broadcasts, fn
+           {_topic, %Event{topic: :telemetry, seq: seq} = event}
+           when is_integer(seq) and seq > 0 ->
+             event
+
+           _other ->
+             nil
+         end) do
+      %Event{} = event ->
+        :ets.insert(events_buffer, {event.seq, event})
+        trim_events_buffer(events_buffer, event.seq)
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp trim_events_buffer(events_buffer, newest_seq) when newest_seq > @window do
+    cutoff = newest_seq - @window
+    spec = [{{:"$1", :_}, [{:<, :"$1", cutoff}], [true]}]
+    :ets.select_delete(events_buffer, spec)
+    :ok
+  end
+
+  defp trim_events_buffer(_events_buffer, _newest_seq), do: :ok
 
   @spec build_broadcasts(
           :telemetry.event_name(),
@@ -376,6 +422,32 @@ defmodule ColouredFlowDashboard.TelemetryBridge do
   end
 
   defp enactments_topic(_prefix, _kind, _common), do: []
+
+  @doc """
+  Returns buffered telemetry-feed events sorted by ascending sequence.
+
+  Returns `[]` when the table does not exist.
+  """
+  @spec recent_events() :: [Event.t()]
+  def recent_events, do: recent_events(@default_events_buffer)
+
+  @doc """
+  Returns buffered telemetry-feed events sorted by ascending sequence from the
+  given ETS table.
+  """
+  @spec recent_events(atom()) :: [Event.t()]
+  def recent_events(events_buffer) when is_atom(events_buffer) do
+    case :ets.whereis(events_buffer) do
+      :undefined ->
+        []
+
+      _table ->
+        events_buffer
+        |> :ets.tab2list()
+        |> Enum.map(fn {_seq, %Event{} = event} -> event end)
+        |> Enum.sort_by(& &1.seq)
+    end
+  end
 
   @doc """
   Looks up (or resolves and caches) the flow topic id for an enactment.

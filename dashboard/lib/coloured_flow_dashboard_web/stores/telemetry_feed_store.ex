@@ -30,6 +30,11 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
   Per-enactment seq is still honoured via `SeqTracker` so a late event
   cannot leapfrog a newer one for the same enactment id.
 
+  Mount subscribes first, then backfills from the bridge-owned ETS events
+  buffer through the same `ingest_event/2` path used for live PubSub events.
+  That keeps ordering, stale-drop, and window trimming identical across the
+  replay and live phases.
+
   Read-only — no commands. The operator inspects the feed; submitting
   outputs and other state mutation happens on the per-enactment surfaces.
   """
@@ -46,6 +51,7 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
   @default_pubsub :coloured_flow_dashboard_pubsub
   @default_topic "cf:telemetry"
   @default_flow_cache :coloured_flow_dashboard_telemetry_bridge_flow_cache
+  @default_events_buffer :coloured_flow_dashboard_telemetry_bridge_events_buffer
   @window 500
 
   state do
@@ -64,6 +70,7 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
     pubsub = Map.get(params, "pubsub_name", @default_pubsub)
     topic = Map.get(params, "topic", @default_topic)
     flow_cache = Map.get(params, "flow_cache", @default_flow_cache)
+    events_buffer = Map.get(params, "events_buffer", @default_events_buffer)
     window = Map.get(params, "window", @window)
 
     :ok = Phoenix.PubSub.subscribe(pubsub, topic)
@@ -73,6 +80,7 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
       |> assign(:pubsub_name, pubsub)
       |> assign(:topic, topic)
       |> assign(:flow_cache, flow_cache)
+      |> assign(:events_buffer, events_buffer)
       |> assign(:window, window)
       |> assign(:total_events, 0)
       |> assign(:entries_in_window, 0)
@@ -87,6 +95,17 @@ defmodule ColouredFlowDashboardWeb.Stores.TelemetryFeedStore do
       # bound + trims the tail on overflow.
       |> assign(:entries_index, [])
       |> stream(:entries, [], reset: true)
+
+    socket =
+      Enum.reduce(TelemetryBridge.recent_events(events_buffer), socket, fn event, acc ->
+        if SeqTracker.stale?(event, acc.assigns.last_seq) do
+          acc
+        else
+          acc
+          |> assign(:last_seq, SeqTracker.bump(acc.assigns.last_seq, event))
+          |> ingest_event(event)
+        end
+      end)
 
     {:ok, socket}
   end

@@ -19,6 +19,16 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
 
   @pubsub :coloured_flow_dashboard_pubsub
   @task_supervisor ColouredFlowDashboard.TaskSupervisor
+  @bridge_table_names [
+    {:cf_dashboard_bridge_test_flow_cache_1, :cf_dashboard_bridge_test_events_buffer_1,
+     :cf_dashboard_bridge_test_bridge_1},
+    {:cf_dashboard_bridge_test_flow_cache_2, :cf_dashboard_bridge_test_events_buffer_2,
+     :cf_dashboard_bridge_test_bridge_2},
+    {:cf_dashboard_bridge_test_flow_cache_3, :cf_dashboard_bridge_test_events_buffer_3,
+     :cf_dashboard_bridge_test_bridge_3},
+    {:cf_dashboard_bridge_test_flow_cache_4, :cf_dashboard_bridge_test_events_buffer_4,
+     :cf_dashboard_bridge_test_bridge_4}
+  ]
 
   defp unique_token, do: Integer.to_string(System.unique_integer([:positive, :monotonic]))
 
@@ -56,10 +66,7 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
     token = unique_token()
     prefix = "cf-#{context.test_token}-#{token}:"
     handler_id = {context.module, context.test, token}
-    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
-    flow_cache = String.to_atom("#{context.module}.FlowCache.#{context.test_token}.#{token}")
-    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
-    bridge_name = String.to_atom("#{context.module}.Bridge.#{context.test_token}.#{token}")
+    {flow_cache, events_buffer, bridge_name} = next_bridge_names()
 
     bridge_opts =
       [
@@ -68,7 +75,8 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
         pubsub: @pubsub,
         task_supervisor: @task_supervisor,
         topic_prefix: prefix,
-        flow_cache: flow_cache
+        flow_cache: flow_cache,
+        events_buffer: events_buffer
       ] ++ opts
 
     # Explicit `:id` so multiple bridges with different names can coexist
@@ -77,7 +85,13 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
     spec = Supervisor.child_spec({TelemetryBridge, bridge_opts}, id: bridge_name)
     pid = start_supervised!(spec)
 
-    %{prefix: prefix, handler_id: handler_id, flow_cache: flow_cache, bridge: pid}
+    %{
+      prefix: prefix,
+      handler_id: handler_id,
+      flow_cache: flow_cache,
+      events_buffer: events_buffer,
+      bridge: pid
+    }
   end
 
   defp subscribe_topics(prefix, enactment_id) do
@@ -325,6 +339,83 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
     end
   end
 
+  describe "events buffer" do
+    setup context, do: start_bridge(context)
+
+    test "records each broadcast event and is readable via recent_events/1", %{
+      prefix: prefix,
+      handler_id: handler_id,
+      events_buffer: events_buffer
+    } do
+      eid_a = unique_id("-buffer-a")
+      eid_b = unique_id("-buffer-b")
+      :ok = Phoenix.PubSub.subscribe(@pubsub, "#{prefix}telemetry")
+
+      execute_via_handler(
+        handler_id,
+        [:coloured_flow, :runner, :enactment, :start],
+        %{system_time: System.system_time()},
+        %{enactment_id: eid_a, enactment_state: build_state(eid_a)}
+      )
+
+      execute_via_handler(
+        handler_id,
+        [:coloured_flow, :runner, :enactment, :start],
+        %{system_time: System.system_time()},
+        %{enactment_id: eid_b, enactment_state: build_state(eid_b)}
+      )
+
+      assert_receive {:cf_event, %Event{enactment_id: ^eid_a, topic: :telemetry}}, 1_000
+      assert_receive {:cf_event, %Event{enactment_id: ^eid_b, topic: :telemetry}}, 1_000
+
+      events = TelemetryBridge.recent_events(events_buffer)
+
+      assert [
+               %Event{enactment_id: ^eid_a, topic: :telemetry, seq: seq_a},
+               %Event{enactment_id: ^eid_b, topic: :telemetry, seq: seq_b}
+             ] = events
+
+      assert seq_a > 0
+      assert seq_b > seq_a
+    end
+
+    test "drops entries older than the window", %{
+      prefix: prefix,
+      handler_id: handler_id,
+      events_buffer: events_buffer
+    } do
+      total = 503
+      :ok = Phoenix.PubSub.subscribe(@pubsub, "#{prefix}telemetry")
+
+      for n <- 1..total do
+        eid = unique_id("-trim-#{n}")
+
+        execute_via_handler(
+          handler_id,
+          [:coloured_flow, :runner, :enactment, :start],
+          %{system_time: System.system_time()},
+          %{enactment_id: eid, enactment_state: build_state(eid)}
+        )
+      end
+
+      received_seqs =
+        for _idx <- 1..total do
+          assert_receive {:cf_event, %Event{topic: :telemetry, seq: seq}}, 1_000
+          seq
+        end
+
+      events = TelemetryBridge.recent_events(events_buffer)
+      seqs = Enum.map(events, & &1.seq)
+      newest_seq = Enum.max(received_seqs)
+      expected = received_seqs |> Enum.filter(&(&1 >= newest_seq - 500)) |> Enum.sort()
+      oldest_received_seq = received_seqs |> Enum.sort() |> hd()
+
+      assert seqs == expected
+      assert Enum.all?(seqs, &(&1 >= newest_seq - 500))
+      refute oldest_received_seq in seqs
+    end
+  end
+
   describe "topic isolation" do
     test "parallel bridges on different prefixes do not cross-pollute", context do
       %{prefix: prefix_a, handler_id: handler_a} = start_bridge(context)
@@ -454,7 +545,9 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
 
       max_pre = Enum.max(pre_seqs)
       assert max_pre > 0
-      assert pre_seqs == Enum.sort(pre_seqs), "pre-restart seqs must be monotonic"
+
+      assert Enum.sort(pre_seqs) == Enum.uniq(Enum.sort(pre_seqs)),
+             "pre-restart seqs must be unique and monotonic as values"
 
       # Kill the bridge and wait for the supervisor to surface the exit so
       # `start_bridge/2` below opens a fresh ETS / new GenServer state.
@@ -483,7 +576,9 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
         end
 
       min_post = Enum.min(post_seqs)
-      assert post_seqs == Enum.sort(post_seqs), "post-restart seqs must be monotonic"
+
+      assert Enum.sort(post_seqs) == Enum.uniq(Enum.sort(post_seqs)),
+             "post-restart seqs must be unique and monotonic as values"
 
       assert min_post > max_pre,
              "post-restart seqs must STRICTLY exceed pre-restart max " <>
@@ -590,4 +685,10 @@ defmodule ColouredFlowDashboard.TelemetryBridgeTest do
     do: InMemory.enactment(record, :id)
 
   defp runner_enactment_id(%{id: id}) when is_binary(id), do: id
+
+  defp next_bridge_names do
+    index = Process.get(:bridge_names_index, 0)
+    Process.put(:bridge_names_index, index + 1)
+    Enum.fetch!(@bridge_table_names, index)
+  end
 end
